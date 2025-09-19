@@ -31,57 +31,34 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
       .slice(0, 5);
   }, [documents]);
 
-  // 2. Unificar a lógica em um único useEffect
+  // 2. Usar os status que já vêm do useTranslatedDocuments
   // Este efeito será executado sempre que 'recentDocuments' mudar.
   useEffect(() => {
-    // Função para buscar os status é definida e chamada dentro do mesmo efeito.
-    const fetchDocumentStatuses = async () => {
-      if (recentDocuments.length === 0) {
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      
-      console.log('🔍 Documentos na RecentActivity:', recentDocuments.map(doc => ({ 
-        id: doc.id, 
-        filename: doc.filename,
-        user_id: doc.user_id 
-      })));
-      
-      // Buscar por user_id em vez de document_id (que não existe)
-      const { data, error } = await supabase
-        .from('documents_to_be_verified')
-        .select('id, filename, status, user_id')
-        .eq('user_id', recentDocuments[0]?.user_id); // Todos os docs são do mesmo usuário
-
-      console.log('🔍 Query para documents_to_be_verified - user_id:', recentDocuments[0]?.user_id);
-
-      if (error) {
-        console.error('Error fetching document statuses:', error);
-        setLoading(false);
-        return;
-      }
-      
-      console.log('🔍 Dados encontrados na documents_to_be_verified:', data);
-      
-      // Mapear por filename em vez de document_id
-      const statusMap: DocumentStatus = {};
-      data?.forEach(item => {
-        // Usar filename como chave para relacionar com documents
-        const matchingDoc = recentDocuments.find(doc => doc.filename === item.filename);
-        if (matchingDoc) {
-          statusMap[matchingDoc.id] = item.status;
-        }
-      });
-
-      console.log('🔍 Mapa de status criado:', statusMap);
-
-      setDocumentStatuses(statusMap);
+    if (recentDocuments.length === 0) {
       setLoading(false);
-    };
+      return;
+    }
 
-    fetchDocumentStatuses();
+    setLoading(true);
+    
+    console.log('🔍 Documentos na RecentActivity:', recentDocuments.map(doc => ({ 
+      id: doc.id, 
+      filename: doc.filename,
+      status: doc.status,
+      source: doc.source,
+      user_id: doc.user_id 
+    })));
+    
+    // Usar os status que já vêm do useTranslatedDocuments
+    const statusMap: DocumentStatus = {};
+    recentDocuments.forEach(doc => {
+      statusMap[doc.id] = doc.status || 'unknown';
+    });
+
+    console.log('🔍 Mapa de status criado a partir dos dados do useTranslatedDocuments:', statusMap);
+
+    setDocumentStatuses(statusMap);
+    setLoading(false);
   }, [recentDocuments]); // A dependência agora é estável graças ao useMemo
 
   // Função para download automático (lógica mantida, pois estava correta)
@@ -160,56 +137,57 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
     }
   };
 
-  // Função para buscar documento traduzido quando status for completed
+  // Função para visualizar documento
   const handleViewDocument = async (doc: Document) => {
     const currentStatus = documentStatuses[doc.id] || doc.status;
     
-    console.log(`🎯 View clicked - Doc: ${doc.filename}, Status: ${currentStatus}`);
+    console.log(`🎯 View clicked - Doc: ${doc.original_filename || doc.filename}, Status: ${currentStatus}`);
     console.log(`🔍 Documento completo:`, doc);
-    console.log(`🔍 User ID que vamos buscar:`, doc.user_id);
     
-    // Se o documento está completed, buscar o documento traduzido
+    // Se o documento já tem translated_file_url (vem de translated_documents), usar diretamente
+    if (doc.translated_file_url) {
+      const fileExtension = (doc.original_filename || doc.filename)?.split('.').pop()?.toLowerCase();
+      const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+      
+      if (imageExtensions.includes(fileExtension || '')) {
+        // Para imagens, criar um documento temporário com a URL traduzida
+        const translatedDocForViewing = {
+          ...doc,
+          file_url: doc.translated_file_url
+        };
+        onViewDocument(translatedDocForViewing);
+      } else {
+        // Para PDFs, abrir a URL traduzida diretamente
+        window.open(doc.translated_file_url, '_blank');
+      }
+      return;
+    }
+    
+    // Se o documento está completed mas não tem translated_file_url, buscar na translated_documents
     if (currentStatus === 'completed') {
       try {
-        console.log(`🔍 Fazendo busca na translated_documents com user_id: ${doc.user_id}`);
+        console.log(`🔍 Buscando documento traduzido para: ${doc.filename}`);
         
-        // Primeiro, vamos ver TODOS os documentos traduzidos para este usuário
-        const { data: allTranslatedDocs, error: allError } = await supabase
-          .from('translated_documents')
-          .select('*')
-          .eq('user_id', doc.user_id);
-
-        console.log('🎯 TODOS documentos traduzidos para este user_id:', allTranslatedDocs);
-        console.log('🎯 Error da busca geral:', allError);
-
-        // Agora a busca específica - remover .single() pois pode haver múltiplos documentos
         const { data: translatedDocs, error } = await supabase
           .from('translated_documents')
           .select('translated_file_url, filename')
-          .eq('user_id', doc.user_id);
+          .eq('user_id', doc.user_id)
+          .eq('filename', doc.filename);
 
         console.log('🎯 Documentos traduzidos encontrados:', translatedDocs);
-        console.log('🎯 Error:', error);
 
-        // Procurar o documento traduzido que corresponde ao filename atual
-        const translatedDoc = translatedDocs?.find(td => td.filename === doc.filename);
-        console.log('🎯 Documento traduzido correspondente:', translatedDoc);
-
-        if (translatedDoc && translatedDoc.translated_file_url && !error) {
-          // Mostrar documento traduzido
-          const fileExtension = doc.filename?.split('.').pop()?.toLowerCase();
+        if (translatedDocs && translatedDocs.length > 0 && translatedDocs[0].translated_file_url) {
+          const fileExtension = (doc.original_filename || doc.filename)?.split('.').pop()?.toLowerCase();
           const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
           
           if (imageExtensions.includes(fileExtension || '')) {
-            // Para imagens, criar um documento temporário com a URL traduzida
             const translatedDocForViewing = {
               ...doc,
-              file_url: translatedDoc.translated_file_url
+              file_url: translatedDocs[0].translated_file_url
             };
             onViewDocument(translatedDocForViewing);
           } else {
-            // Para PDFs, abrir a URL traduzida diretamente
-            window.open(translatedDoc.translated_file_url, '_blank');
+            window.open(translatedDocs[0].translated_file_url, '_blank');
           }
           return;
         }
@@ -219,7 +197,7 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
     }
     
     // Fallback: mostrar documento original
-    const fileExtension = doc.filename?.split('.').pop()?.toLowerCase();
+    const fileExtension = (doc.original_filename || doc.filename)?.split('.').pop()?.toLowerCase();
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
     if (imageExtensions.includes(fileExtension || '')) {
       onViewDocument(doc);
@@ -285,7 +263,14 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <FileText className="w-6 h-6 text-blue-500 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-blue-900 truncate" title={doc.filename}>{doc.filename}</div>
+                  <div className="font-medium text-blue-900 truncate" title={doc.original_filename || doc.filename}>
+                    {doc.original_filename || doc.filename}
+                  </div>
+                  {doc.original_filename && doc.original_filename !== doc.filename && (
+                    <div className="text-xs text-blue-700 truncate" title={doc.filename}>
+                      {doc.filename}
+                    </div>
+                  )}
                   <div className="text-xs text-blue-800 flex gap-2 items-center mt-0.5">
                     {getStatusBadge(doc)}
                     <span className="text-gray-500">{doc.created_at ? new Date(doc.created_at).toLocaleDateString() : ''}</span>
@@ -293,10 +278,10 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
                 </div>
               </div>
               <div className="flex items-center gap-2 mt-2 md:mt-0">
-                {doc.file_url && (
+                {(doc.file_url || doc.translated_file_url) && (
                   <>
                     <button
-                      onClick={() => handleDownload(doc.file_url!, doc.filename)}
+                      onClick={() => handleDownload(doc.translated_file_url || doc.file_url!, doc.original_filename || doc.filename)}
                       className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-xs"
                     >
                       <Download className="w-4 h-4" /> {t('dashboard.recentActivity.actions.download')}

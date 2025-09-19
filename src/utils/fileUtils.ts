@@ -22,32 +22,33 @@ export function sanitizeFileName(fileName: string): string {
 }
 
 /**
- * Gera um nome único para o arquivo baseado no timestamp e nome sanitizado
+ * Gera um nome único para o arquivo baseado no nome original + código aleatório
  * 
- * Novo formato: YYYYMMDD_HHMMSS_Usuario_NomeOriginal.pdf
- * Exemplo: 20250115_143022_joao_silva_diploma_universidade.pdf
+ * Novo formato: NomeOriginal_CODE.pdf
+ * Exemplo: diploma_universidade_A1B2C3.pdf
  * 
  * Estrutura:
- * - YYYYMMDD: Data (15/01/2025)
- * - HHMMSS: Hora (14:30:22)
- * - Usuario: Nome do usuário sanitizado
  * - NomeOriginal: Nome original do arquivo sanitizado
+ * - CODE: Código aleatório (6 caracteres alfanuméricos)
  */
-export function generateUniqueFileName(originalFileName: string, userId: string, userName?: string): string {
-  const sanitizedName = sanitizeFileName(originalFileName);
+export function generateUniqueFileName(originalFileName: string): string {
+  // Separar nome e extensão
+  const lastDotIndex = originalFileName.lastIndexOf('.');
+  const nameWithoutExt = lastDotIndex !== -1 ? originalFileName.substring(0, lastDotIndex) : originalFileName;
+  const extension = lastDotIndex !== -1 ? originalFileName.substring(lastDotIndex) : '';
   
-  // Formatar data atual de forma legível
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
-  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
+  // Sanitizar o nome (sem extensão)
+  const sanitizedName = nameWithoutExt
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .toLowerCase();
   
-  // Usar nome do usuário se disponível, senão usar userId abreviado
-  const userIdentifier = userName ? 
-    userName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase() : 
-    userId.substring(0, 8);
+  // Gerar código aleatório (6 caracteres alfanuméricos)
+  const randomCode = Math.random().toString(36).substr(2, 6).toUpperCase();
   
-  // Estrutura: YYYYMMDD_HHMMSS_Usuario_NomeOriginal.pdf
-  return `${userId}/${dateStr}_${timeStr}_${userIdentifier}_${sanitizedName}`;
+  // Estrutura: NomeOriginal_CODE.extensão
+  return `${sanitizedName}_${randomCode}${extension}`;
 }
 
 /**

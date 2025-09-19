@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from './hooks/useAuth';
-import { useDocuments, useAllDocuments } from './hooks/useDocuments';
+import { useDocuments, useAllDocuments, useTranslatedDocuments } from './hooks/useDocuments';
 import { useFolders } from './hooks/useFolders';
 import { ToastProvider } from './contexts/ToastContext';
 import { I18nProvider } from './contexts/I18nContext';
@@ -53,7 +53,7 @@ function App() {
   const { user, loading: authLoading, signOut } = useAuth();
   
   // Documents hooks
-  const { documents, createDocument, updateDocumentStatus } = useDocuments(user?.id);
+  const { documents, createDocument, updateDocumentStatus } = useTranslatedDocuments(user?.id);
   const { documents: allDocuments, updateDocumentStatus: updateAllDocumentStatus } = useAllDocuments();
   
   // Folders hook
@@ -187,8 +187,6 @@ function App() {
           { id: 'admin', label: 'Admin Dashboard', icon: Shield, page: 'admin' as Page },
           { id: 'user-management', label: 'User Management', icon: Users, page: 'user-management' as Page },
           { id: 'authenticator-control', label: 'Authenticator Control', icon: UserCheck, page: 'authenticator-control' as Page },
-          { id: 'admin-to-authenticate', label: 'To Authenticate', icon: FileText, page: 'admin#to-authenticate' as Page },
-          { id: 'admin-translated', label: 'Translated', icon: CheckCircle, page: 'admin#translated' as Page },
         ];
         return items;
       }

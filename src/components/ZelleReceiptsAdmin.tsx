@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Eye, 
   CheckCircle, 
@@ -7,9 +7,17 @@ import {
   User, 
   FileText, 
   DollarSign,
-  Calendar,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Search,
+  Filter,
+  Download,
+  ChevronDown,
+  ChevronUp,
+  SortAsc,
+  SortDesc,
+  BarChart3,
+  DollarSign as DollarIcon
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import PostgreSQLService from '../lib/postgresql-edge';
@@ -51,7 +59,24 @@ export function ZelleReceiptsAdmin() {
   const [selectedReceipt, setSelectedReceipt] = useState<ZellePayment | null>(null);
   const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
   const [sendingToTranslation, setSendingToTranslation] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'pending_verification' | 'pending_manual_review' | 'completed' | 'failed'>('pending_verification');
+  const [filter, setFilter] = useState<'pending_verification' | 'completed' | 'failed'>('pending_verification');
+  
+  // Novos estados para filtros avançados
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState<{
+    startDate: string;
+    endDate: string;
+  }>({ startDate: '', endDate: '' });
+  const [amountFilter, setAmountFilter] = useState<{
+    min: string;
+    max: string;
+  }>({ min: '', max: '' });
+  const [sortBy, setSortBy] = useState<'created_at' | 'amount' | 'user_name' | 'status'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
   
   // Estados para modal de rejeição
   const [rejectionModal, setRejectionModal] = useState<{
@@ -73,7 +98,113 @@ export function ZelleReceiptsAdmin() {
   useEffect(() => {
     loadPayments();
     initializePostgreSQL();
-  }, [filter]);
+  }, [filter]); // Roda apenas quando o filtro principal (abas) muda. Os outros filtros são client-side.
+
+
+  // Calcular dados filtrados e ordenados
+  const filteredAndSortedPayments = useMemo(() => {
+    let filtered = payments;
+
+    // Filtro por status (abas)
+    filtered = filtered.filter(payment => payment.status === filter);
+
+    // Filtro por termo de busca
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(payment => 
+        payment.profiles?.name?.toLowerCase().includes(term) ||
+        payment.profiles?.email?.toLowerCase().includes(term) ||
+        payment.documents?.filename?.toLowerCase().includes(term) ||
+        payment.zelle_confirmation_code?.toLowerCase().includes(term)
+      );
+    }
+
+    // Filtro por data
+    if (dateFilter.startDate) {
+      filtered = filtered.filter(payment => 
+        new Date(payment.created_at) >= new Date(dateFilter.startDate)
+      );
+    }
+    if (dateFilter.endDate) {
+      filtered = filtered.filter(payment => 
+        new Date(payment.created_at) <= new Date(dateFilter.endDate)
+      );
+    }
+
+    // Filtro por valor
+    if (amountFilter.min) {
+      filtered = filtered.filter(payment => 
+        payment.amount >= parseFloat(amountFilter.min)
+      );
+    }
+    if (amountFilter.max) {
+      filtered = filtered.filter(payment => 
+        payment.amount <= parseFloat(amountFilter.max)
+      );
+    }
+
+    // Ordenação
+    filtered.sort((a, b) => {
+      let aValue: any, bValue: any;
+      
+      switch (sortBy) {
+        case 'created_at':
+          aValue = new Date(a.created_at);
+          bValue = new Date(b.created_at);
+          break;
+        case 'amount':
+          aValue = a.amount;
+          bValue = b.amount;
+          break;
+        case 'user_name':
+          aValue = a.profiles?.name || '';
+          bValue = b.profiles?.name || '';
+          break;
+        case 'status':
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        default:
+          return 0;
+      }
+
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+
+    return filtered;
+  }, [payments, searchTerm, dateFilter, amountFilter, sortBy, sortOrder]);
+
+  // Calcular paginação
+  const totalPages = Math.ceil(filteredAndSortedPayments.length / itemsPerPage);
+  const paginatedPayments = filteredAndSortedPayments.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Calcular estatísticas
+  const stats = useMemo(() => {
+    const total = payments.length;
+    const pending = payments.filter(p => p.status === 'pending_verification').length;
+    const manualReview = payments.filter(p => p.status === 'pending_manual_review').length;
+    const completed = payments.filter(p => p.status === 'completed').length;
+    const failed = payments.filter(p => p.status === 'failed').length;
+    const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+    const avgAmount = total > 0 ? totalAmount / total : 0;
+
+    return {
+      total,
+      pending,
+      manualReview,
+      completed,
+      failed,
+      totalAmount,
+      avgAmount
+    };
+  }, [payments]);
 
   const initializePostgreSQL = async () => {
     try {
@@ -94,7 +225,8 @@ export function ZelleReceiptsAdmin() {
       setLoading(true);
       setError(null);
 
-      let query = supabase
+      // Sempre carregar TODOS os pagamentos para calcular estatísticas corretas
+      const { data: allPayments, error: allPaymentsError } = await supabase
         .from('payments')
         .select(`
           *,
@@ -104,17 +236,11 @@ export function ZelleReceiptsAdmin() {
         .eq('payment_method', 'zelle')
         .order('created_at', { ascending: false });
 
-      if (filter !== 'all') {
-        query = query.eq('status', filter);
-      }
+      if (allPaymentsError) throw allPaymentsError;
 
-      const { data, error: fetchError } = await query;
-
-      if (fetchError) throw fetchError;
-
-      // Buscar dados dos verificadores
+      // Buscar dados dos verificadores para todos os pagamentos
       const paymentsWithVerifiers = await Promise.all(
-        data.map(async (payment) => {
+        allPayments.map(async (payment) => {
           if (payment.zelle_verified_by) {
             const { data: verifier } = await supabase
               .from('profiles')
@@ -128,6 +254,7 @@ export function ZelleReceiptsAdmin() {
         })
       );
 
+      // Definir os pagamentos para exibição (filtrados) e para estatísticas (todos)
       setPayments(paymentsWithVerifiers);
     } catch (err: any) {
       console.error('Error loading Zelle payments:', err);
@@ -167,9 +294,10 @@ export function ZelleReceiptsAdmin() {
 
     setSavingConfirmationCode(true);
     setError(null);
+    setProcessingPaymentId(confirmationModal.payment.id);
 
     try {
-      // Atualizar o código de confirmação no pagamento Supabase
+      // 1. Atualizar o código de confirmação no pagamento Supabase
       const { error } = await supabase
         .from('payments')
         .update({ 
@@ -180,7 +308,7 @@ export function ZelleReceiptsAdmin() {
 
       if (error) throw error;
 
-      // Inserir no histórico PostgreSQL
+      // 2. Inserir no histórico PostgreSQL (não-crítico)
       try {
         await PostgreSQLService.insertZellePaymentHistory({
           payment_id: confirmationModal.payment.id,
@@ -194,56 +322,45 @@ export function ZelleReceiptsAdmin() {
         console.log('✅ Zelle confirmation code saved to PostgreSQL history');
       } catch (pgError) {
         console.error('⚠️ Failed to save to PostgreSQL (non-critical):', pgError);
-        // Não falha o processo principal se PostgreSQL falhar
       }
 
-      // Fechar modal primeiro
-      closeConfirmationModal();
-      
-      // Processar aprovação diretamente (sem chamar verifyPayment)
-      setProcessingPaymentId(confirmationModal.payment.id);
-      
-      // Usar a função RPC para aprovar o pagamento
+      // 3. Processar aprovação diretamente usando a função RPC
       const { error: verifyError } = await supabase.rpc('verify_zelle_payment', { 
         payment_id: confirmationModal.payment.id 
       });
 
       if (verifyError) throw verifyError;
 
-      // Após aprovar o pagamento, enviar documento para processo de tradução
+      // 4. Após aprovar o pagamento, enviar documento para processo de tradução
       setSendingToTranslation(confirmationModal.payment.id);
       try {
         await sendDocumentForTranslation(confirmationModal.payment);
         console.log('✅ Document successfully sent for translation');
       } catch (translationError) {
         console.error('❌ Failed to send document for translation:', translationError);
-        // Note: We don't fail the payment approval if translation fails
-        // The payment is already approved, translation can be retried later
       } finally {
         setSendingToTranslation(null);
       }
 
-      // Enviar notificação para o usuário sobre a aprovação
+      // 5. Enviar notificações
       await sendApprovalNotification(confirmationModal.payment);
-
-      // Notificar autenticadores sobre documentos pendentes
       const clientName = confirmationModal.payment.profiles?.name || 'Cliente';
       const documentFilename = confirmationModal.payment.documents?.filename || 'Documento';
-      const documentId = confirmationModal.payment.id; // Usar o ID do pagamento como referência
       
       await notifyAuthenticatorsPendingDocuments(confirmationModal.payment.user_id, {
         filename: documentFilename,
-        document_id: documentId,
+        document_id: confirmationModal.payment.document_id,
         client_name: clientName
       });
 
-      // Recarregar os pagamentos para mostrar as mudanças
-      await loadPayments();
+      // 6. Apenas após o sucesso, fechar o modal e recarregar a lista
+      closeConfirmationModal();
       setSelectedReceipt(null);
+      await loadPayments();
       
     } catch (err: any) {
-      console.error('Error saving confirmation code:', err);
-      setError(err.message || 'Failed to save confirmation code');
+      console.error('Error saving confirmation code and approving:', err);
+      setError(err.message || 'Failed to save confirmation code and approve payment');
     } finally {
       setSavingConfirmationCode(false);
       setProcessingPaymentId(null);
@@ -367,19 +484,15 @@ export function ZelleReceiptsAdmin() {
   };
 
   const verifyPayment = async (paymentId: string, approve: boolean) => {
-    if (!approve) {
-      // Se for rejeição, abrir modal para selecionar motivo
       const payment = payments.find(p => p.id === paymentId);
-      if (payment) {
-        openRejectionModal(payment);
-      }
+    if (!payment) {
+      setError('Payment not found');
       return;
     }
 
-    // Validar se existe código de confirmação Zelle
-    const payment = payments.find(p => p.id === paymentId);
-    if (!payment) {
-      setError('Payment not found');
+    if (!approve) {
+      // Se for rejeição, abrir modal para selecionar motivo
+      openRejectionModal(payment);
       return;
     }
 
@@ -400,35 +513,28 @@ export function ZelleReceiptsAdmin() {
       if (error) throw error;
 
       // Após aprovar o pagamento, enviar documento para processo de tradução
-      if (payment) {
         setSendingToTranslation(paymentId);
         try {
           await sendDocumentForTranslation(payment);
           console.log('✅ Document successfully sent for translation');
         } catch (translationError) {
           console.error('❌ Failed to send document for translation:', translationError);
-          // Note: We don't fail the payment approval if translation fails
-          // The payment is already approved, translation can be retried later
+        // Nota: A aprovação do pagamento não falha se a tradução falhar.
+        // O pagamento já está aprovado, a tradução pode ser tentada novamente mais tarde.
         } finally {
           setSendingToTranslation(null);
-        }
       }
 
-      // Enviar notificação para o usuário sobre a aprovação
-      if (payment) {
+      // Enviar notificações
         await sendApprovalNotification(payment);
-        
-        // Notificar autenticadores sobre documentos pendentes
         const clientName = payment.profiles?.name || 'Cliente';
         const documentFilename = payment.documents?.filename || 'Documento';
-        const documentId = payment.id;
         
         await notifyAuthenticatorsPendingDocuments(payment.user_id, {
           filename: documentFilename,
-          document_id: documentId,
+        document_id: payment.document_id,
           client_name: clientName
         });
-      }
 
       await loadPayments();
       setSelectedReceipt(null);
@@ -439,6 +545,108 @@ export function ZelleReceiptsAdmin() {
     } finally {
       setProcessingPaymentId(null);
     }
+  };
+
+  // Funções para ações em lote
+  const handleSelectPayment = (paymentId: string) => {
+    setSelectedPayments(prev => 
+      prev.includes(paymentId) 
+        ? prev.filter(id => id !== paymentId)
+        : [...prev, paymentId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedPayments.length === paginatedPayments.length) {
+      setSelectedPayments([]);
+    } else {
+      setSelectedPayments(paginatedPayments.map(p => p.id));
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedPayments.length === 0) return;
+    
+    // NOTA: A aprovação em lote assume que os pagamentos selecionados já têm um código de confirmação.
+    // Uma melhoria futura poderia ser ignorar aqueles sem código ou abrir modais em sequência.
+    setProcessingPaymentId('bulk');
+    try {
+      for (const paymentId of selectedPayments) {
+        const payment = payments.find(p => p.id === paymentId);
+        if (payment && (payment.status === 'pending_verification' || payment.status === 'pending_manual_review')) {
+          await supabase.rpc('verify_zelle_payment', { payment_id: paymentId });
+          await sendDocumentForTranslation(payment);
+          await sendApprovalNotification(payment);
+        }
+      }
+      await loadPayments();
+      setSelectedPayments([]);
+    } catch (err: any) {
+      console.error('Error in bulk approval:', err);
+      setError(err.message || 'Failed to approve payments');
+    } finally {
+      setProcessingPaymentId(null);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedPayments.length === 0) return;
+    
+    // NOTA: A rejeição em lote não envia notificações individuais por email.
+    // Isso pode ser implementado se necessário.
+    setProcessingPaymentId('bulk');
+    try {
+      for (const paymentId of selectedPayments) {
+        await supabase
+          .from('payments')
+          .update({ 
+            status: 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', paymentId);
+      }
+      await loadPayments();
+      setSelectedPayments([]);
+    } catch (err: any) {
+      console.error('Error in bulk rejection:', err);
+      setError(err.message || 'Failed to reject payments');
+    } finally {
+      setProcessingPaymentId(null);
+    }
+  };
+
+  // Função para exportar dados
+  const handleExportCSV = () => {
+    const csvData = filteredAndSortedPayments.map(payment => ({
+      'Payment ID': payment.id,
+      'User Name': payment.profiles?.name || '',
+      'User Email': payment.profiles?.email || '',
+      'Document': payment.documents?.filename || '',
+      'Amount': payment.amount,
+      'Status': payment.status,
+      'Confirmation Code': payment.zelle_confirmation_code || '',
+      'Created At': new Date(payment.created_at).toLocaleString(),
+      'Verified At': payment.zelle_verified_at ? new Date(payment.zelle_verified_at).toLocaleString() : '',
+      'Verified By': payment.verifier?.name || ''
+    }));
+
+    if (csvData.length === 0) {
+      setError("No data to export.");
+      return;
+    }
+
+    const csvContent = [
+      Object.keys(csvData[0]).join(','),
+      ...csvData.map(row => Object.values(row).map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zelle-payments-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const sendDocumentForTranslation = async (payment: ZellePayment) => {
@@ -535,7 +743,7 @@ export function ZelleReceiptsAdmin() {
 
     } catch (error) {
       console.error('Error sending document for translation:', error);
-      throw error; // Re-throw to be handled by verifyPayment
+      throw error; // Re-throw para ser tratado pela função que a chamou (ex: verifyPayment)
     }
   };
 
@@ -583,7 +791,14 @@ export function ZelleReceiptsAdmin() {
     return (
       <div className="p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded mb-6"></div>
+          <div className="h-8 bg-gray-200 rounded mb-6 w-1/3"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="h-24 bg-gray-200 rounded-lg"></div>
+            <div className="h-24 bg-gray-200 rounded-lg"></div>
+            <div className="h-24 bg-gray-200 rounded-lg"></div>
+            <div className="h-24 bg-gray-200 rounded-lg"></div>
+          </div>
+          <div className="h-16 bg-gray-200 rounded-lg mb-6"></div>
           <div className="space-y-4">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="h-20 bg-gray-200 rounded"></div>
@@ -595,21 +810,183 @@ export function ZelleReceiptsAdmin() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Zelle Payment Verification</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Zelle Payment Verification</h1>
         <p className="text-gray-600">Review and verify Zelle payment receipts</p>
       </div>
 
-      {/* Filter */}
-      <div className="mb-6 flex space-x-2">
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <BarChart3 className="w-6 h-6 text-blue-600" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-gray-600">Total Payments</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <Clock className="w-6 h-6 text-yellow-600" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-gray-600">Pending</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.pending}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-gray-600">Completed</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.completed}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <DollarIcon className="w-6 h-6 text-purple-600" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-gray-600">Total Amount</p>
+              <p className="text-2xl font-bold text-gray-900">${stats.totalAmount.toFixed(2)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search and Filters */}
+      <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0 lg:space-x-4">
+          {/* Search */}
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search by name, email, file, code..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Filter Controls */}
+          <div className="flex items-center space-x-2">
+          <button
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              Advanced Filters
+              {showAdvancedFilters ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}
+            </button>
+            
+            <button
+              onClick={handleExportCSV}
+              className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </button>
+          </div>
+        </div>
+
+        {/* Advanced Filters */}
+        {showAdvancedFilters && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Date Range */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={dateFilter.startDate}
+                  onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <input
+                  type="date"
+                  value={dateFilter.endDate}
+                  onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              
+              {/* Amount Range */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Min Amount ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder='0.00'
+                  value={amountFilter.min}
+                  onChange={(e) => setAmountFilter(prev => ({ ...prev, min: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Max Amount ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder='1000.00'
+                  value={amountFilter.max}
+                  onChange={(e) => setAmountFilter(prev => ({ ...prev, max: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              
+              {/* Sort */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                <div className="flex space-x-2">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="created_at">Date</option>
+                    <option value="amount">Amount</option>
+                    <option value="user_name">User</option>
+                    <option value="status">Status</option>
+                  </select>
+                  <button
+                    onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                    className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    {sortOrder === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Status Filter Tabs */}
+      <div className="mb-6 flex flex-wrap gap-2">
         {[
-          { key: 'pending_verification', label: 'Pending Verification', count: payments.filter(p => p.status === 'pending_verification').length },
-          { key: 'pending_manual_review', label: 'Manual Review', count: payments.filter(p => p.status === 'pending_manual_review').length },
-          { key: 'completed', label: 'Verified', count: payments.filter(p => p.status === 'completed').length },
-          { key: 'failed', label: 'Rejected', count: payments.filter(p => p.status === 'failed').length },
-          { key: 'all', label: 'All', count: payments.length }
+          { key: 'pending_verification', label: 'Pending Verification', count: stats.pending },
+          { key: 'completed', label: 'Verified', count: stats.completed },
+          { key: 'failed', label: 'Rejected', count: stats.failed }
         ].map(({ key, label, count }) => (
           <button
             key={key}
@@ -633,36 +1010,109 @@ export function ZelleReceiptsAdmin() {
         </div>
       )}
 
+      {/* Bulk Actions */}
+      {selectedPayments.length > 0 && filter !== 'completed' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-medium text-blue-800">
+                {selectedPayments.length} payment{selectedPayments.length > 1 ? 's' : ''} selected
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleBulkApprove}
+                disabled={processingPaymentId === 'bulk'}
+                className="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+              >
+                <CheckCircle className="w-4 h-4 mr-1" />
+                {processingPaymentId === 'bulk' ? 'Processing...' : 'Approve Selected'}
+              </button>
+              <button
+                onClick={handleBulkReject}
+                disabled={processingPaymentId === 'bulk'}
+                className="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              >
+                <XCircle className="w-4 h-4 mr-1" />
+                {processingPaymentId === 'bulk' ? 'Processing...' : 'Reject Selected'}
+              </button>
+              <button
+                onClick={() => setSelectedPayments([])}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                Clear Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payments List */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {payments.length === 0 ? (
+        {filteredAndSortedPayments.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
-            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p>No Zelle payments found for the selected filter.</p>
+            <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className='text-lg font-medium'>No payments found</p>
+            <p>Try adjusting your search or filter criteria.</p>
           </div>
         ) : (
+          <>
+            {/* Table Header - Desktop Only */}
+            <div className="hidden md:block bg-gray-50 px-6 py-3 border-b border-gray-200">
+              <div className="flex items-center">
+                {filter !== 'completed' && (
+                  <div className="w-1/12 flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedPayments.length === paginatedPayments.length && paginatedPayments.length > 0}
+                      onChange={handleSelectAll}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                  </div>
+                )}
+                <div className={`${filter !== 'completed' ? 'w-11/12' : 'w-full'} grid grid-cols-5 gap-4 items-center`}>
+                  <span className="col-span-2 text-sm font-medium text-gray-700">User & Document</span>
+                  <span className="text-sm font-medium text-gray-700">Amount</span>
+                  <span className="text-sm font-medium text-gray-700">Status</span>
+                  <span className="text-sm font-medium text-gray-700 text-right">Actions</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Table Body */}
           <div className="divide-y divide-gray-200">
-            {payments.map((payment) => (
-              <div key={payment.id} className="p-6 hover:bg-gray-50">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    {/* Main Info */}
-                    <div className="flex items-center space-x-4 mb-3">
-                      <div className="flex items-center space-x-2">
-                        <User className="w-5 h-5 text-gray-400" />
-                        <span className="font-medium text-gray-900">
-                          {payment.profiles?.name || 'Unknown User'}
-                        </span>
-                        <span className="text-gray-500">({payment.profiles?.email})</span>
+              {paginatedPayments.map((payment) => (
+                <div key={payment.id} className="p-4 hover:bg-gray-50">
+                  {/* Mobile Layout */}
+                  <div className="md:hidden space-y-3">
+                    {/* Header with checkbox and status */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center space-x-3">
+                        {filter !== 'completed' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedPayments.includes(payment.id)}
+                            onChange={() => handleSelectPayment(payment.id)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                        )}
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {payment.profiles?.name || 'Unknown User'}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {payment.profiles?.email}
+                          </div>
+                        </div>
                       </div>
                       {getStatusBadge(payment.status)}
                     </div>
 
-                    {/* Document & Payment Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    {/* Document and Amount */}
+                    <div className={`${filter !== 'completed' ? 'ml-7' : 'ml-0'} space-y-2`}>
                       <div className="flex items-center space-x-2">
                         <FileText className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600">
+                        <span className="text-sm text-gray-600 truncate" title={payment.documents?.filename}>
                           {payment.documents?.filename || 'Unknown File'}
                         </span>
                       </div>
@@ -672,87 +1122,167 @@ export function ZelleReceiptsAdmin() {
                           ${payment.amount.toFixed(2)} USD
                         </span>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600">
-                          {new Date(payment.created_at).toLocaleDateString()}
-                        </span>
+                      {payment.zelle_confirmation_code && (
+                        <div className="text-xs text-green-600 font-mono">
+                          Code: {payment.zelle_confirmation_code}
                       </div>
+                      )}
                     </div>
 
-                    {/* Verification Info */}
-                    {payment.zelle_verified_at && (
-                      <div className="text-sm text-gray-500 mb-4">
-                        Verified by {payment.verifier?.name || 'Unknown'} on{' '}
-                        {new Date(payment.zelle_verified_at).toLocaleString()}
+                    {/* Actions */}
+                    <div className="ml-7 flex items-center space-x-2">
+                      <button
+                        onClick={() => setSelectedReceipt(payment)}
+                        className="inline-flex items-center px-3 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View
+                      </button>
+                      
+                      {(payment.status === 'pending_verification' || payment.status === 'pending_manual_review') && (
+                        <>
+                          <button
+                            onClick={() => verifyPayment(payment.id, true)}
+                            disabled={processingPaymentId === payment.id || sendingToTranslation === payment.id}
+                            className="inline-flex items-center px-3 py-2 border border-transparent rounded text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => openRejectionModal(payment)}
+                            disabled={processingPaymentId === payment.id || sendingToTranslation === payment.id}
+                            className="inline-flex items-center px-3 py-2 border border-transparent rounded text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Reject
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Desktop Layout */}
+                  <div className="hidden md:flex items-center">
+                    {/* Checkbox */}
+                    {filter !== 'completed' && (
+                      <div className="w-1/12">
+                        <input
+                          type="checkbox"
+                          checked={selectedPayments.includes(payment.id)}
+                          onChange={() => handleSelectPayment(payment.id)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
                       </div>
                     )}
 
-                    {/* Confirmation Code */}
-                    <div className="mb-4">
-                      <div className="text-sm font-medium text-gray-700 mb-1">
-                        Zelle Confirmation Code:
-                      </div>
-                      {payment.zelle_confirmation_code ? (
-                        <div className="bg-gray-50 rounded-lg px-3 py-2 border">
-                          <span className="font-mono text-sm text-gray-900">
-                            {payment.zelle_confirmation_code}
-                          </span>
-                          <span className="ml-2 text-xs text-green-600">✓</span>
+                    {/* Payment Details */}
+                    <div className={`${filter !== 'completed' ? 'w-11/12' : 'w-full'} grid grid-cols-5 gap-4 items-center`}>
+                      {/* User & Document Info */}
+                      <div className="col-span-2 flex items-center space-x-3">
+                        <User className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {payment.profiles?.name || 'Unknown User'}
                         </div>
-                      ) : (
-                        <div className="bg-yellow-50 rounded-lg px-3 py-2 border border-yellow-200">
-                          <span className="text-sm text-yellow-700">
-                            ⚠️ Confirmation code required for approval
-                          </span>
+                          <div className="text-sm text-gray-500 truncate" title={payment.documents?.filename}>
+                            {payment.documents?.filename || 'Unknown File'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Amount */}
+                      <div className="flex items-center space-x-2">
+                        <DollarSign className="w-4 h-4 text-gray-400" />
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            ${payment.amount.toFixed(2)} USD
+                          </div>
+                          {payment.zelle_confirmation_code && (
+                            <div className="text-xs text-green-600 font-mono" title={`Confirmation Code: ${payment.zelle_confirmation_code}`}>
+                              Code: {payment.zelle_confirmation_code}
                         </div>
                       )}
                     </div>
                   </div>
 
+                      {/* Status */}
+                      <div className="flex items-center">
+                        {getStatusBadge(payment.status)}
+                  </div>
+
                   {/* Actions */}
-                  <div className="flex items-center space-x-2 ml-4">
+                      <div className="flex items-center justify-end space-x-2">
                     <button
                       onClick={() => setSelectedReceipt(payment)}
-                      className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                          className="inline-flex items-center p-2 border border-gray-300 rounded text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                     >
-                      <Eye className="w-4 h-4 mr-1" />
-                      View Receipt
+                          <Eye className="w-4 h-4" />
                     </button>
                     
                     {(payment.status === 'pending_verification' || payment.status === 'pending_manual_review') && (
-                      <div className="flex space-x-2">
+                          <>
                         <button
                           onClick={() => verifyPayment(payment.id, true)}
                           disabled={processingPaymentId === payment.id || sendingToTranslation === payment.id}
-                          className="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                              className="inline-flex items-center p-2 border border-transparent rounded text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
                         >
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          {sendingToTranslation === payment.id ? 'Sending to Translation...' : 
-                           processingPaymentId === payment.id ? 'Approving...' : 'Approve'}
+                              <CheckCircle className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => openRejectionModal(payment)}
                           disabled={processingPaymentId === payment.id || sendingToTranslation === payment.id}
-                          className="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                              className="inline-flex items-center p-2 border border-transparent rounded text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
                         >
-                          <XCircle className="w-4 h-4 mr-1" />
-                          Reject
+                              <XCircle className="w-4 h-4" />
                         </button>
-                      </div>
+                          </>
                     )}
+                      </div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
+          </>
         )}
       </div>
+
+      {/* CORREÇÃO: Movi a paginação para fora do bloco de filtros avançados */}
+      {totalPages > 1 && (
+        <div className="bg-white px-6 py-3 border-t border-gray-200 flex items-center justify-between mt-4 rounded-lg">
+          <div className="flex items-center text-sm text-gray-700">
+            <span>
+              Showing <strong>{((currentPage - 1) * itemsPerPage) + 1}</strong> to <strong>{Math.min(currentPage * itemsPerPage, filteredAndSortedPayments.length)}</strong> of <strong>{filteredAndSortedPayments.length}</strong> results
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            <span className='text-sm text-gray-500'>Page {currentPage} of {totalPages}</span>
+            
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* Receipt Modal */}
       {selectedReceipt && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden">
+          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
               <div>
@@ -781,7 +1311,7 @@ export function ZelleReceiptsAdmin() {
             </div>
 
             {/* Modal Content */}
-            <div className="p-6 max-h-[70vh] overflow-auto">
+            <div className="p-6 flex-grow overflow-auto">
               <div className="text-center">
                 <img
                   src={selectedReceipt.receipt_url}
@@ -808,15 +1338,15 @@ export function ZelleReceiptsAdmin() {
             </div>
 
             {/* Modal Actions */}
-            {selectedReceipt.status === 'pending_verification' && (
-              <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
+            {(selectedReceipt.status === 'pending_verification' || selectedReceipt.status === 'pending_manual_review') && (
+              <div className="p-6 border-t border-gray-200 flex justify-end space-x-3 bg-gray-50">
                 <button
                   onClick={() => openRejectionModal(selectedReceipt)}
-                  disabled={processingPaymentId === selectedReceipt.id || sendingToTranslation === selectedReceipt.id}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                  disabled={processingPaymentId === selectedReceipt.id}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
                   <XCircle className="w-4 h-4 mr-2" />
-                  Reject Payment
+                  Reject
                 </button>
                 <button
                   onClick={() => verifyPayment(selectedReceipt.id, true)}
@@ -824,8 +1354,8 @@ export function ZelleReceiptsAdmin() {
                   className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
-                  {sendingToTranslation === selectedReceipt.id ? 'Sending to Translation...' : 
-                   processingPaymentId === selectedReceipt.id ? 'Approving...' : 'Approve Payment'}
+                  {sendingToTranslation === selectedReceipt.id ? 'Sending...' : 
+                   processingPaymentId === selectedReceipt.id ? 'Approving...' : 'Approve'}
                 </button>
               </div>
             )}
@@ -854,7 +1384,7 @@ export function ZelleReceiptsAdmin() {
                 
                 <div className="mt-4">
                   <p className="text-sm text-gray-500 mb-4">
-                    Please select a reason for rejecting this payment:
+                    Please select a reason for rejecting this payment. The user will be notified.
                   </p>
                   
                   <div className="space-y-2">
@@ -1000,7 +1530,7 @@ export function ZelleReceiptsAdmin() {
                   disabled={savingConfirmationCode || !confirmationCode.trim()}
                   className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {savingConfirmationCode ? 'Saving...' : 'Save and Approve'}
+                  {savingConfirmationCode ? 'Saving & Approving...' : 'Save and Approve'}
                 </button>
               </div>
             </div>

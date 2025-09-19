@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -61,20 +61,46 @@ export function PaymentSuccess() {
       const { fileId, userId, filename, documentId, isMobile: sessionIsMobile } = sessionData.metadata;
 
       let storedFile = null;
-      let filePath = null;
       let publicUrl = null;
 
       // Função consolidada para fazer upload do arquivo
-      const uploadFileToStorage = async (file: File, userId: string) => {
+      const uploadFileToStorage = async (file: File) => {
             setIsUploading(true);
             setUploadProgress(0);
 
-        const uploadPath = generateUniqueFileName(file.name, userId);
+        // Usar o filename que já foi salvo no banco (com código aleatório) e organizar por usuário
+        const fileName = sessionData.metadata.filename || generateUniqueFileName(file.name);
+        const uploadPath = `${userId}/${fileName}`; // Organizar por pasta do usuário
 
         console.log('DEBUG: Fazendo upload para:', uploadPath);
         console.log('DEBUG: Nome do arquivo:', file.name);
         console.log('DEBUG: Tamanho do arquivo:', file.size);
         console.log('DEBUG: Tipo do arquivo:', file.type);
+
+        // Verificar se o arquivo já existe no storage antes de fazer upload
+        try {
+          const { data: existingFile } = await supabase.storage
+            .from('documents')
+            .list(userId, {
+              search: fileName
+            });
+          
+          if (existingFile && existingFile.length > 0) {
+            console.log('DEBUG: Arquivo já existe no storage, usando URL existente');
+            const { data: { publicUrl: existingPublicUrl } } = supabase.storage
+              .from('documents')
+              .getPublicUrl(uploadPath);
+            
+            setUploadProgress(100);
+            return { 
+              uploadData: { path: uploadPath }, 
+              publicUrl: existingPublicUrl, 
+              filePath: uploadPath 
+            };
+          }
+        } catch (checkError) {
+          console.log('DEBUG: Erro ao verificar arquivo existente, continuando com upload:', checkError);
+        }
 
             // Simular progresso do upload
             const progressInterval = setInterval(() => {
@@ -91,7 +117,7 @@ export function PaymentSuccess() {
               .from('documents')
           .upload(uploadPath, file, {
                 cacheControl: '31536000', // 1 ano de cache
-                upsert: false
+                upsert: true // Permite sobrescrever arquivos existentes
               });
 
             clearInterval(progressInterval);
@@ -128,21 +154,23 @@ export function PaymentSuccess() {
           // É um filePath válido do Storage
           console.log('DEBUG: ✅ fileId é um filePath válido do Storage:', fileId);
           
+          // Se o fileId já tem userId, usar como está; senão, adicionar userId
+          const fullPath = fileId.startsWith(`${userId}/`) ? fileId : `${userId}/${fileId}`;
+          
           // Obter URL pública do arquivo
           const { data: { publicUrl: storagePublicUrl } } = supabase.storage
             .from('documents')
-            .getPublicUrl(fileId);
+            .getPublicUrl(fullPath);
           
           publicUrl = storagePublicUrl;
-          filePath = fileId;
           
           console.log('DEBUG: ✅ Arquivo encontrado no Storage (upload direto):', publicUrl);
           
           // Obter informações do arquivo do Storage
           const { data: fileInfo } = await supabase.storage
             .from('documents')
-            .list('', {
-              search: fileId.split('/').pop() // Buscar pelo nome do arquivo
+            .list(userId, {
+              search: fileId.split('/').pop() // Buscar pelo nome do arquivo na pasta do usuário
             });
           
           let fileSize = 0;
@@ -180,13 +208,12 @@ export function PaymentSuccess() {
               console.log('DEBUG: Tipo do arquivo:', storedFile.file.type);
               
               // Fazer upload do arquivo para o Supabase Storage
-              const uploadResult = await uploadFileToStorage(storedFile.file, userId);
+              const uploadResult = await uploadFileToStorage(storedFile.file);
               if (!uploadResult) {
                 setError('Upload failed. Please try again.');
                 return;
               }
               publicUrl = uploadResult.publicUrl;
-              filePath = uploadResult.filePath;
               
               console.log('DEBUG: Upload bem-sucedido:', uploadResult.uploadData);
             } else {
@@ -217,13 +244,12 @@ export function PaymentSuccess() {
                   };
                   
                   // Fazer upload do arquivo para o Supabase Storage
-                  const uploadResult = await uploadFileToStorage(fallbackFile, userId);
+                  const uploadResult = await uploadFileToStorage(fallbackFile);
                   if (!uploadResult) {
                     setError('Upload failed. Please try again.');
                     return;
                   }
                   publicUrl = uploadResult.publicUrl;
-                  filePath = uploadResult.filePath;
                   
                   console.log('DEBUG: Upload bem-sucedido do fallback mobile:', uploadResult.uploadData);
                   
@@ -252,7 +278,6 @@ export function PaymentSuccess() {
         console.log('DEBUG: userId recebido:', userId);
         
         let documentData = null;
-        let checkError = null;
 
         // Tentar recuperar do IndexedDB primeiro
         try {
@@ -265,13 +290,12 @@ export function PaymentSuccess() {
             console.log('DEBUG: Tipo do arquivo:', documentData.file.type);
             
             // Fazer upload do arquivo para o Supabase Storage
-            const uploadResult = await uploadFileToStorage(documentData.file, userId);
+            const uploadResult = await uploadFileToStorage(documentData.file);
             if (!uploadResult) {
               setError('Upload failed. Please try again.');
               return;
             }
             publicUrl = uploadResult.publicUrl;
-            filePath = uploadResult.filePath;
             
             console.log('DEBUG: Upload bem-sucedido:', uploadResult.uploadData);
           } else {
@@ -318,7 +342,7 @@ export function PaymentSuccess() {
       // Verificar se o documento realmente existe antes de tentar atualizar
       const { data: existingDoc, error: checkError } = await supabase
         .from('documents')
-        .select('id, status')
+        .select('id, status, file_url')
         .eq('id', finalDocumentId)
         .single();
 
@@ -329,6 +353,14 @@ export function PaymentSuccess() {
       }
 
       console.log('DEBUG: Documento confirmado no banco:', existingDoc);
+
+      // Verificar se o documento já foi processado (tem file_url e status não é 'pending')
+      if (existingDoc.file_url && existingDoc.status !== 'pending') {
+        console.log('DEBUG: Documento já foi processado, evitando reprocessamento');
+        setSuccess(true);
+        setUploadProgress(100);
+        return;
+      }
 
       // Usar Edge Function para atualizar documento com service role
       console.log('DEBUG: Chamando Edge Function para atualizar documento');
@@ -343,7 +375,8 @@ export function PaymentSuccess() {
           documentId: finalDocumentId,
           fileUrl: publicUrl,
           userId: userId,
-          filename: filename,
+          // NÃO enviar filename para evitar sobrescrever o nome com código aleatório
+          // filename: filename,
           pages: parseInt(sessionData.metadata.pages),
           totalCost: parseFloat(sessionData.metadata.totalPrice),
           documentType: sessionData.metadata.isCertified === 'true' ? 'Certificado' : 'Certified',
@@ -407,6 +440,8 @@ export function PaymentSuccess() {
         source_currency: sessionData.metadata.sourceCurrency || null,
         target_currency: sessionData.metadata.targetCurrency || null,
         document_id: finalDocumentId,
+        original_document_id: finalDocumentId, // ID do documento original
+        original_filename: sessionData.metadata.originalFilename || filename, // Nome original do arquivo
         // Campos padronizados para compatibilidade com n8n
         isPdf: true,
         fileExtension: 'pdf',

@@ -32,6 +32,7 @@ export default function UploadDocument() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showZelleModal, setShowZelleModal] = useState(false);
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
+  const [currentFilename, setCurrentFilename] = useState<string | null>(null);
   
   // Detecta se é mobile (iOS/Android)
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -140,7 +141,7 @@ export default function UploadDocument() {
   };
 
   // Função para processar pagamento direto com Stripe
-  const handleDirectPayment = async (fileId: string, customPayload?: any) => {
+  const handleDirectPayment = async (fileId: string, customPayload?: any, filename?: string) => {
     try {
       console.log('DEBUG: Iniciando pagamento direto com Stripe');
       
@@ -156,6 +157,12 @@ export default function UploadDocument() {
 
       console.log('DEBUG: Usando documentId fornecido:', customPayload.documentId);
       
+      // Usar filename passado como parâmetro ou gerar novo se não fornecido
+      const uniqueFileName = filename || generateUniqueFileName(selectedFile.name);
+      console.log('DEBUG: Nome único usado no payload:', uniqueFileName);
+      console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
+      console.log('DEBUG: Filename passado como parâmetro:', filename);
+      
       // Criar payload completo igual ao DocumentUploadModal
       const payload = {
         pages,
@@ -165,7 +172,8 @@ export default function UploadDocument() {
         fileId: fileId || '', // Usar o ID do arquivo no IndexedDB
         userId: user?.id,
         userEmail: user?.email, // Adicionar email do usuário
-        filename: selectedFile?.name,
+        filename: uniqueFileName, // Usar nome único com código aleatório
+        originalFilename: selectedFile?.name, // Nome original do arquivo
         originalLanguage: idiomaRaiz,
         targetLanguage: idiomaDestino,
         documentType: 'Certificado', // Enviar "Certificado" no payload
@@ -181,7 +189,7 @@ export default function UploadDocument() {
       console.log('DEBUG: fileId:', fileId);
       console.log('DEBUG: userId:', user?.id);
       console.log('DEBUG: userEmail:', user?.email);
-      console.log('DEBUG: filename:', selectedFile?.name);
+      console.log('DEBUG: filename:', uniqueFileName);
       console.log('DEBUG: documentId:', customPayload.documentId);
 
       console.log('Payload enviado para checkout:', payload);
@@ -231,11 +239,18 @@ export default function UploadDocument() {
     try {
       // CRIAR DOCUMENTO NO BANCO ANTES DO PAGAMENTO
       console.log('DEBUG: Criando documento no banco antes do pagamento');
+      
+      // Gerar nome único com código aleatório para o filename
+      const uniqueFileName = generateUniqueFileName(selectedFile.name);
+      console.log('DEBUG: Nome único gerado:', uniqueFileName);
+      console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
+      
       const { data: newDocument, error: createError } = await supabase
         .from('documents')
         .insert({
           user_id: user.id,
-          filename: selectedFile.name,
+          filename: uniqueFileName, // Usar nome com código aleatório
+          original_filename: selectedFile.name, // Salvar nome original
           pages: pages,
           status: 'draft', // Começa como draft até o pagamento ser confirmado
           total_cost: calcularValor(pages, isExtrato),
@@ -260,9 +275,14 @@ export default function UploadDocument() {
       }
 
       console.log('DEBUG: Documento criado no banco:', newDocument.id);
+      console.log('DEBUG: Verificação dos campos salvos:', {
+        filename: newDocument.filename,
+        original_filename: newDocument.original_filename
+      });
       
-      // Armazenar o ID do documento para usar nos modais de pagamento
+      // Armazenar o ID do documento e filename para usar nos modais de pagamento
       setCurrentDocumentId(newDocument.id);
+      setCurrentFilename(uniqueFileName);
       
       // Mostrar modal de seleção de método de pagamento
       setShowPaymentModal(true);
@@ -286,10 +306,11 @@ export default function UploadDocument() {
       console.log('🚀 Uploading document for Zelle payment...');
       
       // Fazer upload do arquivo para o Storage
-      const fileName = generateUniqueFileName(selectedFile.name, user.id);
+      const fileName = generateUniqueFileName(selectedFile.name);
+      const filePath = `${user.id}/${fileName}`; // Organizar por pasta do usuário
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(fileName, selectedFile);
+        .upload(filePath, selectedFile);
 
       if (uploadError) {
         console.error('❌ Storage upload error:', uploadError);
@@ -297,16 +318,20 @@ export default function UploadDocument() {
       }
 
       // Obter URL público
-      const { data: { publicUrl } } = supabase.storage
-        .from('documents')
-        .getPublicUrl(fileName);
+          const { data: { publicUrl } } = supabase.storage
+            .from('documents')
+            .getPublicUrl(filePath);
 
       console.log('✅ Document uploaded successfully:', publicUrl);
 
-      // Atualizar o documento no banco com file_url
+      // Atualizar o documento no banco com file_url e filename correto
       const { error: updateError } = await supabase
         .from('documents')
-        .update({ file_url: publicUrl })
+        .update({ 
+          file_url: publicUrl,
+          filename: fileName // Atualizar com o nome único gerado
+          // original_filename já foi salvo no handleUpload, não precisa atualizar
+        })
         .eq('id', currentDocumentId);
 
       if (updateError) {
@@ -342,6 +367,9 @@ export default function UploadDocument() {
       
       if (isMobile) {
         // Mobile: Tentar usar IndexedDB primeiro, se falhar usar upload direto
+        if (!selectedFile || !user) {
+          throw new Error('Arquivo ou usuário não encontrado');
+        }
         try {
           const fileId = await fileStorage.storeFile(selectedFile, {
             documentType: 'Certificado',
@@ -356,10 +384,17 @@ export default function UploadDocument() {
             targetCurrency: isExtrato ? targetCurrency : null
           });
           
-          await handleDirectPayment(fileId, { documentId: currentDocumentId });
+          if (!selectedFile || !user) {
+            throw new Error('Arquivo ou usuário não encontrado');
+          }
+          await handleDirectPayment(fileId, { documentId: currentDocumentId }, currentFilename || undefined);
         } catch (indexedDBError) {
           // Fallback: Upload direto para Supabase Storage
-          const filePath = generateUniqueFileName(selectedFile.name, user.id);
+          if (!selectedFile || !user) {
+            throw new Error('Arquivo ou usuário não encontrado');
+          }
+          const fileName = generateUniqueFileName(selectedFile.name);
+          const filePath = `${user.id}/${fileName}`; // Organizar por pasta do usuário
           const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
           if (uploadError) throw uploadError;
           
@@ -369,9 +404,9 @@ export default function UploadDocument() {
             isNotarized: tipoTrad === 'Certified',
             isBankStatement: isExtrato,
             filePath,
-            userId: user.id,
-            userEmail: user.email,
-            filename: selectedFile?.name,
+            userId: user?.id,
+            userEmail: user?.email,
+            filename: selectedFile.name,
             originalLanguage: idiomaRaiz,
             targetLanguage: idiomaDestino,
             documentType: 'Certificado',
@@ -381,10 +416,16 @@ export default function UploadDocument() {
             targetCurrency: isExtrato ? targetCurrency : null
           };
           
+          if (!selectedFile || !user) {
+            throw new Error('Arquivo ou usuário não encontrado');
+          }
           await handleDirectPayment('', payload);
         }
       } else {
         // Desktop: Salvar arquivo no IndexedDB primeiro
+        if (!selectedFile || !user) {
+          throw new Error('Arquivo ou usuário não encontrado');
+        }
         const fileId = await fileStorage.storeFile(selectedFile, {
           documentType: 'Certificado',
           certification: true,
@@ -398,7 +439,7 @@ export default function UploadDocument() {
           targetCurrency: isExtrato ? targetCurrency : null
         });
         
-        await handleDirectPayment(fileId, { documentId: currentDocumentId });
+        await handleDirectPayment(fileId, { documentId: currentDocumentId }, currentFilename || undefined);
       }
       
     } catch (err: any) {

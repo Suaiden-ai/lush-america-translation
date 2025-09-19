@@ -100,6 +100,14 @@ export function ZelleCheckout() {
         if (error) throw error;
         setDocumentData(document);
 
+        // Debug: Verificar campos do documento
+        console.log('📄 Document data loaded:', {
+          id: document.id,
+          filename: document.filename,
+          original_filename: document.original_filename,
+          file_url: document.file_url
+        });
+
         // Arquivo já deve estar no Storage se chegou até aqui
         if (document.file_url) {
           console.log('✅ Document already has file_url:', document.file_url);
@@ -352,6 +360,8 @@ export function ZelleCheckout() {
         source_currency: documentData.source_currency || null,
         target_currency: documentData.target_currency || null,
         document_id: documentId,
+        original_document_id: documentId, // ID do documento original
+        original_filename: documentData.original_filename, // Nome original do arquivo
         // Campos padronizados para compatibilidade com n8n
         isPdf: true,
         fileExtension: 'pdf',
@@ -360,6 +370,12 @@ export function ZelleCheckout() {
       };
 
       console.log('📨 Payload para tradução:', JSON.stringify(translationPayload, null, 2));
+      console.log('🔍 Debug original_filename:', {
+        'documentData.original_filename': documentData.original_filename,
+        'documentData.filename': documentData.filename,
+        'filename (from URL)': filename,
+        'final original_filename': translationPayload.original_filename
+      });
 
       // Enviar para a edge function send-translation-webhook
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;

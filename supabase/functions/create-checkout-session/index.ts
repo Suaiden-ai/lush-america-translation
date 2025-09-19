@@ -22,6 +22,7 @@ interface RequestBody {
   userId: string;
   userEmail: string;
   filename: string;
+  originalFilename?: string;
   fileSize?: number;
   fileType?: string;
   originalLanguage?: string;
@@ -75,6 +76,7 @@ Deno.serve(async (req: Request) => {
       userId,
       userEmail,
       filename,
+      originalFilename,
       fileSize,
       fileType,
       originalLanguage,
@@ -159,6 +161,7 @@ Deno.serve(async (req: Request) => {
         userId,
         userEmail,
         filename: filename || '',
+        originalFilename: originalFilename || filename || '', // Nome original do arquivo
         pages: pages.toString(),
         isCertified: (isCertified || false).toString(),
         isNotarized: (isNotarized || false).toString(),

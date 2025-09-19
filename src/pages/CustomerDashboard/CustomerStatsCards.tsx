@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Clock, CheckCircle, DollarSign, TrendingUp, Calendar } from 'lucide-react';
+import { FileText, Clock, CheckCircle, Calendar } from 'lucide-react';
 import { Document } from '../../App';
 import { useI18n } from '../../contexts/I18nContext';
 
@@ -14,14 +14,15 @@ export function CustomerStatsCards({ documents }: CustomerStatsCardsProps) {
   const pendingDocuments = documents.filter(doc => doc.status === 'pending').length;
   const processingDocuments = documents.filter(doc => doc.status === 'processing').length;
   const completedDocuments = documents.filter(doc => doc.status === 'completed').length;
-  const totalSpent = documents.reduce((sum, doc) => sum + (doc.totalCost || 0), 0);
   const totalPages = documents.reduce((sum, doc) => sum + (doc.pages || 0), 0);
 
   // Calculate this month's activity
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   const thisMonthDocuments = documents.filter(doc => {
-    const docDate = doc.uploadDate ? new Date(doc.uploadDate) : null;
+    // Usar created_at como prioridade, com fallback para upload_date se disponível
+    const docDate = doc.created_at ? new Date(doc.created_at) : 
+                   (doc.upload_date ? new Date(doc.upload_date) : null);
     return docDate && docDate.getMonth() === currentMonth && docDate.getFullYear() === currentYear;
   });
 
@@ -51,28 +52,12 @@ export function CustomerStatsCards({ documents }: CustomerStatsCardsProps) {
       description: t('dashboard.statistics.cards.descriptions.readyDownload')
     },
     {
-      title: t('dashboard.statistics.cards.totalSpent'),
-      value: `$${isNaN(totalSpent) ? '0' : totalSpent}`,
-      icon: DollarSign,
-      bgColor: 'bg-purple-100',
-      iconColor: 'text-purple-900',
-      description: `$${totalDocuments > 0 ? (totalSpent / totalDocuments).toFixed(2) : '0'} ${t('dashboard.statistics.cards.descriptions.avgPerDocument')}`
-    },
-    {
       title: t('dashboard.statistics.cards.thisMonth'),
       value: thisMonthDocuments.length || 0,
       icon: Calendar,
       bgColor: 'bg-indigo-100',
       iconColor: 'text-indigo-900',
       description: t('dashboard.statistics.cards.descriptions.documentsUploaded')
-    },
-    {
-      title: t('dashboard.statistics.cards.successRate'),
-      value: totalDocuments > 0 ? `${Math.round((completedDocuments / totalDocuments) * 100)}%` : '0%',
-      icon: TrendingUp,
-      bgColor: 'bg-emerald-100',
-      iconColor: 'text-emerald-900',
-      description: t('dashboard.statistics.cards.descriptions.completionRate')
     }
   ];
 
@@ -115,7 +100,7 @@ export function CustomerStatsCards({ documents }: CustomerStatsCardsProps) {
         <p className="text-gray-600 text-lg">{t('dashboard.statistics.description')}</p>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
           return (

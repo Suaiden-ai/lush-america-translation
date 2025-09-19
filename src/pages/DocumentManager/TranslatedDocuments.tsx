@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
-import { FileText, Download, Eye, Calendar, DollarSign, User, CheckCircle, XCircle } from 'lucide-react';
+import { FileText, Download, Eye, Calendar, DollarSign, User, CheckCircle, XCircle, Filter } from 'lucide-react';
 import { getValidFileUrl } from '../../utils/fileUtils';
+import { GoogleStyleDatePicker } from '../../components/GoogleStyleDatePicker';
+import { DateRange } from '../../components/DateRangeFilter';
 
 interface TranslatedDocument {
   id: string;
@@ -46,6 +48,15 @@ export default function TranslatedDocuments() {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [userLoading, setUserLoading] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
+  
+  // Filtros
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterLanguage, setFilterLanguage] = useState('all');
+  const [dateFilter, setDateFilter] = useState<DateRange>({
+    startDate: null,
+    endDate: null,
+    preset: 'all'
+  });
   
   // Paginação
   const [currentPage, setCurrentPage] = useState(1);
@@ -123,20 +134,70 @@ export default function TranslatedDocuments() {
     }
   }
 
-  // Summary cards
-  const totalDocuments = documents.length;
-  const totalValue = documents.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
-  const totalPages = documents.reduce((sum, doc) => sum + (doc.pages || 0), 0);
+  // Aplicar filtros
+  const filteredDocuments = useMemo(() => {
+    let filtered = documents;
+
+    // Filtro de busca
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = filtered.filter(doc => 
+        doc.filename.toLowerCase().includes(searchLower) ||
+        doc.user_name?.toLowerCase().includes(searchLower) ||
+        doc.user_email?.toLowerCase().includes(searchLower) ||
+        doc.verification_code.toLowerCase().includes(searchLower) ||
+        doc.authenticated_by_name?.toLowerCase().includes(searchLower) ||
+        doc.authenticated_by_email?.toLowerCase().includes(searchLower)
+      );
+    }
+
+
+    // Filtro de idioma
+    if (filterLanguage !== 'all') {
+      filtered = filtered.filter(doc => {
+        const languagePair = `${doc.source_language} → ${doc.target_language}`;
+        return languagePair.toLowerCase().includes(filterLanguage.toLowerCase());
+      });
+    }
+
+    // Filtro de data
+    if (dateFilter.startDate || dateFilter.endDate) {
+      filtered = filtered.filter(doc => {
+        if (!doc.created_at) return false;
+        
+        const docDate = new Date(doc.created_at);
+        const startDate = dateFilter.startDate;
+        const endDate = dateFilter.endDate;
+        
+        if (startDate && docDate < startDate) return false;
+        if (endDate && docDate > endDate) return false;
+        
+        return true;
+      });
+    }
+
+    return filtered;
+  }, [documents, searchTerm, filterLanguage, dateFilter]);
+
+  // Summary cards (usando documentos filtrados)
+  const totalDocuments = filteredDocuments.length;
+  const totalValue = filteredDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
+  const totalPages = filteredDocuments.reduce((sum, doc) => sum + (doc.pages || 0), 0);
 
   // Paginação
-  const totalPagesForPagination = Math.ceil(documents.length / documentsPerPage);
+  const totalPagesForPagination = Math.ceil(filteredDocuments.length / documentsPerPage);
   const startIndex = (currentPage - 1) * documentsPerPage;
   const endIndex = startIndex + documentsPerPage;
-  const currentDocuments = documents.slice(startIndex, endIndex);
+  const currentDocuments = filteredDocuments.slice(startIndex, endIndex);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterLanguage, dateFilter]);
 
   // Verificar se está carregando ou se não há usuário
   if (authLoading) {
@@ -204,6 +265,51 @@ export default function TranslatedDocuments() {
             <div>
               <div className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">{totalPages}</div>
               <div className="text-xs sm:text-sm text-gray-600 font-medium">Total Pages</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* Search */}
+            <div className="lg:col-span-2">
+              <input
+                type="text"
+                placeholder="Search by name, email, filename, code..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                aria-label="Search documents"
+              />
+            </div>
+
+            {/* Language Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+              <select
+                value={filterLanguage}
+                onChange={(e) => setFilterLanguage(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                aria-label="Filter by language"
+              >
+                <option value="all">All Languages</option>
+                <option value="portuguese">Portuguese</option>
+                <option value="english">English</option>
+                <option value="spanish">Spanish</option>
+                <option value="german">German</option>
+                <option value="french">French</option>
+              </select>
+            </div>
+
+            {/* Date Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+              <GoogleStyleDatePicker
+                dateRange={dateFilter}
+                onDateRangeChange={setDateFilter}
+                className="w-full"
+              />
             </div>
           </div>
         </div>
@@ -423,13 +529,20 @@ export default function TranslatedDocuments() {
             </table>
           </div>
 
-          {documents.length === 0 && !loading && <p className="mt-8 text-gray-500 text-center text-base sm:text-lg">No translated documents found.</p>}
+          {filteredDocuments.length === 0 && !loading && (
+            <p className="mt-8 text-gray-500 text-center text-base sm:text-lg">
+              {documents.length === 0 
+                ? 'No translated documents found.' 
+                : 'No documents found matching your filters.'
+              }
+            </p>
+          )}
           
           {/* Controles de Paginação */}
-          {documents.length > 0 && (
+          {filteredDocuments.length > 0 && (
             <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="text-sm text-gray-700 text-center sm:text-left">
-                Showing {startIndex + 1} to {Math.min(endIndex, documents.length)} of {documents.length} documents
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredDocuments.length)} of {filteredDocuments.length} documents
               </div>
               <div className="flex items-center justify-center gap-2">
                 <button

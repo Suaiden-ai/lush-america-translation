@@ -563,8 +563,13 @@ export default function MyDocumentsPage() {
                 ? 'text-green-700' 
                 : 'text-gray-800'
             }`}>
-              {item.filename}
+              {item.original_filename || item.filename}
             </span>
+            {item.original_filename && item.original_filename !== item.filename && (
+              <span className="text-xs text-gray-500 text-center truncate w-full mt-1">
+                {item.filename}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -709,8 +714,13 @@ export default function MyDocumentsPage() {
                     ? 'text-green-700' 
                     : 'text-gray-800'
                 }`}>
-                  {item.filename}
+                  {item.original_filename || item.filename}
                 </span>
+                {item.original_filename && item.original_filename !== item.filename && (
+                  <span className="text-xs text-gray-500 truncate block">
+                    {item.filename}
+                  </span>
+                )}
                 <span className="text-xs sm:text-sm text-gray-500">
                   {item.created_at ? formatDate(item.created_at) : 'Unknown date'}
                 </span>
@@ -831,7 +841,14 @@ export default function MyDocumentsPage() {
                     </div>
                   </div>
                 ) : (
-                  <span className="ml-2 text-gray-900 text-sm sm:text-base">{selectedFile.filename}</span>
+                  <div className="ml-2">
+                    <span className="text-gray-900 text-sm sm:text-base">{selectedFile.original_filename || selectedFile.filename}</span>
+                    {selectedFile.original_filename && selectedFile.original_filename !== selectedFile.filename && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        System name: {selectedFile.filename}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
               <div>

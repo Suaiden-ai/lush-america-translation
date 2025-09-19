@@ -205,6 +205,11 @@ export default function AuthenticatorUpload() {
 
       console.log('DEBUG: Salvando arquivo no IndexedDB com metadata:', metadata);
       
+      // Gerar nome único com código aleatório para o filename
+      const uniqueFileName = generateUniqueFileName(selectedFile.name);
+      console.log('DEBUG: Nome único gerado:', uniqueFileName);
+      console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
+      
       // Usar payload customizado se fornecido (que já tem originalLanguage e targetLanguage corretos)
       const payload = customPayload || {
         pages,
@@ -214,7 +219,7 @@ export default function AuthenticatorUpload() {
         filePath: fileId,
         userId: user?.id,
         userEmail: user?.email,
-        filename: selectedFile?.name,
+        filename: uniqueFileName, // Usar nome único com código aleatório
         clientName: clientName.trim(),
         originalLanguage: idiomaRaiz,
         targetLanguage: idiomaDestino,
@@ -233,7 +238,7 @@ export default function AuthenticatorUpload() {
         .from('documents')
         .select('id, filename, user_id, created_at')
         .eq('user_id', user?.id)
-        .eq('filename', selectedFile?.name)
+        .eq('filename', uniqueFileName)
         .order('created_at', { ascending: false });
 
       let newDocument;
@@ -255,7 +260,7 @@ export default function AuthenticatorUpload() {
           .from('documents')
           .insert({
             user_id: user?.id,
-            filename: selectedFile?.name,
+            filename: uniqueFileName, // Usar nome único com código aleatório
             pages: pages,
             status: 'pending',
             total_cost: valor,
@@ -290,7 +295,7 @@ export default function AuthenticatorUpload() {
 
       // Preparar dados para o webhook
       const webhookData = {
-        filename: selectedFile?.name,
+        filename: uniqueFileName, // Usar nome único com código aleatório
         url: payload.filePath, // Sempre o caminho completo
         user_id: user?.id,
         paginas: pages,
@@ -400,7 +405,8 @@ export default function AuthenticatorUpload() {
       
       // Upload direto para Supabase Storage
       console.log('DEBUG: Fazendo upload para Supabase Storage');
-      const filePath = generateUniqueFileName(selectedFile.name, user.id);
+      const fileName = generateUniqueFileName(selectedFile.name);
+      const filePath = `${user?.id}/${fileName}`; // Organizar por pasta do usuário
       console.log('DEBUG: Tentando upload para Supabase Storage:', filePath);
       
       const { data, error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
@@ -409,7 +415,7 @@ export default function AuthenticatorUpload() {
       let receiptPath = null;
       if (receiptFile) {
         try {
-          const receiptFilePath = generateUniqueFileName(`receipt_${receiptFile.name}`, user.id);
+          const receiptFilePath = generateUniqueFileName(`receipt_${receiptFile.name}`);
           const { data: receiptData, error: receiptError } = await supabase.storage
             .from('documents')
             .upload(receiptFilePath, receiptFile);
@@ -440,6 +446,11 @@ export default function AuthenticatorUpload() {
       console.log('DEBUG: tipoTrad:', tipoTrad);
       console.log('DEBUG: isExtrato:', isExtrato);
       
+      // Gerar nome único com código aleatório para o filename
+      const uniqueFileName = generateUniqueFileName(selectedFile.name);
+      console.log('DEBUG: Nome único gerado:', uniqueFileName);
+      console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
+      
       // Payload para webhook
       const payload = {
         pages,
@@ -449,7 +460,7 @@ export default function AuthenticatorUpload() {
         filePath: filePath,
         userId: user.id,
         userEmail: user.email,
-        filename: selectedFile?.name,
+        filename: uniqueFileName, // Usar nome único com código aleatório
         clientName: clientName.trim(),
         originalLanguage: idiomaRaiz,
         targetLanguage: idiomaDestino,

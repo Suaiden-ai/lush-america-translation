@@ -109,6 +109,11 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
         throw new Error('Nenhum arquivo selecionado');
       }
 
+      // Gerar nome único com código aleatório para o filename
+      const uniqueFileName = generateUniqueFileName(selectedFile.name);
+      console.log('DEBUG: Nome único gerado:', uniqueFileName);
+      console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
+
       // Usar payload customizado se fornecido, senão usar o padrão
       const payload = customPayload || {
         pages,
@@ -118,16 +123,19 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
         fileId, // Usar o ID do arquivo no IndexedDB
         userId,
         userEmail, // Adicionar email do usuário
-        filename: selectedFile?.name,
+        filename: uniqueFileName, // Usar nome único com código aleatório
+        originalFilename: selectedFile?.name, // Nome original do arquivo
         isMobile: false // Desktop
       };
       console.log('Payload enviado para checkout:', payload);
 
       // CRIAR DOCUMENTO NO BANCO ANTES DO PAGAMENTO
       console.log('DEBUG: Criando documento no banco antes do pagamento');
+      
       console.log('DEBUG: Dados do documento a ser criado:', {
         userId,
-        filename: selectedFile.name,
+        filename: uniqueFileName,
+        original_filename: selectedFile.name,
         pages,
         status: 'draft',
         total_cost: calculateValue(pages, isExtrato)
@@ -137,7 +145,8 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
         .from('documents')
         .insert({
           user_id: userId,
-          filename: selectedFile.name,
+          filename: uniqueFileName, // Usar nome com código aleatório
+          original_filename: selectedFile.name, // Salvar nome original
           pages: pages,
           status: 'draft', // Criar como draft até o pagamento ser confirmado
           total_cost: calculateValue(pages, isExtrato),
@@ -162,6 +171,12 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
         });
         throw new Error('Erro ao criar documento no banco de dados');
       }
+
+      console.log('DEBUG: Documento criado no banco:', newDocument.id);
+      console.log('DEBUG: Verificação dos campos salvos:', {
+        filename: newDocument.filename,
+        original_filename: newDocument.original_filename
+      });
 
       if (!newDocument) {
         console.error('ERROR: Documento não foi criado (sem erro, mas sem retorno)');
@@ -238,11 +253,18 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
     try {
       // Criar documento no banco primeiro
       console.log('DEBUG: Criando documento no banco antes do pagamento');
+      
+      // Gerar nome único com código aleatório para o filename
+      const uniqueFileName = generateUniqueFileName(selectedFile.name);
+      console.log('DEBUG: Nome único gerado:', uniqueFileName);
+      console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
+      
       const { data: newDocument, error: createError } = await supabase
         .from('documents')
         .insert({
           user_id: userId,
-          filename: selectedFile.name,
+          filename: uniqueFileName, // Usar nome com código aleatório
+          original_filename: selectedFile.name, // Salvar nome original
           pages: pages,
           status: 'draft',
           total_cost: calculateValue(pages, isExtrato),
@@ -306,7 +328,8 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
           await handleDirectPayment(fileId);
         } catch (indexedDBError) {
           // Fallback: Upload direto para Supabase Storage
-          const filePath = generateUniqueFileName(selectedFile.name, userId);
+          const fileName = generateUniqueFileName(selectedFile.name);
+          const filePath = `${userId}/${fileName}`; // Organizar por pasta do usuário
           const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
           if (uploadError) throw uploadError;
           
@@ -318,7 +341,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
             filePath,
             userId: userId,
             userEmail: userEmail,
-            filename: selectedFile?.name,
+            filename: uniqueFileName, // Usar nome único com código aleatório
             originalLanguage: idiomaRaiz,
             targetLanguage: 'English',
             documentType: 'Certificado',

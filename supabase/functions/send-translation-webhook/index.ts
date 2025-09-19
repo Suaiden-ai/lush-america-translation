@@ -165,7 +165,10 @@ Deno.serve(async (req: Request) => {
       is_bank_statement, 
       client_name,
       source_currency,
-      target_currency
+      target_currency,
+      document_id,
+      original_document_id,
+      original_filename
     } = parsedBody;
     
     // Debug logs para idiomas e moedas
@@ -177,6 +180,24 @@ Deno.serve(async (req: Request) => {
     console.log("source_currency:", source_currency);
     console.log("target_currency:", target_currency);
     console.log("is_bank_statement:", is_bank_statement);
+    
+    // Buscar original_filename da tabela documents se não estiver no payload
+    let finalOriginalFilename = original_filename;
+    if (!finalOriginalFilename && document_id) {
+      console.log("🔍 Buscando original_filename na tabela documents para document_id:", document_id);
+      const { data: docData, error: docError } = await supabase
+        .from('documents')
+        .select('original_filename, filename')
+        .eq('id', document_id)
+        .single();
+      
+      if (docError) {
+        console.error("❌ Erro ao buscar documento:", docError);
+      } else {
+        finalOriginalFilename = docData.original_filename || docData.filename;
+        console.log("✅ original_filename encontrado:", finalOriginalFilename);
+      }
+    }
     
     let payload;
 
@@ -218,6 +239,9 @@ Deno.serve(async (req: Request) => {
         // Campos de moeda para bank statements
         source_currency: record.source_currency || source_currency || null,
         target_currency: record.target_currency || target_currency || null,
+        // Campos para identificação do documento original
+        original_document_id: record.original_document_id || original_document_id || document_id || null,
+        original_filename: finalOriginalFilename,
         // Adicionar informações sobre o tipo de arquivo
         isPdf: (record.mimetype || record.metadata?.mimetype || "application/octet-stream") === 'application/pdf',
         fileExtension: path.split('.').pop()?.toLowerCase(),
@@ -275,6 +299,9 @@ Deno.serve(async (req: Request) => {
         // Campos de moeda para bank statements
         source_currency: source_currency || null,
         target_currency: target_currency || null,
+        // Campos para identificação do documento original
+        original_document_id: original_document_id || document_id || null,
+        original_filename: finalOriginalFilename,
         // Adicionar informações sobre o tipo de arquivo
         isPdf: mimetype === 'application/pdf',
         fileExtension: filename.split('.').pop()?.toLowerCase(),
