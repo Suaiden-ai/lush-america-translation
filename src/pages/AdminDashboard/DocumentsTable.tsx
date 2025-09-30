@@ -255,6 +255,11 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
     return filtered;
   }, [extendedDocuments, searchTerm, statusFilter, roleFilter]);
 
+  // Total dinâmico baseado nos filtros atuais
+  const totalAmountFiltered = useMemo(() => {
+    return filteredDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
+  }, [filteredDocuments]);
+
   // Define a cor de fundo e texto com base no status de pagamento
   const getPaymentStatusColor = (paymentStatus: string | null | undefined) => {
     switch (paymentStatus) {
@@ -343,6 +348,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
             <h3 className="text-lg font-medium text-gray-900">All Documents</h3>
             <p className="text-sm text-gray-500">
               Showing {filteredDocuments.length} of {extendedDocuments.length} documents
+              <span className="mx-2">•</span>
+              <span className="font-medium text-green-600">Total: ${totalAmountFiltered.toFixed(2)}</span>
             </p>
           </div>
           <button
@@ -613,6 +620,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
               </tbody>
             </table>
           </div>
+
+          {/* Footer removido para evitar duplicação do total */}
         </>
       )}
     </div>
