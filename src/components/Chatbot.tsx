@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface Message {
   id: string;
@@ -10,14 +11,22 @@ interface Message {
 
 const OFFLINE_MESSAGE = "Our team is currently offline, but we'll be back soon!";
 
-export function Chatbot() {
-  const [isOpen, setIsOpen] = useState(false);
+interface ChatbotProps {
+  forceOpen?: boolean; // open on mount (for full page)
+  fullScreen?: boolean; // render as full-page chat (no floating)
+  openInPageOnMobile?: boolean; // when true, icon click navigates to /chat on mobile
+}
+
+export function Chatbot({ forceOpen = false, fullScreen = false, openInPageOnMobile = true }: ChatbotProps) {
+  const [isOpen, setIsOpen] = useState(!!forceOpen);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatId = useRef(Math.random().toString(36).substr(2, 9));
+  const navigate = useNavigate();
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 640 : false;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -109,8 +118,8 @@ export function Chatbot() {
 
   return (
     <div 
-      className="fixed bottom-6 right-6 z-50 flex flex-col items-end bg-transparent"
-      style={{ 
+      className={fullScreen ? 'fixed inset-0 z-40 flex flex-col bg-white' : 'fixed bottom-6 right-6 z-50 flex flex-col items-end bg-transparent'}
+      style={fullScreen ? undefined : { 
         background: 'transparent',
         backgroundColor: 'transparent',
         border: 'none',
@@ -120,16 +129,26 @@ export function Chatbot() {
       }}
     >
       {/* Chat Icon */}
-      {!isOpen && (
+      {!isOpen && !fullScreen && (
         <div
-          onClick={() => setIsOpen(true)}
+          onClick={() => {
+            if (openInPageOnMobile && isMobile) {
+              navigate('/chat');
+              return;
+            }
+            setIsOpen(true);
+          }}
           className="relative w-16 h-16 cursor-pointer group"
           role="button"
           tabIndex={0}
           aria-label="Open chat"
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              setIsOpen(true);
+              if (openInPageOnMobile && isMobile) {
+                navigate('/chat');
+              } else {
+                setIsOpen(true);
+              }
             }
           }}
         >
@@ -164,7 +183,12 @@ export function Chatbot() {
 
       {/* Chat Box */}
       {isOpen && (
-                 <div className="w-96 h-[600px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)' }}>
+        <div
+          className={fullScreen
+            ? 'w-full h-full bg-white flex flex-col overflow-hidden'
+            : 'w-96 h-[600px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden'}
+          style={fullScreen ? undefined : { boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)' }}
+        >
           {/* Header */}
                      <div className="bg-blue-950 px-4 py-3 flex justify-between items-center">
             <img
@@ -173,7 +197,13 @@ export function Chatbot() {
               className="h-6 object-contain"
             />
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                if (fullScreen) {
+                  navigate(-1);
+                } else {
+                  setIsOpen(false);
+                }
+              }}
               className="text-white text-xl font-bold hover:text-gray-200 transition-colors"
               aria-label="Close chat"
             >
@@ -218,12 +248,12 @@ export function Chatbot() {
               onKeyPress={handleKeyPress}
               placeholder="Type your message..."
               disabled={isLoading}
-              className="flex-1 px-3 py-3 text-sm border-none outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="flex-1 px-3 py-3 text-base sm:text-sm border-none outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
             <button
               onClick={sendMessage}
               disabled={isLoading || !inputValue.trim()}
-                             className="px-4 py-3 bg-blue-950 text-white hover:bg-blue-900 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+              className="px-4 py-3 bg-blue-950 text-white hover:bg-blue-900 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
             >
               <Send className="w-4 h-4" />
             </button>

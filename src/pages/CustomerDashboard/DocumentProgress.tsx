@@ -194,7 +194,7 @@ export default function DocumentProgress() {
         </div>
       </div>
 
-      {doc.translated_file_url && (
+      {doc.source === 'translated_documents' && doc.translated_file_url && (
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             className="flex-1 inline-flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 bg-tfe-blue-600 text-white rounded-lg font-medium hover:bg-tfe-blue-700 transition-colors text-xs sm:text-sm"
@@ -234,7 +234,7 @@ export default function DocumentProgress() {
         </div>
       )}
 
-      {!doc.translated_file_url && (
+      {!(doc.source === 'translated_documents' && doc.translated_file_url) && (
         <div className="text-center py-3 sm:py-4">
           <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400 mx-auto mb-1 sm:mb-2" />
           <p className="text-xs sm:text-sm text-gray-500">Document in processing</p>
@@ -284,7 +284,7 @@ export default function DocumentProgress() {
           </div>
 
           {/* Action Buttons - Stacked on mobile */}
-          {doc.translated_file_url && (
+          {doc.source === 'translated_documents' && doc.translated_file_url && (
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 className="inline-flex items-center justify-center gap-1 px-3 py-2 sm:py-1.5 bg-tfe-blue-600 text-white rounded-lg font-medium hover:bg-tfe-blue-700 transition-colors text-xs"
@@ -324,7 +324,7 @@ export default function DocumentProgress() {
             </div>
           )}
 
-          {!doc.translated_file_url && (
+          {!(doc.source === 'translated_documents' && doc.translated_file_url) && (
             <div className="text-center">
               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 mx-auto mb-1" />
               <p className="text-xs text-gray-500">Processing</p>

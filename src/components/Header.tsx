@@ -31,7 +31,13 @@ export function Header({ user, onLogout, currentPage, onMobileMenuOpen }: Header
                   alt="Lush America Translations" 
                   className="w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 flex-shrink-0 object-contain"
                 />
-                <h3 className="text-sm sm:text-base lg:text-xl font-bold truncate max-w-[120px] sm:max-w-[200px] lg:max-w-none">
+                {/* Mobile: short brand name to avoid truncation */}
+                <h3 className="block sm:hidden text-sm font-bold whitespace-nowrap">
+                  <span className="text-tfe-blue-950">LUSH</span>
+                  <span className="text-tfe-red-950"> AMERICA</span>
+                </h3>
+                {/* Desktop/Tablet: full brand name */}
+                <h3 className="hidden sm:block text-base lg:text-xl font-bold truncate max-w-[200px] lg:max-w-none">
                   <span className="text-tfe-blue-950">LUSH</span>
                   <span className="text-tfe-red-950"> AMERICA TRANSLATIONS</span>
                 </h3>
@@ -56,6 +62,7 @@ export function Header({ user, onLogout, currentPage, onMobileMenuOpen }: Header
             >
               <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
+            {/* Chat icon navigates to /chat on mobile via Chatbot component */}
           </div>
 
           {/* Navigation - Hidden on mobile and small tablets */}

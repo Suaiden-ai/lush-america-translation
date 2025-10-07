@@ -59,7 +59,7 @@ export function ZelleReceiptsAdmin() {
   const [selectedReceipt, setSelectedReceipt] = useState<ZellePayment | null>(null);
   const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
   const [sendingToTranslation, setSendingToTranslation] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'pending_verification' | 'completed' | 'failed'>('pending_verification');
+  const [filter, setFilter] = useState<'pending_verification' | 'pending_manual_review' | 'completed' | 'failed'>('pending_verification');
   
   // Novos estados para filtros avançados
   const [searchTerm, setSearchTerm] = useState('');
@@ -985,6 +985,7 @@ export function ZelleReceiptsAdmin() {
       <div className="mb-6 flex flex-wrap gap-2">
         {[
           { key: 'pending_verification', label: 'Pending Verification', count: stats.pending },
+          { key: 'pending_manual_review', label: 'Manual Review', count: stats.manualReview },
           { key: 'completed', label: 'Verified', count: stats.completed },
           { key: 'failed', label: 'Rejected', count: stats.failed }
         ].map(({ key, label, count }) => (

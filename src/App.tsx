@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar';
 import { AdminLayout } from './components/AdminLayout';
 import { NotificationBell } from './components/NotificationBell';
 import { Mentorship as Home } from './pages/Home';
+import ChatPage from './pages/ChatPage';
 import { Translations } from './pages/Translations';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { UserManagement } from './pages/AdminDashboard/UserManagement';
@@ -248,9 +249,10 @@ function App() {
                   alt="Lush America Translations" 
                   className="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 object-contain"
                 />
-                <h3 className="text-lg sm:text-xl font-bold truncate">
+                {/* Mobile drawer uses short brand to avoid truncation */}
+                <h3 className="text-lg sm:text-xl font-bold whitespace-nowrap">
                   <span className="text-tfe-blue-950">LUSH</span>
-                  <span className="text-tfe-red-950"> AMERICA TRANSLATIONS</span>
+                  <span className="text-tfe-red-950"> AMERICA</span>
                 </h3>
               </div>
             </button>
@@ -320,6 +322,7 @@ function App() {
           <Route path="/" element={<Translations />} />
 
           <Route path="/verify" element={<DocumentVerification />} />
+          <Route path="/chat" element={<ChatPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

@@ -278,10 +278,10 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
                 </div>
               </div>
               <div className="flex items-center gap-2 mt-2 md:mt-0">
-                {(doc.file_url || doc.translated_file_url) && (
+                {doc.source === 'translated_documents' && !!doc.translated_file_url && (
                   <>
                     <button
-                      onClick={() => handleDownload(doc.translated_file_url || doc.file_url!, doc.original_filename || doc.filename)}
+                      onClick={() => handleDownload(doc.translated_file_url, doc.original_filename || doc.filename)}
                       className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-xs"
                     >
                       <Download className="w-4 h-4" /> {t('dashboard.recentActivity.actions.download')}

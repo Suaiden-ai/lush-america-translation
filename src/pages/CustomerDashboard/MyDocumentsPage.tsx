@@ -73,7 +73,8 @@ export default function MyDocumentsPage() {
 
   // Filtrar pastas e arquivos da pasta atual
   const currentFolders = folders.filter(f => f.parent_id === currentFolderId);
-  const currentDocuments = documents.filter(d => d.folder_id === currentFolderId && d.status === 'completed');
+  // Exibir apenas documentos traduzidos (da tabela translated_documents), pois somente esses podem ser visualizados/baixados
+  const currentDocuments = documents.filter(d => d.folder_id === currentFolderId && d.source === 'translated_documents' && !!d.translated_file_url);
   const currentFolder = folders.find(f => f.id === currentFolderId);
 
   // Navegar para pasta anterior

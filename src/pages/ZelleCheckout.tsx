@@ -447,6 +447,28 @@ export function ZelleCheckout() {
         console.error('❌ Erro no webhook de validação:', webhookError);
         // Em caso de erro no webhook, considerar como inválido
         isValid = false;
+
+        // Fallback: criar registro de pagamento pendente para aparecer no painel
+        try {
+          const { error: paymentInsertError } = await supabase
+            .from('payments')
+            .insert({
+              user_id: session.user.id,
+              document_id: documentId,
+              amount: Number(amount || 0),
+              payment_method: 'zelle',
+              status: 'pending_verification',
+              receipt_url: receiptUrl,
+              created_at: new Date().toISOString()
+            });
+          if (paymentInsertError) {
+            console.error('❌ Fallback insert payment error:', paymentInsertError);
+          } else {
+            console.log('✅ Fallback payment inserted as pending_verification');
+          }
+        } catch (fallbackErr) {
+          console.error('❌ Fallback payment creation failed:', fallbackErr);
+        }
       }
 
       // O registro do pagamento será criado pelo fluxo n8n após processamento do webhook
@@ -475,10 +497,22 @@ export function ZelleCheckout() {
         console.log('✅ Comprovante validado automaticamente');
       } else {
         // Comprovante inválido - precisa revisão manual
-        await supabase.from('documents').update({ 
-          status: 'pending_manual_review',
-          payment_method: 'zelle'
-        }).eq('id', documentId);
+        // Garantir que status é permitido no schema atual: usar 'pending' se 'pending_manual_review' não for aceito
+        try {
+          const { error: docErr } = await supabase.from('documents').update({ 
+            status: 'pending_manual_review',
+            payment_method: 'zelle'
+          }).eq('id', documentId);
+          if (docErr) {
+            console.warn('⚠️ Falling back to status "pending" due to constraint:', docErr?.message);
+            await supabase.from('documents').update({ 
+              status: 'pending',
+              payment_method: 'zelle'
+            }).eq('id', documentId);
+          }
+        } catch (statusErr) {
+          console.error('❌ Error updating document status:', statusErr);
+        }
 
         // Enviar notificação para revisão manual
         await sendNotificationToAdmin(userProfile, true);
