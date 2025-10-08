@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 // Assuming `Document` is defined as a type/interface in App.ts or a shared types file
 // For this example, I'll define a minimal Document interface here.
 import { supabase } from '../../lib/supabase';
-import { Eye, Download, Filter } from 'lucide-react';
+import { Eye, Download, Filter, RefreshCw } from 'lucide-react';
 import { DateRange } from '../../components/DateRangeFilter'; // Assuming this path is correct
 import { GoogleStyleDatePicker } from '../../components/GoogleStyleDatePicker';
 import { DocumentDetailsModal } from './DocumentDetailsModal'; // Assuming this path is correct
@@ -97,6 +97,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [refreshing, setRefreshing] = useState(false);
   const itemsPerPage = 10;
 
   // Date filter is now managed by parent component (FinanceDashboard)
@@ -191,27 +192,71 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         console.error('Error loading payments data:', paymentsError);
       }
 
-      console.log('🔍 Debug - Payments data loaded:', paymentsData?.length || 0);
-      console.log('🔍 Debug - Sample payments:', paymentsData?.slice(0, 3));
-      console.log('🔍 Debug - Main documents sample:', mainDocuments?.slice(0, 3).map(doc => ({
-        id: doc.id,
-        filename: doc.filename,
-        payment_method: doc.payment_method,
-        total_cost: doc.total_cost,
-        status: doc.status
-      })));
-      console.log('🔍 Debug - Verified documents sample:', verifiedDocuments?.slice(0, 3).map(doc => ({
-        id: doc.id,
-        filename: doc.filename,
-        payment_method: doc.payment_method,
-        total_cost: doc.total_cost,
-        status: doc.status
-      })));
+      // 🔍 LOG ESPECÍFICO PARA RASTREAR STATUS REFUNDED
+      console.log('🔍 DEBUG - Total payments loaded:', paymentsData?.length || 0);
+      
+      // Verificar especificamente por status refunded
+      const refundedPayments = paymentsData?.filter(p => p.status === 'refunded');
+      console.log('🔍 DEBUG - Refunded payments found:', refundedPayments?.length || 0);
+      
+      if (refundedPayments && refundedPayments.length > 0) {
+        console.log('🔍 DEBUG - Refunded payment details:', refundedPayments.map(p => ({
+          id: p.id,
+          document_id: p.document_id,
+          user_id: p.user_id,
+          status: p.status,
+          amount: p.amount,
+          created_at: p.created_at,
+          updated_at: p.updated_at
+        })));
+      }
+      
+      // Verificar todos os status únicos
+      const uniqueStatuses = [...new Set(paymentsData?.map(p => p.status) || [])];
+      console.log('🔍 DEBUG - All unique payment statuses:', uniqueStatuses);
+
 
       // Processar documentos de autenticadores (documents_to_be_verified)
       // Para autenticadores, o payment_method está na tabela documents
       const authenticatorPayments: MappedPayment[] = verifiedDocuments?.map(verifiedDoc => {
+        // 🔍 LOG PARA RASTREAR PROCESSAMENTO DO DOCUMENTO REFUNDED COMO AUTENTICADOR
+        if (verifiedDoc.filename === 'relatorio-suaiden-ai_PS7V00.pdf') {
+          console.log('🔍 DEBUG - Processing refunded document as authenticator:', {
+            id: verifiedDoc.id,
+            filename: verifiedDoc.filename,
+            user_id: verifiedDoc.user_id,
+            status: verifiedDoc.status,
+            total_cost: verifiedDoc.total_cost
+          });
+        }
         const mainDoc = mainDocuments?.find(doc => doc.filename === verifiedDoc.filename);
+        
+        // 🔍 BUSCAR STATUS REAL DA TABELA PAYMENTS PARA AUTENTICADORES
+        let realStatus = 'completed'; // Default para autenticadores
+        const paymentForAuth = paymentsData?.find(payment => 
+          payment.document_id === verifiedDoc.id || 
+          (payment.user_id === verifiedDoc.user_id && payment.amount === verifiedDoc.total_cost)
+        );
+        
+        if (paymentForAuth) {
+          realStatus = paymentForAuth.status;
+          console.log('🔍 DEBUG - Found payment for authenticator document:', {
+            document_id: verifiedDoc.id,
+            payment_id: paymentForAuth.id,
+            real_status: paymentForAuth.status,
+            amount: paymentForAuth.amount
+          });
+        }
+        
+        // 🔍 LOG PARA VERIFICAR SE O DOCUMENTO REFUNDED ESTÁ SENDO PROCESSADO COM STATUS CORRETO
+        if (verifiedDoc.filename === 'relatorio-suaiden-ai_PS7V00.pdf') {
+          console.log('🔍 DEBUG - Creating authenticator payment for refunded document:', {
+            id: `auth-${verifiedDoc.id}`,
+            status: realStatus, // Status real da tabela payments
+            amount: verifiedDoc.total_cost || 0,
+            payment_method: mainDoc?.payment_method || null
+          });
+        }
         
         return {
           id: `auth-${verifiedDoc.id}`,
@@ -220,7 +265,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
           stripe_session_id: null,
           amount: verifiedDoc.total_cost || 0,
           currency: 'usd',
-          status: 'completed', // Para autenticadores, status sempre é completed
+          status: realStatus, // Usar status real da tabela payments
           payment_method: mainDoc?.payment_method || null, // Para autenticadores, buscar na tabela documents
           payment_date: verifiedDoc.authentication_date || verifiedDoc.created_at,
           created_at: verifiedDoc.created_at,
@@ -261,16 +306,73 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       // Para usuários regulares, o payment_method está na tabela payments
       const regularPayments: MappedPayment[] = [];
       
+      // 🔍 LOG PARA VERIFICAR SE O DOCUMENTO REFUNDED ESTÁ SENDO PROCESSADO
+      console.log('🔍 DEBUG - Total mainDocuments to process:', mainDocuments?.length || 0);
+      const refundedDocument = mainDocuments?.find(doc => doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e');
+      console.log('🔍 DEBUG - Refunded document found in mainDocuments:', !!refundedDocument);
+      if (refundedDocument) {
+        console.log('🔍 DEBUG - Refunded document details:', {
+          id: refundedDocument.id,
+          filename: refundedDocument.filename,
+          user_id: refundedDocument.user_id,
+          status: refundedDocument.status,
+          total_cost: refundedDocument.total_cost
+        });
+      }
+      
       if (mainDocuments) {
         for (const doc of mainDocuments) {
+          // 🔍 LOG PARA RASTREAR PROCESSAMENTO DO DOCUMENTO REFUNDED
+          if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e') {
+            console.log('🔍 DEBUG - Processing refunded document in loop:', {
+              id: doc.id,
+              filename: doc.filename,
+              user_id: doc.user_id,
+              status: doc.status
+            });
+          }
+          
           // Verificar se já foi processado como autenticador
           const alreadyProcessed = authenticatorPayments.some(auth => auth.document_filename === doc.filename);
           if (alreadyProcessed) {
+            if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e') {
+              console.log('🔍 DEBUG - Refunded document already processed as authenticator, skipping');
+            }
             continue;
           }
 
           // Buscar pagamento na tabela payments para usuários regulares
-          const paymentInfo = paymentsData?.find(payment => payment.user_id === doc.user_id);
+          // Tentar primeiro por document_id, depois por user_id
+          let paymentInfo = paymentsData?.find(payment => payment.document_id === doc.id);
+          if (!paymentInfo) {
+            paymentInfo = paymentsData?.find(payment => payment.user_id === doc.user_id);
+          }
+          
+          // 🔍 LOG ESPECÍFICO PARA RASTREAR MATCHING DE PAGAMENTOS
+          if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e') {
+            console.log('🔍 DEBUG - Processing specific document:', {
+              document_id: doc.id,
+              filename: doc.filename,
+              user_id: doc.user_id,
+              status: doc.status
+            });
+            
+            console.log('🔍 DEBUG - Looking for payment by document_id:', doc.id);
+            const paymentByDocId = paymentsData?.find(payment => payment.document_id === doc.id);
+            console.log('🔍 DEBUG - Payment found by document_id:', paymentByDocId);
+            
+            console.log('🔍 DEBUG - Looking for payment by user_id:', doc.user_id);
+            const paymentByUserId = paymentsData?.find(payment => payment.user_id === doc.user_id);
+            console.log('🔍 DEBUG - Payment found by user_id:', paymentByUserId);
+            
+            console.log('🔍 DEBUG - Final paymentInfo selected:', paymentInfo);
+            
+            // Verificar se o pagamento será incluído
+            console.log('🔍 DEBUG - Will be included?', !(!paymentInfo && !doc.total_cost));
+            console.log('🔍 DEBUG - Has paymentInfo?', !!paymentInfo);
+            console.log('🔍 DEBUG - Has doc.total_cost?', !!doc.total_cost);
+          }
+          
           
           // Só incluir se tem informação financeira
           if (!paymentInfo && !doc.total_cost) {
@@ -284,7 +386,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
             stripe_session_id: paymentInfo?.stripe_session_id || null,
             amount: paymentInfo?.amount || doc.total_cost || 0,
             currency: paymentInfo?.currency || 'usd',
-            status: paymentInfo?.status || 'pending', // Para usuários regulares, buscar na tabela payments
+            status: paymentInfo?.status, // Para usuários regulares, buscar na tabela payments
             payment_method: paymentInfo?.payment_method || null, // Para usuários regulares, buscar na tabela payments
             payment_date: paymentInfo?.payment_date || doc.created_at,
             created_at: paymentInfo?.created_at || doc.created_at,
@@ -325,22 +427,35 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       // Combinar ambos os tipos de pagamentos
       const documentsWithFinancialData: MappedPayment[] = [...authenticatorPayments, ...regularPayments];
 
-      console.log('✅ Documents with financial data:', documentsWithFinancialData.length);
-      console.log('🔍 Debug - Sample payment data:', documentsWithFinancialData.slice(0, 3).map(p => ({
-        user_name: p.user_name,
-        payment_method: p.payment_method,
-        amount: p.amount,
-        id: p.id
-      })));
+      // 🔍 LOG FINAL PARA VERIFICAR STATUS NA TABELA
+      const refundedInFinalData = documentsWithFinancialData.filter(p => p.status === 'refunded');
+      console.log('🔍 DEBUG - Refunded payments in final table data:', refundedInFinalData.length);
       
-      // Debug: Calcular total para comparar com StatsCards
-      const totalAmount = documentsWithFinancialData.reduce((sum, p) => sum + p.amount, 0);
-      console.log('🔍 Debug - Total amount in PaymentsTable:', totalAmount);
-      console.log('🔍 Debug - All amounts:', documentsWithFinancialData.map(p => ({ 
-        user: p.user_name, 
-        amount: p.amount, 
-        type: p.id.startsWith('auth-') ? 'authenticator' : 'regular' 
-      })));
+      if (refundedInFinalData.length > 0) {
+        console.log('🔍 DEBUG - Refunded payments details in final data:', refundedInFinalData.map(p => ({
+          id: p.id,
+          document_id: p.document_id,
+          status: p.status,
+          amount: p.amount,
+          document_filename: p.document_filename
+        })));
+      }
+      
+      // 🔍 LOG PARA RASTREAR ONDE O PAGAMENTO REFUNDED ESTÁ SENDO PERDIDO
+      console.log('🔍 DEBUG - Authenticator payments count:', authenticatorPayments.length);
+      console.log('🔍 DEBUG - Regular payments count:', regularPayments.length);
+      
+      // Verificar se o pagamento refunded está nos regularPayments
+      const refundedInRegular = regularPayments.filter(p => p.status === 'refunded');
+      console.log('🔍 DEBUG - Refunded in regular payments:', refundedInRegular.length);
+      
+      if (refundedInRegular.length > 0) {
+        console.log('🔍 DEBUG - Refunded regular payment details:', refundedInRegular);
+      }
+      
+      // Verificar se o pagamento refunded está nos authenticatorPayments
+      const refundedInAuth = authenticatorPayments.filter(p => p.status === 'refunded');
+      console.log('🔍 DEBUG - Refunded in authenticator payments:', refundedInAuth.length);
       
       setPayments(documentsWithFinancialData);
 
@@ -355,6 +470,17 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
   useEffect(() => {
     loadPayments();
   }, [loadPayments]); // Rerun effect when `loadPayments` (memoized) changes
+
+
+  // Manual refresh function
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadPayments();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadPayments]);
 
   // Client-side filtering for search term, status, and role
   const filteredPayments = useMemo(() => {
@@ -462,14 +588,9 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       // Buscar URL do arquivo traduzido da tabela documents_to_be_verified
       let translatedFileUrl: string | null = null;
       
-      // Verificar se o documento existe na tabela documents_to_be_verified (independente do método de pagamento)
-      console.log('🔍 Verificando se documento existe na tabela documents_to_be_verified...');
-      console.log('🔍 User ID:', payment.user_id);
-      console.log('🔍 Filename:', payment.document_filename);
-      console.log('🔍 Payment method:', payment.payment_method);
+
       
       // Buscar por user_id na tabela documents_to_be_verified
-      console.log('🔍 Buscando por user_id:', payment.user_id);
       let { data: translatedDoc, error } = await supabase
         .from('documents_to_be_verified')
         .select('*')
@@ -478,7 +599,6 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         .single();
       
       if (error) {
-        console.log('🔄 Tentando buscar apenas por user_id...');
         const { data: docsByUserId, error: userIdError } = await supabase
           .from('documents_to_be_verified')
           .select('*')
@@ -490,7 +610,6 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         if (!userIdError && docsByUserId) {
           translatedDoc = docsByUserId;
           error = null;
-          console.log('✅ Documento encontrado por user_id:', docsByUserId);
         }
       }
       
@@ -514,7 +633,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       const completeDocument: Document = {
         id: documentData.id,
         filename: documentData.filename || payment.document_filename,
-        status: documentData.status || 'pending',
+        status: documentData.status,
         file_path: documentData.file_path || documentData.file_url,
         user_id: documentData.user_id || payment.user_id,
         created_at: documentData.created_at || payment.created_at,
@@ -591,7 +710,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         payment.id,
         payment.stripe_session_id || '',
         payment.status, // payment status
-        payment.document_status || '', // document status
+        payment.document_status, // document status
         payment.authenticated_by_name || '',
         payment.authenticated_by_email || '',
 
@@ -599,7 +718,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : '',
         new Date(payment.created_at).toLocaleDateString() // Assuming created_at is always present
       ])
-    ].map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n'); // Proper CSV escaping
+    ].map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n'); // Proper CSV escaping
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
@@ -620,7 +739,16 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
             <h3 className="text-base sm:text-lg font-medium text-gray-900">Payments</h3>
             <p className="text-sm text-gray-500">Track all payment transactions</p>
           </div>
-          <div className="flex items-center">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Refresh payments data"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
             <button
               onClick={downloadPaymentsReport}
               className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" // Changed ring color
@@ -750,7 +878,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
                         <span className="text-gray-500">Doc Status:</span> {/* Added document status */}
                         <div className="font-medium text-gray-900">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(payment.document_status)}`}>
-                            {payment.document_status || 'N/A'}
+                            {payment.document_status}
                           </span>
                         </div>
                       </div>
@@ -926,7 +1054,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
                       </td>
                       <td className="px-2 py-4">
                         <span className={`inline-flex px-1.5 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(payment.document_status)}`}>
-                          {payment.document_status || 'N/A'}
+                          {payment.document_status}
                         </span>
                       </td>
                       <td className="px-2 py-4">
@@ -982,7 +1110,9 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
                   Showing {startIndex + 1} to {Math.min(endIndex, filteredPayments.length)} of {filteredPayments.length} payments
                   {filteredPayments.length !== payments.length && ` (filtered from ${payments.length} total)`}
                 </span>
-                <span className="font-medium text-green-600">Total: ${filteredPayments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)}</span>
+                <span className="font-medium text-green-600">Total: ${filteredPayments
+                  .filter(p => p.status !== 'refunded' && p.status !== 'cancelled')
+                  .reduce((sum, p) => sum + p.amount, 0).toFixed(2)}</span>
               </div>
               
               {/* Pagination Controls */}

@@ -244,12 +244,39 @@ export function useTranslatedDocuments(userId?: string) {
       
       if (translatedError) throw translatedError;
       
+      // 4. Buscar status de pagamentos para ajustar status dos documentos
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('document_id, status')
+        .eq('user_id', userId);
+      
+      if (paymentsError) {
+        console.warn('[useTranslatedDocuments] Erro ao buscar pagamentos:', paymentsError);
+      }
+      
+      // Criar mapa de status de pagamentos
+      const paymentStatusMap = new Map<string, string>();
+      paymentsData?.forEach(payment => {
+        if (payment.document_id) {
+          paymentStatusMap.set(payment.document_id, payment.status);
+        }
+      });
+      
       console.log('[useTranslatedDocuments] DEBUG - Documentos base encontrados:', baseDocs?.length || 0);
       console.log('[useTranslatedDocuments] DEBUG - Documentos verificados encontrados:', verifiedDocs?.length || 0);
       console.log('[useTranslatedDocuments] DEBUG - Documentos traduzidos encontrados:', translatedDocs?.length || 0);
       
       // Implementar a lógica de prioridade
       const processedDocuments: any[] = [];
+      
+      // Função para ajustar status baseado no pagamento
+      const adjustStatusBasedOnPayment = (doc: any, documentId: string) => {
+        const paymentStatus = paymentStatusMap.get(documentId);
+        if (paymentStatus === 'refunded' || paymentStatus === 'cancelled') {
+          return paymentStatus;
+        }
+        return doc.status;
+      };
       
       // Para cada documento da tabela base (documents)
       for (const baseDoc of baseDocs || []) {
@@ -266,21 +293,24 @@ export function useTranslatedDocuments(userId?: string) {
               ...translatedDoc,
               source: 'translated_documents',
               original_document_id: verifiedDoc.original_document_id,
-              original_filename: verifiedDoc.original_filename || verifiedDoc.filename
+              original_filename: verifiedDoc.original_filename || verifiedDoc.filename,
+              status: adjustStatusBasedOnPayment(translatedDoc, baseDoc.id)
             });
           } else {
             // Prioridade 2: Mostrar da tabela documents_to_be_verified
             processedDocuments.push({
               ...verifiedDoc,
               source: 'documents_to_be_verified',
-              original_document_id: verifiedDoc.original_document_id
+              original_document_id: verifiedDoc.original_document_id,
+              status: adjustStatusBasedOnPayment(verifiedDoc, baseDoc.id)
             });
           }
         } else {
           // Prioridade 1: Mostrar da tabela documents (base)
           processedDocuments.push({
             ...baseDoc,
-            source: 'documents'
+            source: 'documents',
+            status: adjustStatusBasedOnPayment(baseDoc, baseDoc.id)
           });
         }
       }
@@ -300,14 +330,16 @@ export function useTranslatedDocuments(userId?: string) {
             ...translatedDoc,
             source: 'translated_documents',
             original_document_id: orphanDoc.original_document_id,
-            original_filename: orphanDoc.original_filename || orphanDoc.filename
+            original_filename: orphanDoc.original_filename || orphanDoc.filename,
+            status: adjustStatusBasedOnPayment(translatedDoc, orphanDoc.original_document_id || orphanDoc.id)
           });
         } else {
           processedDocuments.push({
             ...orphanDoc,
             source: 'documents_to_be_verified',
             original_document_id: orphanDoc.original_document_id,
-            original_filename: orphanDoc.original_filename || orphanDoc.filename
+            original_filename: orphanDoc.original_filename || orphanDoc.filename,
+            status: adjustStatusBasedOnPayment(orphanDoc, orphanDoc.original_document_id || orphanDoc.id)
           });
         }
       }
@@ -316,6 +348,20 @@ export function useTranslatedDocuments(userId?: string) {
       processedDocuments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       
       console.log('[useTranslatedDocuments] DEBUG - Documentos processados:', processedDocuments.length);
+      console.log('[useTranslatedDocuments] DEBUG - Status de pagamentos encontrados:', paymentStatusMap.size);
+      
+      // Log dos documentos com status ajustado
+      const documentsWithAdjustedStatus = processedDocuments.filter(doc => 
+        doc.status === 'refunded' || doc.status === 'cancelled'
+      );
+      if (documentsWithAdjustedStatus.length > 0) {
+        console.log('[useTranslatedDocuments] DEBUG - Documentos com status ajustado por pagamento:', documentsWithAdjustedStatus.map(doc => ({
+          id: doc.id,
+          filename: doc.filename,
+          status: doc.status,
+          source: doc.source
+        })));
+      }
       
       setDocuments(processedDocuments);
       setError(null);

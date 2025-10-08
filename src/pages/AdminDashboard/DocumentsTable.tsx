@@ -391,6 +391,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
               <option value="pending">Pending</option>
               <option value="processing">Processing</option>
               <option value="failed">Failed</option>
+              <option value="draft">Draft</option>
             </select>
           </div>
 

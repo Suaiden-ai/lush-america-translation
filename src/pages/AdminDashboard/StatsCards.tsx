@@ -13,14 +13,75 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
   const [extendedStats, setExtendedStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   
-  const totalRevenue = documents.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
-  const completedDocuments = documents.filter(doc => doc.status === 'completed').length;
-  const pendingDocuments = documents.filter(doc => doc.status === 'pending').length;
-  const processingDocuments = documents.filter(doc => doc.status === 'processing').length;
+  // 🔍 BUSCAR STATUS DE PAGAMENTOS PARA FILTRAR CORRETAMENTE
+  const [paymentStatuses, setPaymentStatuses] = useState<Map<string, string>>(new Map());
+  
+  useEffect(() => {
+    const fetchPaymentStatuses = async () => {
+      try {
+        const { data: payments, error } = await supabase
+          .from('payments')
+          .select('document_id, user_id, status, amount');
+        
+        if (error) {
+          console.error('Error fetching payment statuses:', error);
+          return;
+        }
+        
+        const statusMap = new Map<string, string>();
+        payments?.forEach(payment => {
+          // Mapear por document_id primeiro, depois por user_id + amount
+          if (payment.document_id) {
+            statusMap.set(payment.document_id, payment.status);
+          }
+        });
+        
+        setPaymentStatuses(statusMap);
+        console.log('🔍 DEBUG - Payment statuses loaded:', statusMap.size);
+      } catch (err) {
+        console.error('Error loading payment statuses:', err);
+      }
+    };
+    
+    fetchPaymentStatuses();
+  }, []);
+  
+  // Filtrar documentos com pagamentos cancelados ou reembolsados
+  const validDocuments = documents.filter(doc => {
+    const paymentStatus = paymentStatuses.get(doc.id);
+    // Se não há payment_status, incluir o documento (pode ser de autenticador)
+    if (!paymentStatus) return true;
+    // Excluir documentos com pagamentos cancelados ou reembolsados
+    return paymentStatus !== 'cancelled' && paymentStatus !== 'refunded';
+  });
+  
+  // 🔍 LOG PARA VERIFICAR FILTRO DE DOCUMENTOS VÁLIDOS
+  console.log('🔍 DEBUG - Total documents:', documents.length);
+  console.log('🔍 DEBUG - Valid documents (after filter):', validDocuments.length);
+  console.log('🔍 DEBUG - Excluded documents:', documents.length - validDocuments.length);
+  
+  // Verificar se há documentos com status refunded/cancelled
+  const excludedDocs = documents.filter(doc => {
+    const paymentStatus = paymentStatuses.get(doc.id);
+    return paymentStatus === 'cancelled' || paymentStatus === 'refunded';
+  });
+  if (excludedDocs.length > 0) {
+    console.log('🔍 DEBUG - Excluded documents details:', excludedDocs.map(doc => ({
+      id: doc.id,
+      filename: doc.filename,
+      payment_status: paymentStatuses.get(doc.id),
+      total_cost: doc.total_cost
+    })));
+  }
+  
+  const totalRevenue = validDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
+  const completedDocuments = validDocuments.filter(doc => doc.status === 'completed').length;
+  const pendingDocuments = validDocuments.filter(doc => doc.status === 'pending').length;
+  const processingDocuments = validDocuments.filter(doc => doc.status === 'processing').length;
   
   // Calcular métricas adicionais
-  const uniqueUsers = new Set(documents.map(doc => doc.user_id)).size;
-  const avgRevenuePerDoc = documents.length > 0 ? totalRevenue / documents.length : 0;
+  const uniqueUsers = new Set(validDocuments.map(doc => doc.user_id)).size;
+  const avgRevenuePerDoc = validDocuments.length > 0 ? totalRevenue / validDocuments.length : 0;
 
   // Buscar estatísticas estendidas do banco de dados
   useEffect(() => {
@@ -87,7 +148,7 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
   const stats = [
     {
       title: 'Total Documents',
-      value: documents.length,
+      value: validDocuments.length,
       subtitle: 'All time',
       icon: FileText,
       bgColor: 'bg-tfe-blue-100',

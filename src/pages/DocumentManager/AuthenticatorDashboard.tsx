@@ -59,11 +59,6 @@ export default function AuthenticatorDashboard() {
   const [modalDocumentId, setModalDocumentId] = useState('');
   const [modalDocumentName, setModalDocumentName] = useState('');
   
-  // Debug do estado do modal
-  useEffect(() => {
-    console.log('[AuthenticatorDashboard] Estado showApprovalModal:', showApprovalModal);
-    console.log('[AuthenticatorDashboard] Estado showCorrectionModal:', showCorrectionModal);
-  }, [showApprovalModal, showCorrectionModal]);
   
   // Estatísticas separadas
   const [stats, setStats] = useState({
@@ -77,7 +72,6 @@ export default function AuthenticatorDashboard() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      console.log('[AuthenticatorDashboard] localStorage:', window.localStorage);
     }
   }, []);
 
@@ -86,7 +80,6 @@ export default function AuthenticatorDashboard() {
       setLoading(true);
       setError(null);
       try {
-        console.log('[AuthenticatorDashboard] Buscando documentos...');
         
         // Buscar documentos da tabela principal
         const { data: mainDocs, error: mainError } = await supabase
@@ -110,7 +103,6 @@ export default function AuthenticatorDashboard() {
           return;
         }
 
-        console.log('[AuthenticatorDashboard] Main docs encontrados:', mainDocs?.length || 0);
 
         // Buscar documentos de verificação
         const { data: verifiedDocs, error: verifiedError } = await supabase
@@ -124,13 +116,28 @@ export default function AuthenticatorDashboard() {
           return;
         }
 
+        // Buscar status de pagamentos para filtrar documentos refunded/cancelled
+        const { data: paymentsData, error: paymentsError } = await supabase
+          .from('payments')
+          .select('document_id, status, user_id, amount');
+        
+        
+        if (paymentsError) {
+          console.warn('[AuthenticatorDashboard] Erro ao buscar pagamentos:', paymentsError);
+        }
+        
+        // Criar mapa de status de pagamentos
+        const paymentStatusMap = new Map<string, string>();
+        paymentsData?.forEach(payment => {
+          if (payment.document_id) {
+            paymentStatusMap.set(payment.document_id, payment.status);
+          }
+        });
+        
+        
         // Mapear documentos principais com informações de verificação
         const mainDocuments = (mainDocs as any[] || []).map(doc => {
           const verifiedDoc = verifiedDocs?.find(v => v.filename === doc.filename);
-          
-          console.log(`[AuthenticatorDashboard] Processando documento: ${doc.filename}`);
-          console.log(`[AuthenticatorDashboard] - Documento principal:`, doc);
-          console.log(`[AuthenticatorDashboard] - Documento verificado encontrado:`, verifiedDoc);
           
           // Determinar o status do documento para autenticação:
           // - Se existe na tabela de verificação, usar o status de lá
@@ -138,11 +145,9 @@ export default function AuthenticatorDashboard() {
           let authStatus;
           if (verifiedDoc) {
             authStatus = verifiedDoc.status;
-            console.log(`[AuthenticatorDashboard] - Usando status da tabela verificada: ${authStatus}`);
           } else {
             // Se o documento da tabela principal não está 'completed', ele pode estar pendente para autenticação
             authStatus = doc.status === 'completed' ? 'completed' : 'pending';
-            console.log(`[AuthenticatorDashboard] - Usando status calculado: ${authStatus} (original era: ${doc.status})`);
           }
           
           const finalDoc = {
@@ -164,43 +169,41 @@ export default function AuthenticatorDashboard() {
             target_language: verifiedDoc?.target_language || doc.idioma_destino
           };
           
-          console.log(`[AuthenticatorDashboard] - Documento final:`, finalDoc);
           return finalDoc;
         }) as Document[];
         
-        // Log para debug detalhado
-        console.log('[AuthenticatorDashboard] Documentos principais:', mainDocuments.length);
-        console.log('[AuthenticatorDashboard] Documentos de verificação:', verifiedDocs?.length || 0);
-        console.log('[AuthenticatorDashboard] Sample main document:', mainDocuments[0]);
-        console.log('[AuthenticatorDashboard] Sample verified document:', verifiedDocs?.[0]);
-        
-        // Log detalhado dos status
-        mainDocuments.forEach((doc, index) => {
-          console.log(`[AuthenticatorDashboard] Doc ${index + 1}: ${doc.filename} - Original Status: ${(mainDocs as any[])?.[index]?.status} - Auth Status: ${doc.status}`);
+        // Filtrar documentos que NÃO têm status refunded ou cancelled
+        const validDocuments = mainDocuments.filter(doc => {
+          const paymentStatus = paymentStatusMap.get(doc.id);
+          const shouldExclude = paymentStatus === 'refunded' || paymentStatus === 'cancelled';
+          
+          if (shouldExclude) {
+            console.log('🚫 FILTRO: Excluindo documento refunded/cancelled:', {
+              filename: doc.filename,
+              payment_status: paymentStatus
+            });
+          }
+          
+          return !shouldExclude;
         });
+        
+        console.log('📊 FILTRO RESULTADO:');
+        console.log(`- Total documentos: ${mainDocuments.length}`);
+        console.log(`- Documentos válidos: ${validDocuments.length}`);
+        console.log(`- Documentos filtrados: ${mainDocuments.length - validDocuments.length}`);
         
         // Calcular estatísticas
-        const pendingCount = mainDocuments.filter(doc => doc.status === 'pending').length;
-        const approvedCount = mainDocuments.filter(doc => doc.status === 'completed').length;
-        
-        console.log('[AuthenticatorDashboard] Status breakdown:', {
-          pending: mainDocuments.filter(doc => doc.status === 'pending').map(d => d.filename),
-          completed: mainDocuments.filter(doc => doc.status === 'completed').map(d => d.filename),
-          other: mainDocuments.filter(doc => doc.status !== 'pending' && doc.status !== 'completed').map(d => ({ filename: d.filename, status: d.status }))
-        });
-        
+        const pendingCount = validDocuments.filter(doc => doc.status === 'pending').length;
+        const approvedCount = validDocuments.filter(doc => doc.status === 'completed').length;
+
         setStats({
           pending: pendingCount,
           approved: approvedCount
         });
 
         // Filtrar apenas documentos pendentes para a lista
-        const pendingDocs = mainDocuments.filter(doc => doc.status === 'pending');
+        const pendingDocs = validDocuments.filter(doc => doc.status === 'pending');
         setDocuments(pendingDocs);
-        
-        console.log('[AuthenticatorDashboard] Estatísticas calculadas:', { pendingCount, approvedCount });
-        console.log('[AuthenticatorDashboard] Documentos pendentes para exibir:', pendingDocs.length);
-        console.log('[AuthenticatorDashboard] Documentos pendentes:', pendingDocs.map(d => ({ filename: d.filename, status: d.status, id: d.id })));
         
       } catch (err) {
         console.error('[AuthenticatorDashboard] Unexpected error:', err);
@@ -216,31 +219,19 @@ export default function AuthenticatorDashboard() {
   function showApprovalConfirmation(id: string) {
     const document = documents.find(doc => doc.id === id);
     if (!document) {
-      console.log('[AuthenticatorDashboard] Documento não encontrado:', id);
       return;
     }
     
-    console.log('[AuthenticatorDashboard] Abrindo modal de confirmação para:', document.filename);
-    console.log('[AuthenticatorDashboard] Estado atual showApprovalModal ANTES:', showApprovalModal);
     
     setModalDocumentId(id);
     setModalDocumentName(document.filename);
     
-    console.log('[AuthenticatorDashboard] Definindo showApprovalModal como true');
     setShowApprovalModal(true);
     
-    // Verificar estado depois de um pequeno delay
-    setTimeout(() => {
-      console.log('[AuthenticatorDashboard] Estado showApprovalModal APÓS timeout:', showApprovalModal);
-    }, 100);
-    
-    // Forçar re-render (teste)
-    console.log('[AuthenticatorDashboard] Forçando re-render...');
   }
 
   // Função para abrir modal de confirmação de envio de correção
   function showSendCorrectionConfirmation(doc: Document) {
-    console.log('[AuthenticatorDashboard] Abrindo modal de correção para:', doc.filename);
     
     setModalDocumentId(doc.id);
     setModalDocumentName(doc.filename);
@@ -250,12 +241,10 @@ export default function AuthenticatorDashboard() {
   async function handleApprove(id: string) {
     if (!currentUser) return;
     
-    console.log('[AuthenticatorDashboard] Aprovando documento:', id);
     
     // Encontrar o documento na lista atual
     const document = documents.find(doc => doc.id === id);
     if (!document) {
-      console.error('[AuthenticatorDashboard] Documento não encontrado na lista');
       return;
     }
     
@@ -290,7 +279,6 @@ export default function AuthenticatorDashboard() {
       }
       
       verificationId = newVerificationDoc.id;
-      console.log('[AuthenticatorDashboard] Documento inserido na tabela de verificação:', verificationId);
     }
     
     // Buscar o documento de verificação
@@ -366,7 +354,6 @@ export default function AuthenticatorDashboard() {
     // Remover documento da lista
     setDocuments(docs => docs.filter(d => d.id !== id));
     
-    console.log('[AuthenticatorDashboard] Documento aprovado com sucesso');
   }
 
 
@@ -1154,7 +1141,6 @@ export default function AuthenticatorDashboard() {
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
               <button
                 onClick={() => {
-                  console.log('[AuthenticatorDashboard] Cancelando aprovação');
                   setShowApprovalModal(false);
                 }}
                 style={{
@@ -1173,7 +1159,6 @@ export default function AuthenticatorDashboard() {
               
               <button
                 onClick={() => {
-                  console.log('[AuthenticatorDashboard] Confirmando aprovação');
                   setShowApprovalModal(false);
                   handleApprove(modalDocumentId);
                 }}
@@ -1242,7 +1227,6 @@ export default function AuthenticatorDashboard() {
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
               <button
                 onClick={() => {
-                  console.log('[AuthenticatorDashboard] Cancelando envio de correção');
                   setShowCorrectionModal(false);
                 }}
                 style={{
@@ -1261,7 +1245,6 @@ export default function AuthenticatorDashboard() {
               
               <button
                 onClick={() => {
-                  console.log('[AuthenticatorDashboard] Confirmando envio de correção');
                   setShowCorrectionModal(false);
                   const doc = documents.find(d => d.id === modalDocumentId);
                   if (doc) {

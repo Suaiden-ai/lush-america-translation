@@ -61,6 +61,7 @@ export default function DocumentsToAuthenticate({ user }: Props) {
         setLoading(true);
         console.log('[DocumentsToAuthenticate] Buscando documentos pendentes...');
         
+        // 1. Buscar documentos pendentes
         const { data, error } = await supabase
           .from('documents_to_be_verified')
           .select('*')
@@ -74,7 +75,74 @@ export default function DocumentsToAuthenticate({ user }: Props) {
         }
         
         console.log('[DocumentsToAuthenticate] Documentos encontrados:', data?.length || 0);
-        setDocuments(data || []);
+        
+        // 2. Buscar status de pagamentos para filtrar documentos refunded/cancelled
+        // Primeiro, buscar todos os pagamentos para encontrar correspondências
+        const { data: paymentsData, error: paymentsError } = await supabase
+          .from('payments')
+          .select('document_id, status, user_id, amount');
+        
+        if (paymentsError) {
+          console.warn('[DocumentsToAuthenticate] Erro ao buscar pagamentos:', paymentsError);
+        }
+        
+        console.log('[DocumentsToAuthenticate] Pagamentos encontrados:', paymentsData?.length || 0);
+        
+        // 3. Criar mapa de status de pagamentos
+        // Mapear por document_id primeiro, depois por user_id + amount se necessário
+        const paymentStatusMap = new Map<string, string>();
+        paymentsData?.forEach(payment => {
+          if (payment.document_id) {
+            paymentStatusMap.set(payment.document_id, payment.status);
+          }
+        });
+        
+        // 4. Para documentos sem document_id direto, tentar mapear por user_id + amount
+        const documentsWithoutDirectPayment = (data || []).filter(doc => {
+          const directPayment = paymentStatusMap.get(doc.id);
+          return !directPayment;
+        });
+        
+        console.log('[DocumentsToAuthenticate] Documentos sem pagamento direto:', documentsWithoutDirectPayment.length);
+        
+        // Mapear por user_id + amount para documentos sem document_id direto
+        documentsWithoutDirectPayment.forEach(doc => {
+          const matchingPayment = paymentsData?.find(payment => 
+            payment.user_id === doc.user_id && 
+            payment.amount === doc.valor
+          );
+          
+          if (matchingPayment) {
+            paymentStatusMap.set(doc.id, matchingPayment.status);
+            console.log('[DocumentsToAuthenticate] Mapeamento por user_id + amount:', {
+              doc_id: doc.id,
+              user_id: doc.user_id,
+              amount: doc.valor,
+              payment_status: matchingPayment.status
+            });
+          }
+        });
+        
+        // 5. Filtrar documentos que NÃO têm status refunded ou cancelled
+        const validDocuments = (data || []).filter(doc => {
+          const paymentStatus = paymentStatusMap.get(doc.id);
+          const shouldExclude = paymentStatus === 'refunded' || paymentStatus === 'cancelled';
+          
+          if (shouldExclude) {
+            console.log('[DocumentsToAuthenticate] Excluindo documento:', {
+              id: doc.id,
+              filename: doc.filename,
+              payment_status: paymentStatus
+            });
+          }
+          
+          return !shouldExclude;
+        });
+        
+        console.log('[DocumentsToAuthenticate] Documentos válidos (após filtro de pagamento):', validDocuments.length);
+        console.log('[DocumentsToAuthenticate] Documentos filtrados (refunded/cancelled):', (data || []).length - validDocuments.length);
+        
+        setDocuments(validDocuments);
         setError(null);
       } catch (err) {
         console.error('[DocumentsToAuthenticate] Erro inesperado:', err);

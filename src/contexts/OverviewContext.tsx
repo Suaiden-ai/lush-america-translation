@@ -100,8 +100,19 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
         pendingDocs = allDocuments?.filter(doc => doc.status === 'pending').length || 0;
         approvedDocs = allDocuments?.filter(doc => doc.status === 'completed').length || 0;
         rejectedDocs = allDocuments?.filter(doc => doc.status === 'rejected').length || 0;
-        totalValue = (allDocuments?.reduce((sum, doc) => sum + (doc.total_cost || 0), 0) || 0) +
-                    (translatedDocs?.reduce((sum, doc) => sum + (doc.total_cost || 0), 0) || 0);
+        // Filtrar documentos com pagamentos cancelados ou reembolsados
+        const validAllDocuments = allDocuments?.filter(doc => {
+          if (!doc.payment_status) return true; // Incluir se não há payment_status
+          return doc.payment_status !== 'cancelled' && doc.payment_status !== 'refunded';
+        }) || [];
+        
+        const validTranslatedDocs = translatedDocs?.filter(doc => {
+          if (!doc.payment_status) return true; // Incluir se não há payment_status
+          return doc.payment_status !== 'cancelled' && doc.payment_status !== 'refunded';
+        }) || [];
+        
+        totalValue = (validAllDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0)) +
+                    (validTranslatedDocs.reduce((sum, doc) => sum + (doc.total_cost || 0), 0));
         totalPages = (allDocuments?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0) +
                     (translatedDocs?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0);
       } else {
@@ -110,7 +121,13 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
         pendingDocs = allDocuments?.filter(doc => doc.status === 'pending').length || 0; // All pending docs
         approvedDocs = translatedDocs?.length || 0; // All translated docs are approved
         rejectedDocs = 0; // Rejected docs are not in translated_documents
-        totalValue = translatedDocs?.reduce((sum, doc) => sum + (doc.total_cost || 0), 0) || 0;
+        // Filtrar documentos com pagamentos cancelados ou reembolsados para autenticadores
+        const validTranslatedDocsForAuth = translatedDocs?.filter(doc => {
+          if (!doc.payment_status) return true; // Incluir se não há payment_status
+          return doc.payment_status !== 'cancelled' && doc.payment_status !== 'refunded';
+        }) || [];
+        
+        totalValue = validTranslatedDocsForAuth.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
         totalPages = translatedDocs?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0;
       }
 

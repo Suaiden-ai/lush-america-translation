@@ -111,10 +111,15 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       // Authenticator Uploads: usar dados da tabela documents
       
       // Revenue de usuários regulares (User Uploads) - usar tabela payments
+      // Excluir pagamentos cancelados ou reembolsados
       const regularRevenue = paymentsData?.reduce((sum, payment) => {
         // Verificar se o pagamento é de um usuário regular (não autenticador)
         const userDoc = documentsData?.find(doc => doc.id === payment.document_id);
         if (userDoc && userDoc.profiles?.role === 'user') {
+          // Excluir pagamentos cancelados ou reembolsados
+          if (payment.status === 'cancelled' || payment.status === 'refunded') {
+            return sum;
+          }
           return sum + (payment.amount || 0);
         }
         return sum;

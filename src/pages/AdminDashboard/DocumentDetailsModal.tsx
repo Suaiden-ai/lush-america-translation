@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { XCircle, FileText, User, Calendar, DollarSign, Hash, Eye, Download, Phone } from 'lucide-react';
+import { XCircle, FileText, User, Calendar, DollarSign, Hash, Eye, Download, Phone, CreditCard, AlertTriangle, Edit, Save, X } from 'lucide-react';
 import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
 import { Document } from '../../App';
 import { supabase } from '../../lib/supabase';
@@ -22,6 +22,21 @@ type TranslatedDocument = {
   original_document_id?: string;
 };
 
+type PaymentInfo = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_method: string;
+  payment_date: string;
+  stripe_session_id: string | null;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
+  refund_id: string | null;
+  refund_amount: number | null;
+};
+
 type DocumentDetailsModalProps = {
   document: Document | TranslatedDocument | null;
   onClose: () => void;
@@ -36,11 +51,39 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [translatedDoc, setTranslatedDoc] = useState<TranslatedDocument | null>(null);
   const [loadingTranslated, setLoadingTranslated] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
+  const [loadingPayment, setLoadingPayment] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [customReason, setCustomReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState(false);
+  const [userEditData, setUserEditData] = useState({
+    name: '',
+    email: '',
+    phone: ''
+  });
+  const [savingUser, setSavingUser] = useState(false);
+  const [userEditError, setUserEditError] = useState<string | null>(null);
+  const [editingFile, setEditingFile] = useState(false);
+  const [fileEditData, setFileEditData] = useState({
+    filename: '',
+    pages: 0,
+    total_cost: 0,
+    source_language: '',
+    target_language: '',
+    is_bank_statement: false,
+    is_authenticated: false
+  });
+  const [savingFile, setSavingFile] = useState(false);
+  const [fileEditError, setFileEditError] = useState<string | null>(null);
 
   // Hook useEffect para buscar dados quando o documento muda
   useEffect(() => {
     if (document) {
       fetchUserProfile();
+      fetchPaymentInfo();
       // Se o documento não tem translated_file_url, busca o documento traduzido pelo user_id
       if (!(document as any).translated_file_url) {
         fetchTranslatedDocument();
@@ -98,6 +141,29 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
       console.error('Error fetching user profile:', err);
     } finally {
       setLoadingProfile(false);
+    }
+  };
+
+  const fetchPaymentInfo = async () => {
+    if (!document) return;
+    
+    setLoadingPayment(true);
+    try {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('document_id', document.id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Error fetching payment info:', error);
+      } else if (data) {
+        setPaymentInfo(data);
+      }
+    } catch (err) {
+      console.error('Error fetching payment info:', err);
+    } finally {
+      setLoadingPayment(false);
     }
   };
   
@@ -188,6 +254,258 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
     }
   };
 
+  const cancellationReasons = [
+    { value: 'fraud', label: 'Suspected Fraud' },
+    { value: 'duplicate', label: 'Duplicate Payment' },
+    { value: 'customer_request', label: 'Customer Request' },
+    { value: 'processing_error', label: 'Processing Error' },
+    { value: 'refund_request', label: 'Refund Request' },
+    { value: 'custom', label: 'Other (specify)' }
+  ];
+
+  const handleCancelPayment = async () => {
+    if (!paymentInfo || !cancellationReason) return;
+
+    const finalReason = cancellationReason === 'custom' 
+      ? customReason.trim() 
+      : cancellationReason;
+
+    if (!finalReason) {
+      setError('Please select or enter a cancellation reason');
+      return;
+    }
+
+    setCancelling(true);
+    setError(null);
+
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Call the cancel payment function
+      const { data, error } = await supabase.functions.invoke('cancel-stripe-payment', {
+        body: {
+          paymentId: paymentInfo.id,
+          reason: finalReason,
+          adminUserId: user.id
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.success) {
+        // Reload payment info
+        await fetchPaymentInfo();
+        
+        // Close modal
+        setShowCancelModal(false);
+        setCancellationReason('');
+        setCustomReason('');
+      } else {
+        throw new Error(data?.error || 'Failed to cancel payment');
+      }
+    } catch (err: any) {
+      console.error('Error cancelling payment:', err);
+      setError(err.message || 'Failed to cancel payment');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const openCancelModal = () => {
+    setShowCancelModal(true);
+    setCancellationReason('');
+    setCustomReason('');
+    setError(null);
+  };
+
+  const closeCancelModal = () => {
+    setShowCancelModal(false);
+    setCancellationReason('');
+    setCustomReason('');
+    setError(null);
+  };
+
+  const formatCurrency = (amount: number, currency: string) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD'
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const startEditingUser = () => {
+    if (userProfile) {
+      setUserEditData({
+        name: userProfile.name || '',
+        email: userProfile.email || '',
+        phone: userProfile.phone || ''
+      });
+      setEditingUser(true);
+      setUserEditError(null);
+    }
+  };
+
+  const cancelEditingUser = () => {
+    setEditingUser(false);
+    setUserEditData({
+      name: '',
+      email: '',
+      phone: ''
+    });
+    setUserEditError(null);
+  };
+
+  const saveUserChanges = async () => {
+    if (!document || !userProfile) return;
+
+    setSavingUser(true);
+    setUserEditError(null);
+
+    try {
+      // Validate required fields
+      if (!userEditData.name.trim()) {
+        throw new Error('Name is required');
+      }
+      if (!userEditData.email.trim()) {
+        throw new Error('Email is required');
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(userEditData.email)) {
+        throw new Error('Please enter a valid email address');
+      }
+
+      // Update user profile
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: userEditData.name.trim(),
+          email: userEditData.email.trim(),
+          phone: userEditData.phone.trim() || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', document.user_id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Update local state
+      setUserProfile({
+        name: userEditData.name.trim(),
+        email: userEditData.email.trim(),
+        phone: userEditData.phone.trim() || null
+      });
+
+      setEditingUser(false);
+    } catch (err: any) {
+      console.error('Error updating user profile:', err);
+      setUserEditError(err.message || 'Failed to update user information');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const startEditingFile = () => {
+    if (document) {
+      setFileEditData({
+        filename: (document as any).filename || '',
+        pages: (document as any).pages || 0,
+        total_cost: (document as any).total_cost || 0,
+        source_language: (document as any).source_language || (document as any).idioma_raiz || '',
+        target_language: (document as any).target_language || '',
+        is_bank_statement: (document as any).is_bank_statement || false,
+        is_authenticated: (document as any).is_authenticated || false
+      });
+      setEditingFile(true);
+      setFileEditError(null);
+    }
+  };
+
+  const cancelEditingFile = () => {
+    setEditingFile(false);
+    setFileEditData({
+      filename: '',
+      pages: 0,
+      total_cost: 0,
+      source_language: '',
+      target_language: '',
+      is_bank_statement: false,
+      is_authenticated: false
+    });
+    setFileEditError(null);
+  };
+
+  const saveFileChanges = async () => {
+    if (!document) return;
+
+    setSavingFile(true);
+    setFileEditError(null);
+
+    try {
+      // Validate required fields
+      if (!fileEditData.filename.trim()) {
+        throw new Error('Filename is required');
+      }
+      if (fileEditData.pages <= 0) {
+        throw new Error('Number of pages must be greater than 0');
+      }
+      if (fileEditData.total_cost < 0) {
+        throw new Error('Total cost cannot be negative');
+      }
+
+      // Update document information
+      const updateData: any = {
+        filename: fileEditData.filename.trim(),
+        pages: fileEditData.pages,
+        total_cost: fileEditData.total_cost,
+        source_language: fileEditData.source_language.trim() || null,
+        target_language: fileEditData.target_language.trim() || null,
+        is_bank_statement: fileEditData.is_bank_statement,
+        is_authenticated: fileEditData.is_authenticated,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('documents')
+        .update(updateData)
+        .eq('id', document.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Update local state - we need to trigger a re-render
+      // The parent component should handle refreshing the document data
+      setEditingFile(false);
+      
+      // Show success message or trigger parent refresh
+      alert('File information updated successfully!');
+      
+    } catch (err: any) {
+      console.error('Error updating file information:', err);
+      setFileEditError(err.message || 'Failed to update file information');
+    } finally {
+      setSavingFile(false);
+    }
+  };
+
   // Verificação para renderização nula, se não houver documento.
   if (!document) return null;
 
@@ -209,67 +527,286 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
         <div className="space-y-6">
           {/* File Info */}
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <FileText className="w-6 h-6 text-blue-600" />
-              <h4 className="text-lg font-semibold text-gray-900">File Information</h4>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <FileText className="w-6 h-6 text-blue-600" />
+                <h4 className="text-lg font-semibold text-gray-900">File Information</h4>
+              </div>
+              {!editingFile && (
+                <button
+                  onClick={startEditingFile}
+                  className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                  Edit
+                </button>
+              )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Filename</label>
-                <p className="text-gray-900 break-all">{(document as any).filename}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Pages</label>
-                <p className="text-gray-900">{(document as any).pages}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Total Cost</label>
-                <p className="text-gray-900 font-semibold">${(document as any).total_cost}.00</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Status</label>
-                <div className="mt-1">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(document)}`}>
-                    {getStatusIcon(document)}
-                    <span className="ml-1 capitalize">
-                      {(document as any).translated_file_url ? 'Completed' : (document as any).status}
-                    </span>
-                  </span>
+            
+            {editingFile ? (
+              <div className="space-y-4">
+                {fileEditError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-800">{fileEditError}</p>
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Filename *</label>
+                    <input
+                      type="text"
+                      value={fileEditData.filename}
+                      onChange={(e) => setFileEditData(prev => ({ ...prev, filename: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter filename"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pages *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={fileEditData.pages}
+                      onChange={(e) => setFileEditData(prev => ({ ...prev, pages: parseInt(e.target.value) || 0 }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter number of pages"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Cost *</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={fileEditData.total_cost}
+                        onChange={(e) => setFileEditData(prev => ({ ...prev, total_cost: parseFloat(e.target.value) || 0 }))}
+                        className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <div className="mt-1">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(document)}`}>
+                        {getStatusIcon(document)}
+                        <span className="ml-1 capitalize">
+                          {(document as any).translated_file_url ? 'Completed' : (document as any).status}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Source Language</label>
+                    <input
+                      type="text"
+                      value={fileEditData.source_language}
+                      onChange={(e) => setFileEditData(prev => ({ ...prev, source_language: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter source language"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Target Language</label>
+                    <input
+                      type="text"
+                      value={fileEditData.target_language}
+                      onChange={(e) => setFileEditData(prev => ({ ...prev, target_language: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter target language"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="is_bank_statement"
+                      checked={fileEditData.is_bank_statement}
+                      onChange={(e) => setFileEditData(prev => ({ ...prev, is_bank_statement: e.target.checked }))}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="is_bank_statement" className="text-sm font-medium text-gray-700">
+                      Bank Statement
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="is_authenticated"
+                      checked={fileEditData.is_authenticated}
+                      onChange={(e) => setFileEditData(prev => ({ ...prev, is_authenticated: e.target.checked }))}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="is_authenticated" className="text-sm font-medium text-gray-700">
+                      Authenticated
+                    </label>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={cancelEditingFile}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveFileChanges}
+                    disabled={savingFile || !fileEditData.filename.trim() || fileEditData.pages <= 0 || fileEditData.total_cost < 0}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    {savingFile ? 'Saving...' : 'Save Changes'}
+                  </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Filename</label>
+                  <p className="text-gray-900 break-all">{(document as any).filename}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Pages</label>
+                  <p className="text-gray-900">{(document as any).pages}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Total Cost</label>
+                  <p className="text-gray-900 font-semibold">${(document as any).total_cost}.00</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Status</label>
+                  <div className="mt-1">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(document)}`}>
+                      {getStatusIcon(document)}
+                      <span className="ml-1 capitalize">
+                        {(document as any).translated_file_url ? 'Completed' : (document as any).status}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* User Info */}
           <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <User className="w-6 h-6 text-green-600" />
-              <h4 className="text-lg font-semibold text-gray-900">User Information</h4>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <User className="w-6 h-6 text-green-600" />
+                <h4 className="text-lg font-semibold text-gray-900">User Information</h4>
+              </div>
+              {userProfile && !editingUser && (
+                <button
+                  onClick={startEditingUser}
+                  className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                  Edit
+                </button>
+              )}
             </div>
+            
             {loadingProfile ? (
               <div className="text-gray-500">Loading user information...</div>
             ) : userProfile ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Name</label>
-                  <p className="text-gray-900">{userProfile.name || 'Not provided'}</p>
+              <>
+                {editingUser ? (
+                <div className="space-y-4">
+                  {userEditError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-800">{userEditError}</p>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                      <input
+                        type="text"
+                        value={userEditData.name}
+                        onChange={(e) => setUserEditData(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter full name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                      <input
+                        type="email"
+                        value={userEditData.email}
+                        onChange={(e) => setUserEditData(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter email address"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
+                        <Phone className="w-4 h-4" />
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={userEditData.phone}
+                        onChange={(e) => setUserEditData(prev => ({ ...prev, phone: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter phone number (optional)"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+                      <p className="text-gray-900 font-mono text-sm break-all bg-gray-100 px-3 py-2 rounded-md">{document.user_id}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={cancelEditingUser}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveUserChanges}
+                      disabled={savingUser || !userEditData.name.trim() || !userEditData.email.trim()}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors"
+                    >
+                      <Save className="w-4 h-4" />
+                      {savingUser ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Email</label>
-                  <p className="text-gray-900 break-all">{userProfile.email}</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Name</label>
+                    <p className="text-gray-900">{userProfile.name || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Email</label>
+                    <p className="text-gray-900 break-all">{userProfile.email}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                      <Phone className="w-4 h-4" />
+                      Phone Number
+                    </label>
+                    <p className="text-gray-900">{userProfile.phone || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">User ID</label>
+                    <p className="text-gray-900 font-mono text-sm break-all">{document.user_id}</p>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                    <Phone className="w-4 h-4" />
-                    Phone Number
-                  </label>
-                  <p className="text-gray-900">{userProfile.phone || 'Not provided'}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">User ID</label>
-                  <p className="text-gray-900 font-mono text-sm break-all">{document.user_id}</p>
-                </div>
-              </div>
+              )}
+            </>
             ) : (
               <div className="text-gray-500">User information not available</div>
             )}
@@ -335,6 +872,111 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
             </div>
           </div>
 
+          {/* Payment Information */}
+          {loadingPayment ? (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <CreditCard className="w-6 h-6 text-blue-600" />
+                <h4 className="text-lg font-semibold text-gray-900">Payment Information</h4>
+              </div>
+              <div className="text-gray-500">Loading payment information...</div>
+            </div>
+          ) : paymentInfo ? (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <CreditCard className="w-6 h-6 text-blue-600" />
+                <h4 className="text-lg font-semibold text-gray-900">Payment Information</h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Amount</label>
+                  <p className="text-gray-900 font-semibold">{formatCurrency(paymentInfo.amount, paymentInfo.currency)}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Status</label>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    paymentInfo.status === 'completed' 
+                      ? 'bg-green-100 text-green-800'
+                      : paymentInfo.status === 'pending'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : paymentInfo.status === 'cancelled'
+                      ? 'bg-red-100 text-red-800'
+                      : paymentInfo.status === 'refunded'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {paymentInfo.status}
+                  </span>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Payment Method</label>
+                  <p className="text-gray-900">{paymentInfo.payment_method || 'Stripe'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Payment Date</label>
+                  <p className="text-gray-900">{formatDate(paymentInfo.payment_date)}</p>
+                </div>
+                {paymentInfo.stripe_session_id && (
+                  <div className="sm:col-span-2">
+                    <label className="text-sm font-medium text-gray-700">Stripe Session ID</label>
+                    <p className="text-gray-900 font-mono text-sm break-all">{paymentInfo.stripe_session_id}</p>
+                  </div>
+                )}
+                {paymentInfo.cancelled_at && (
+                  <>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Cancelled At</label>
+                      <p className="text-gray-900">{formatDate(paymentInfo.cancelled_at)}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Cancellation Reason</label>
+                      <p className="text-gray-900">{paymentInfo.cancellation_reason}</p>
+                    </div>
+                  </>
+                )}
+                {paymentInfo.refund_id && (
+                  <>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Refund ID</label>
+                      <p className="text-gray-900 font-mono text-sm break-all">{paymentInfo.refund_id}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Refund Amount</label>
+                      <p className="text-gray-900">{formatCurrency(paymentInfo.refund_amount || paymentInfo.amount, paymentInfo.currency)}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+              
+              {/* Payment Actions */}
+              {paymentInfo.stripe_session_id && 
+               (paymentInfo.status === 'completed' || paymentInfo.status === 'pending') && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h5 className="text-sm font-medium text-gray-900">Payment Actions</h5>
+                      <p className="text-sm text-gray-500">Cancel and refund this payment</p>
+                    </div>
+                    <button
+                      onClick={openCancelModal}
+                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                    >
+                      Cancel Payment
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <CreditCard className="w-6 h-6 text-blue-600" />
+                <h4 className="text-lg font-semibold text-gray-900">Payment Information</h4>
+              </div>
+              <div className="text-gray-500">No payment information found for this document.</div>
+            </div>
+          )}
+
           {/* Actions */}
           {((document as any).translated_file_url || (document as any).file_url) && (
             <div className="bg-blue-50 rounded-lg p-4">
@@ -390,6 +1032,107 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
           </button>
         </div>
       </div>
+
+      {/* Cancel Payment Modal */}
+      {showCancelModal && paymentInfo && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Cancel Payment</h3>
+                <button
+                  onClick={closeCancelModal}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XCircle className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex">
+                  <AlertTriangle className="h-5 w-5 text-yellow-400 mr-2" />
+                  <div>
+                    <h4 className="text-sm font-medium text-yellow-800">Warning</h4>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      This action will cancel the payment and may issue a refund. This action cannot be undone.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-2">Payment Details</h4>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-600">
+                    <strong>Amount:</strong> {formatCurrency(paymentInfo.amount, paymentInfo.currency)}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <strong>Status:</strong> {paymentInfo.status}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <strong>Payment Date:</strong> {formatDate(paymentInfo.payment_date)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Cancellation Reason
+                </label>
+                <select
+                  value={cancellationReason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-tfe-blue-500"
+                >
+                  <option value="">Select a reason</option>
+                  {cancellationReasons.map((reason) => (
+                    <option key={reason.value} value={reason.value}>
+                      {reason.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {cancellationReason === 'custom' && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Custom Reason
+                  </label>
+                  <textarea
+                    value={customReason}
+                    onChange={(e) => setCustomReason(e.target.value)}
+                    placeholder="Please specify the reason for cancellation..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-tfe-blue-500"
+                    rows={3}
+                  />
+                </div>
+              )}
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={closeCancelModal}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCancelPayment}
+                  disabled={cancelling || !cancellationReason || (cancellationReason === 'custom' && !customReason.trim())}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
+                >
+                  {cancelling ? 'Cancelling...' : 'Cancel Payment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

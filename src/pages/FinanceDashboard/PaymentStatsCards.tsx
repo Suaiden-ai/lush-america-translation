@@ -105,11 +105,16 @@ export function PaymentStatsCards({ dateRange }: PaymentStatsCardsProps) {
       console.log('📋 Documentos de autenticadores:', authenticatorDocuments.length);
       console.log('📊 Total de transações:', allTransactions.length);
       
-      // Calcular estatísticas totais
-      const totalPayments = allTransactions.length;
-      const totalAmount = allTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+      // Filtrar transações canceladas ou reembolsadas
+      const validTransactions = allTransactions.filter(t => 
+        t.status !== 'cancelled' && t.status !== 'refunded'
+      );
+      
+      // Calcular estatísticas totais apenas com transações válidas
+      const totalPayments = validTransactions.length;
+      const totalAmount = validTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
       const avgPayment = totalPayments > 0 ? totalAmount / totalPayments : 0;
-      const successfulPayments = allTransactions.filter(t => t.status === 'completed').length;
+      const successfulPayments = validTransactions.filter(t => t.status === 'completed').length;
       
       const calculatedStats = {
         total_payments: totalPayments,

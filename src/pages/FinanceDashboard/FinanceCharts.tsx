@@ -55,6 +55,11 @@ export function FinanceCharts({ dateRange }: FinanceChartsProps) {
       const dailyPayments: { [key: string]: { date: string; payments: number; revenue: number } } = {};
       
       paymentsData?.forEach(payment => {
+        // Excluir pagamentos cancelados ou reembolsados
+        if (payment.status === 'cancelled' || payment.status === 'refunded') {
+          return;
+        }
+        
         const date = new Date(payment.created_at).toLocaleDateString('pt-BR');
         if (!dailyPayments[date]) {
           dailyPayments[date] = { date, payments: 0, revenue: 0 };
@@ -82,6 +87,10 @@ export function FinanceCharts({ dateRange }: FinanceChartsProps) {
 
       const statusCount: { [key: string]: number } = {};
       statusData?.forEach(payment => {
+        // Excluir pagamentos cancelados ou reembolsados do gráfico
+        if (payment.status === 'cancelled' || payment.status === 'refunded') {
+          return;
+        }
         const status = payment.status || 'unknown';
         statusCount[status] = (statusCount[status] || 0) + 1;
       });

@@ -204,6 +204,7 @@ export function TranslatedDocumentsTable() {
                 <option value="pending">Pending</option>
                 <option value="processing">Processing</option>
                 <option value="completed">Completed</option>
+                <option value="draft">Draft</option>
               </select>
             </div>
             <div className="sm:col-span-2 lg:col-span-1">

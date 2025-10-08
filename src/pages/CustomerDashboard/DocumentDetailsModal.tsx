@@ -371,6 +371,32 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
             </div>
           )}
 
+          {document.status === 'refunded' && (
+            <div className="bg-orange-50 p-4 rounded-lg">
+              <h4 className="font-medium text-orange-900 mb-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Payment Refunded
+              </h4>
+              <p className="text-sm text-orange-800">
+                This document's payment has been refunded. The translation process has been cancelled 
+                and you should have received a refund for this order.
+              </p>
+            </div>
+          )}
+
+          {document.status === 'cancelled' && (
+            <div className="bg-red-50 p-4 rounded-lg">
+              <h4 className="font-medium text-red-900 mb-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Order Cancelled
+              </h4>
+              <p className="text-sm text-red-800">
+                This document's order has been cancelled. The translation process has been stopped 
+                and no charges were made for this order.
+              </p>
+            </div>
+          )}
+
           {/* File Information */}
           <div className="bg-gray-50 p-4 rounded-lg">
             <h4 className="font-medium text-gray-900 mb-2">File Information</h4>

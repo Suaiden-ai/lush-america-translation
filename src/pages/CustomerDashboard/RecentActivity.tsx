@@ -229,6 +229,14 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
         color = 'bg-red-100 text-red-800';
         text = t('dashboard.recentActivity.status.rejected');
         break;
+      case 'refunded':
+        color = 'bg-orange-100 text-orange-800';
+        text = 'Refunded';
+        break;
+      case 'cancelled':
+        color = 'bg-red-100 text-red-800';
+        text = 'Cancelled';
+        break;
       default:
         color = 'bg-gray-100 text-gray-600';
         text = currentStatus || t('dashboard.recentActivity.status.unknown');

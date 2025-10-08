@@ -45,8 +45,74 @@ export function DocumentsToAuthenticateTable() {
 
       if (documentsError) throw documentsError;
 
+      // Buscar status de pagamentos para filtrar documentos refunded/cancelled
+      // Primeiro, buscar todos os pagamentos para encontrar correspondências
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('document_id, status, user_id, amount');
+      
+      if (paymentsError) {
+        console.warn('[DocumentsToAuthenticateTable] Erro ao buscar pagamentos:', paymentsError);
+      }
+      
+      console.log('[DocumentsToAuthenticateTable] Pagamentos encontrados:', paymentsData?.length || 0);
+      
+      // Criar mapa de status de pagamentos
+      // Mapear por document_id primeiro, depois por user_id + amount se necessário
+      const paymentStatusMap = new Map<string, string>();
+      paymentsData?.forEach(payment => {
+        if (payment.document_id) {
+          paymentStatusMap.set(payment.document_id, payment.status);
+        }
+      });
+      
+      // Para documentos sem document_id direto, tentar mapear por user_id + amount
+      const documentsWithoutDirectPayment = (documentsData || []).filter(doc => {
+        const directPayment = paymentStatusMap.get(doc.id);
+        return !directPayment;
+      });
+      
+      console.log('[DocumentsToAuthenticateTable] Documentos sem pagamento direto:', documentsWithoutDirectPayment.length);
+      
+      // Mapear por user_id + amount para documentos sem document_id direto
+      documentsWithoutDirectPayment.forEach(doc => {
+        const matchingPayment = paymentsData?.find(payment => 
+          payment.user_id === doc.user_id && 
+          payment.amount === doc.valor
+        );
+        
+        if (matchingPayment) {
+          paymentStatusMap.set(doc.id, matchingPayment.status);
+          console.log('[DocumentsToAuthenticateTable] Mapeamento por user_id + amount:', {
+            doc_id: doc.id,
+            user_id: doc.user_id,
+            amount: doc.valor,
+            payment_status: matchingPayment.status
+          });
+        }
+      });
+      
+      // Filtrar documentos que NÃO têm status refunded ou cancelled
+      const validDocuments = (documentsData || []).filter(doc => {
+        const paymentStatus = paymentStatusMap.get(doc.id);
+        const shouldExclude = paymentStatus === 'refunded' || paymentStatus === 'cancelled';
+        
+        if (shouldExclude) {
+          console.log('[DocumentsToAuthenticateTable] Excluindo documento:', {
+            id: doc.id,
+            filename: doc.filename,
+            payment_status: paymentStatus
+          });
+        }
+        
+        return !shouldExclude;
+      });
+      
+      console.log('[DocumentsToAuthenticateTable] Documentos válidos (após filtro de pagamento):', validDocuments.length);
+      console.log('[DocumentsToAuthenticateTable] Documentos filtrados (refunded/cancelled):', (documentsData || []).length - validDocuments.length);
+
       // Buscar perfis dos usuários
-      const userIds = [...new Set(documentsData?.map(doc => doc.user_id) || [])];
+      const userIds = [...new Set(validDocuments?.map(doc => doc.user_id) || [])];
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, name, email')
@@ -58,7 +124,7 @@ export function DocumentsToAuthenticateTable() {
       const profilesMap = new Map(profilesData?.map(profile => [profile.id, profile]) || []);
 
       // Processar dados para incluir nomes dos usuários
-      const processedDocuments = (documentsData || []).map(doc => {
+      const processedDocuments = validDocuments.map(doc => {
         const profile = profilesMap.get(doc.user_id);
         return {
           ...doc,
@@ -193,6 +259,7 @@ export function DocumentsToAuthenticateTable() {
                 <option value="pending">Pending</option>
                 <option value="processing">Processing</option>
                 <option value="completed">Completed</option>
+                <option value="draft">Draft</option>
               </select>
             </div>
           </div>
