@@ -32,7 +32,7 @@ export function ContactSection() {
               <Envelope className="w-8 h-8 text-tfe-red-600" weight="fill" />
             </div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Email</h3>
-            <p className="text-gray-600">contato@lushamerica.com</p>
+            <p className="text-gray-600">info@thefutureofenglish.com</p>
             <p className="text-sm text-gray-500 mt-2">24/7 support</p>
           </div>
           

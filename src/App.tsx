@@ -16,7 +16,10 @@ import { UserManagement } from './pages/AdminDashboard/UserManagement';
 import { AuthenticatorControl } from './pages/AdminDashboard/AuthenticatorControl';
 import { CustomerDashboard } from './pages/CustomerDashboard';
 import { FinanceDashboard } from './pages/FinanceDashboard';
+import { AffiliateManagementPage as FinanceAffiliateManagementPage } from './pages/FinanceDashboard/AffiliateManagementPage';
 import { DocumentVerification } from './pages/DocumentVerification';
+import { AffiliateDashboard } from './pages/AffiliateDashboard';
+import { AffiliateManagementPage } from './pages/AffiliateManagementPage';
 import Login from './pages/Login';
 import { Register } from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -171,7 +174,8 @@ function App() {
                            location.pathname.startsWith('/authenticator') ||
                            location.pathname.startsWith('/finance') ||
                            location.pathname === '/user-management' ||
-                           location.pathname === '/authenticator-control';
+                           location.pathname === '/authenticator-control' ||
+                           location.pathname === '/affiliate-management';
     
     // Se está na área de Dashboard, mostrar apenas itens do Dashboard (botão Home é separado)
     if (isDashboardArea) {
@@ -188,6 +192,7 @@ function App() {
           { id: 'admin', label: 'Admin Dashboard', icon: Shield, page: 'admin' as Page },
           { id: 'user-management', label: 'User Management', icon: Users, page: 'user-management' as Page },
           { id: 'authenticator-control', label: 'Authenticator Control', icon: UserCheck, page: 'authenticator-control' as Page },
+          { id: 'affiliate-management', label: 'Affiliate Management', icon: Users, page: 'affiliate-management' as Page },
         ];
         return items;
       }
@@ -195,6 +200,7 @@ function App() {
       if (user.role === 'finance') {
         const items = [
           { id: 'finance-dashboard', label: 'Finance Dashboard', icon: Shield, page: '/finance' },
+          { id: 'affiliate-management', label: 'Affiliate Management', icon: Users, page: '/finance/affiliate-management' },
           { id: 'profile', label: 'Profile', icon: UserIcon, page: '/finance/profile' },
         ];
         return items;
@@ -391,7 +397,7 @@ function App() {
                 </div>
                 
                 <Routes>
-                  <Route path="/" element={<CustomerDashboard user={user} documents={documents} folders={folders} onDocumentUpload={handleDocumentUpload} onFolderCreate={handleFolderCreate} onFolderUpdate={handleFolderUpdate} onFolderDelete={handleFolderDelete} onViewDocument={handleViewDocument} />} />
+                  <Route path="/" element={user?.role === 'affiliate' ? <Navigate to="/affiliate" replace /> : <CustomerDashboard user={user} documents={documents} folders={folders} onDocumentUpload={handleDocumentUpload} onFolderCreate={handleFolderCreate} onFolderUpdate={handleFolderUpdate} onFolderDelete={handleFolderDelete} onViewDocument={handleViewDocument} />} />
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/documents" element={<MyDocumentsPage />} />
                   <Route path="/progress" element={<DocumentProgress />} />
@@ -431,8 +437,14 @@ function App() {
               <Routes>
                 <Route path="/" element={<FinanceDashboard documents={documents} />} />
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/affiliate-management" element={<FinanceAffiliateManagementPage />} />
               </Routes>
             </AdminLayout>
+          ) : <Navigate to="/login" />} />
+          
+          {/* Affiliate routes */}
+          <Route path="/affiliate/*" element={user && user.role === 'affiliate' ? (
+            <AffiliateDashboard />
           ) : <Navigate to="/login" />} />
           
           <Route path="/user-management" element={user && user.role === 'admin' ? (
@@ -457,6 +469,19 @@ function App() {
               subtitle="Professional Translation"
             >
               <AuthenticatorControl />
+            </AdminLayout>
+          ) : <Navigate to="/login" />} />
+          
+          <Route path="/affiliate-management" element={user && user.role === 'admin' ? (
+            <AdminLayout 
+              user={user} 
+              onLogout={handleLogout} 
+              onMobileMenuOpen={() => setIsMobileMenuOpen(true)}
+              navItems={getNavItems()}
+              title="Affiliate Management"
+              subtitle="Manage affiliates and commission payments"
+            >
+              <AffiliateManagementPage />
             </AdminLayout>
           ) : <Navigate to="/login" />} />
           

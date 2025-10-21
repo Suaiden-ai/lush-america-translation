@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14.21.0'
+import { getStripeConfig } from '../shared/stripe-config.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,10 +15,15 @@ serve(async (req) => {
   }
 
   try {
-    // Initialize Stripe
-    const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
-      apiVersion: '2023-10-16',
+    // Obter configuração do Stripe baseada no ambiente detectado
+    const stripeConfig = getStripeConfig(req)
+    
+    // Initialize Stripe with dynamic configuration
+    const stripe = new Stripe(stripeConfig.secretKey, {
+      apiVersion: stripeConfig.apiVersion,
     })
+
+    console.log(`🔧 Using Stripe in ${stripeConfig.environment.environment} mode`)
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!

@@ -7,14 +7,14 @@ import { DocumentDetailsModal } from './DocumentDetailsModal';
 import { ZelleReceiptsAdmin } from '../../components/ZelleReceiptsAdmin';
 import { Chatbot } from '../../components/Chatbot';
 import { Document } from '../../App';
-import { Home, CreditCard, Receipt } from 'lucide-react';
+import { Home, CreditCard, Receipt, Users } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface FinanceDashboardProps {
   documents: Document[];
 }
 
-export function FinanceDashboard({ documents }: FinanceDashboardProps) {
+export function FinanceDashboard({ }: FinanceDashboardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
@@ -125,13 +125,14 @@ export function FinanceDashboard({ documents }: FinanceDashboardProps) {
             </div>
           )}
 
+
         </div>
       </div>
       {selectedDocument && (
         <DocumentDetailsModal 
           document={{
             ...selectedDocument,
-            status: (selectedDocument.status === 'pending' || selectedDocument.status === 'processing' || selectedDocument.status === 'completed') 
+            status: (selectedDocument.status === 'pending' || selectedDocument.status === 'processing' || selectedDocument.status === 'completed')
               ? selectedDocument.status 
               : 'pending'
           } as Document}

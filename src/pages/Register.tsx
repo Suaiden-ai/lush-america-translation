@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { User, Lock, Mail, UserPlus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Lock, Mail, UserPlus, Link } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useI18n } from '../contexts/I18nContext';
 
 export function Register() {
@@ -14,12 +14,36 @@ export function Register() {
     email: '',
     phone: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    referralCode: ''
   });
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState(false);
   const [countdown, setCountdown] = useState(5);
+  const [searchParams] = useSearchParams();
+  const [isReferralCodeFromUrl, setIsReferralCodeFromUrl] = useState(false);
+
+  // Check for referral code in URL
+  useEffect(() => {
+    const refCode = searchParams.get('ref');
+    if (refCode) {
+      setFormData(prev => ({ ...prev, referralCode: refCode }));
+      setIsReferralCodeFromUrl(true);
+    }
+  }, [searchParams]);
+
+  // Handle countdown and redirect after successful registration
+  useEffect(() => {
+    if (success && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (success && countdown === 0) {
+      navigate('/login');
+    }
+  }, [success, countdown, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,24 +88,13 @@ export function Register() {
       console.log('[Register] Tentando registrar:', formData.email);
       
       // Chamar signUp sem depender do loading do contexto
-      const result = await signUp(formData.email, formData.password, formData.name, formData.phone);
+      const result = await signUp(formData.email, formData.password, formData.name, formData.phone, formData.referralCode);
       
       console.log('[Register] Registro bem-sucedido:', result);
       
       // Definir sucesso imediatamente
       setSuccess(true);
-      
-      // Iniciar countdown e redirecionar após 5 segundos
-      const countdownInterval = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownInterval);
-            navigate('/login');
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      setCountdown(5);
       
     } catch (err: any) {
       console.error('[Register] Erro no registro:', err);
@@ -276,6 +289,39 @@ export function Register() {
                 <span className="mr-1">⚠️</span> {errors.phone}
               </p>}
             </div>
+
+                    <div>
+                      <label htmlFor="referralCode" className="block text-sm font-medium text-gray-700 mb-2">
+                        {t('auth.referralCode')}
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <Link className="h-5 w-5 text-gray-400" />
+                        </div>
+                        <input
+                          id="referralCode"
+                          name="referralCode"
+                          type="text"
+                          className={`appearance-none rounded-lg relative block w-full pl-10 pr-3 py-3 border ${
+                            errors.referralCode ? 'border-tfe-red-300 focus:ring-red-500 focus:border-tfe-red-500' : 'border-gray-300 focus:ring-tfe-blue-500 focus:border-tfe-blue-500'
+                          } placeholder-gray-500 text-gray-900 focus:outline-none sm:text-sm transition-colors ${
+                            isReferralCodeFromUrl ? 'bg-gray-100 cursor-not-allowed' : ''
+                          }`}
+                          placeholder={t('auth.referralCodePlaceholder')}
+                          value={formData.referralCode}
+                          onChange={handleChange}
+                          readOnly={isReferralCodeFromUrl}
+                        />
+                      </div>
+                      {isReferralCodeFromUrl && (
+                        <p className="mt-1 text-xs text-tfe-blue-600">
+                          {t('auth.referralCodeDetected')}
+                        </p>
+                      )}
+                      {errors.referralCode && <p className="mt-2 text-sm text-tfe-red-600 flex items-center">
+                        <span className="mr-1">⚠️</span> {errors.referralCode}
+                      </p>}
+                    </div>
           </div>
 
           {errors.general && (

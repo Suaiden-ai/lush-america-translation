@@ -20,9 +20,9 @@ i18n
       es: { translation: es },
       en: { translation: en }
     },
-    lng: 'en',
+    lng: undefined, // Deixar o LanguageDetector decidir
     fallbackLng: 'en',
-    debug: true,
+    debug: false, // Desabilitar debug em produção
     
     interpolation: {
       escapeValue: false,
@@ -31,6 +31,8 @@ i18n
     detection: {
       order: ['localStorage', 'navigator', 'htmlTag'],
       caches: ['localStorage'],
+      lookupLocalStorage: 'i18nextLng',
+      checkWhitelist: true
     }
   }).then(() => {
     console.log('✅ i18next inicializado com sucesso!');

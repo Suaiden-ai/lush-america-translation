@@ -3,8 +3,9 @@ import { StatsCards } from './StatsCards';
 import { DocumentsTable } from './DocumentsTable';
 import { DocumentDetailsModal } from './DocumentDetailsModal';
 import { ZelleReceiptsAdmin } from '../../components/ZelleReceiptsAdmin';
+import { FinanceAffiliateManagement } from '../FinanceDashboard/FinanceAffiliateManagement';
 import { Document } from '../../App';
-import { Home, Receipt } from 'lucide-react';
+import { Home, Receipt, Users } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { DateRange } from '../../components/DateRangeFilter';
 
@@ -14,7 +15,7 @@ interface AdminDashboardProps {
 
 export function AdminDashboard({ documents }: AdminDashboardProps) {
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'zelle-receipts'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'affiliates' | 'zelle-receipts'>('overview');
   const [dateRange, setDateRange] = useState<DateRange>({
     startDate: null,
     endDate: null,
@@ -27,6 +28,8 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
   useEffect(() => {
     if (location.hash === '#zelle-receipts') {
       setActiveTab('zelle-receipts');
+    } else if (location.hash === '#affiliates') {
+      setActiveTab('affiliates');
     } else {
       setActiveTab('overview');
     }
@@ -40,7 +43,7 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
     setSelectedDocument(null);
   };
 
-  const handleTabChange = (tab: 'overview' | 'zelle-receipts') => {
+  const handleTabChange = (tab: 'overview' | 'affiliates' | 'zelle-receipts') => {
     setActiveTab(tab);
     // Atualizar a URL para refletir a aba ativa
     if (tab === 'overview') {
@@ -52,6 +55,7 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: Home },
+    { id: 'affiliates', label: 'Affiliates', icon: Users },
     { id: 'zelle-receipts', label: 'Zelle Receipts', icon: Receipt },
   ];
 
@@ -117,11 +121,18 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
             </div>
           )}
 
+          {activeTab === 'affiliates' && (
+            <div className="space-y-4 sm:space-y-6 w-full">
+              <FinanceAffiliateManagement />
+            </div>
+          )}
+
           {activeTab === 'zelle-receipts' && (
             <div className="space-y-4 sm:space-y-6 w-full">
               <ZelleReceiptsAdmin />
             </div>
           )}
+
         </div>
       </div>
       <DocumentDetailsModal 

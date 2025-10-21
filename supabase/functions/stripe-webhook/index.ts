@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { getStripeConfig } from '../shared/stripe-config.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,20 +31,26 @@ Deno.serve(async (req: Request) => {
       throw new Error('Stripe signature missing');
     }
 
-    // Obter chaves do Stripe das variáveis de ambiente
-    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
-    const stripeWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
+    // Obter configuração do Stripe baseada no ambiente detectado
+    const stripeConfig = getStripeConfig(req);
+    
+    // Log adicional para debug
+    console.log('🔧 Using Stripe in', stripeConfig.environment.environment, 'mode');
+    
+    // Obter variáveis do Supabase
     const supabaseUrl = Deno.env.get('PROJECT_URL');
     const supabaseServiceKey = Deno.env.get('SERVICE_ROLE_KEY');
 
-    if (!stripeSecretKey || !stripeWebhookSecret || !supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Environment variables not configured');
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables not configured');
     }
 
-    // Importar Stripe dinamicamente
-    const stripe = new (await import('https://esm.sh/stripe@14.21.0')).default(stripeSecretKey, {
-      apiVersion: '2024-12-18.acacia',
+    // Importar Stripe dinamicamente com configuração dinâmica
+    const stripe = new (await import('https://esm.sh/stripe@14.21.0')).default(stripeConfig.secretKey, {
+      apiVersion: stripeConfig.apiVersion,
     });
+
+    console.log(`🔧 Using Stripe in ${stripeConfig.environment.environment} mode`);
 
     // Criar cliente Supabase
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -51,9 +58,16 @@ Deno.serve(async (req: Request) => {
     // Verificar assinatura do webhook
     let event;
     try {
-      event = await stripe.webhooks.constructEventAsync(body, signature, stripeWebhookSecret);
+      console.log('🔐 Verificando assinatura do webhook...');
+      console.log('🔐 Signature header:', signature);
+      console.log('🔐 Webhook secret (first 20 chars):', stripeConfig.webhookSecret.substring(0, 20) + '...');
+      console.log('🔐 Body length:', body.length);
+      
+      event = await stripe.webhooks.constructEventAsync(body, signature, stripeConfig.webhookSecret);
+      console.log('✅ Assinatura verificada com sucesso');
     } catch (err) {
-      console.error('Webhook signature verification failed:', err.message);
+      console.error('❌ Webhook signature verification failed:', err.message);
+      console.error('❌ Error details:', err);
       throw new Error('Webhook signature verification failed');
     }
 

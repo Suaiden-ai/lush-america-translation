@@ -557,7 +557,7 @@ export function Translations() {
                 <Envelope className="w-8 h-8 text-red-600" weight="fill" />
               </div>
               <h3 className="text-xl font-semibold text-slate-800 mb-2">{t('contact.email.title', 'Email')}</h3>
-              <p className="text-slate-600">contato@lushamerica.com</p>
+              <p className="text-slate-600">info@thefutureofenglish.com</p>
               <p className="text-sm text-slate-500 mt-2">{t('contact.email.support', '24/7 support')}</p>
             </div>
           </div>

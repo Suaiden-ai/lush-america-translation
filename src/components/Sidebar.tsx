@@ -1,10 +1,10 @@
-import React from 'react';
-import { LogOut, User } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LogOut } from 'lucide-react';
 import type { CustomUser } from '../hooks/useAuth';
-import { FileText as FileTextIcon } from 'lucide-react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Upload } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import LanguageSelector from './LanguageSelector';
+import { CompactReferralCode } from './CompactReferralCode';
+import { supabase } from '../lib/supabase';
 
 export interface NavItem {
   id: string;
@@ -23,6 +23,32 @@ interface SidebarProps {
 export function Sidebar({ navItems, user, onLogout, showLogo = true }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [referralCode, setReferralCode] = useState<string>('');
+
+  // Buscar referral_code da tabela affiliates
+  useEffect(() => {
+    const fetchReferralCode = async () => {
+      if (user?.role === 'affiliate' && user?.id) {
+        try {
+          const { data, error } = await supabase
+            .from('affiliates')
+            .select('referral_code')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (error) {
+            console.error('Error fetching referral code:', error);
+          } else if (data) {
+            setReferralCode(data.referral_code);
+          }
+        } catch (err) {
+          console.error('Error fetching referral code:', err);
+        }
+      }
+    };
+
+    fetchReferralCode();
+  }, [user?.id, user?.role]);
 
   const handleNavigation = (page: string) => {
     if (page.startsWith('/')) {
@@ -77,12 +103,16 @@ export function Sidebar({ navItems, user, onLogout, showLogo = true }: SidebarPr
                   ? 'bg-tfe-red-100 text-tfe-red-800'
                   : user.role === 'authenticator'
                   ? 'bg-green-100 text-green-800'
+                  : user.role === 'finance'
+                  ? 'bg-purple-100 text-purple-800'
                   : 'bg-tfe-blue-100 text-tfe-blue-800'
               }`}>
                 {user.role === 'admin'
                   ? 'Administrator'
                   : user.role === 'authenticator'
                   ? 'Authenticator'
+                  : user.role === 'finance'
+                  ? 'Finance'
                   : 'User'}
               </span>
             </div>
@@ -112,6 +142,15 @@ export function Sidebar({ navItems, user, onLogout, showLogo = true }: SidebarPr
           })}
 
 
+
+          {/* Código de Referência - apenas para afiliados */}
+          {user?.role === 'affiliate' && referralCode && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="px-3 py-2">
+                <CompactReferralCode referralCode={referralCode} />
+              </div>
+            </div>
+          )}
 
           {/* Seletor de idioma */}
           <div className="mt-6 pt-4 border-t border-gray-200">
