@@ -5,6 +5,7 @@ import { useFolders } from '../../hooks/useFolders';
 import { useTranslatedDocuments } from '../../hooks/useDocuments';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { formatDateTime } from '../../utils/dateUtils';
 
 export default function MyDocumentsPage() {
   const { user } = useAuth();
@@ -183,17 +184,6 @@ export default function MyDocumentsPage() {
   }
   const collapsedBreadcrumb = getCollapsedBreadcrumb(breadcrumbPath);
 
-  // Função para formatar data
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   // Função para renomear arquivo
   const handleRenameFile = async () => {
@@ -723,7 +713,7 @@ export default function MyDocumentsPage() {
                   </span>
                 )}
                 <span className="text-xs sm:text-sm text-gray-500">
-                  {item.created_at ? formatDate(item.created_at) : 'Unknown date'}
+                  {item.created_at ? formatDateTime(item.created_at) : 'Unknown date'}
                 </span>
               </div>
               <div className="flex items-center gap-1 sm:gap-2">
@@ -861,7 +851,7 @@ export default function MyDocumentsPage() {
               <div>
                 <span className="font-medium text-gray-700 text-sm sm:text-base">Created:</span> 
                 <span className="ml-2 text-gray-900 text-sm sm:text-base">
-                  {selectedFile.created_at ? formatDate(selectedFile.created_at) : 'Unknown date'}
+                  {selectedFile.created_at ? formatDateTime(selectedFile.created_at) : 'Unknown date'}
                 </span>
               </div>
             </div>

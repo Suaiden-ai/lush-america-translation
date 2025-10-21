@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { Document } from '../../App';
 import { DateRange } from '../../components/DateRangeFilter';
 import { GoogleStyleDatePicker } from '../../components/GoogleStyleDatePicker';
+import { formatDate } from '../../utils/dateUtils';
 
 // Interface estendida para incluir dados de tabelas relacionadas
 interface ExtendedDocument extends Omit<Document, 'client_name' | 'payment_method'> {
@@ -114,6 +115,9 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         console.error('Error loading payments data:', paymentsError);
       }
 
+      console.log('🔍 DEBUG - Payments data loaded:', paymentsData?.length || 0);
+      console.log('🔍 DEBUG - Sample payments:', paymentsData?.slice(0, 3));
+
       // Buscar perfis de usuários para verificar roles
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
@@ -126,10 +130,36 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       console.log('🔍 Profiles data loaded:', profilesData?.length || 0);
       console.log('🔍 Sample profiles:', profilesData?.slice(0, 5));
 
-      // Usar a mesma lógica da StatsCards: priorizar documents_to_be_verified
+      // Priorizar documentos que têm pagamentos (da tabela documents)
       const documentsWithCorrectStatus = mainDocuments?.map(doc => {
         const verifiedDoc = verifiedDocuments?.find(vDoc => vDoc.filename === doc.filename);
         const paymentInfo = paymentsData?.find(payment => payment.document_id === doc.id);
+        
+        // Se há pagamento, usar dados da tabela documents (não documents_to_be_verified)
+        if (paymentInfo) {
+          return {
+            ...doc,
+            user_name: doc.profiles?.name || null,
+            user_email: doc.profiles?.email || null,
+            user_phone: doc.profiles?.phone || null,
+            document_type: 'regular' as const,
+            payment_method: paymentInfo.payment_method || doc.payment_method || null,
+            payment_status: paymentInfo.status || 'pending',
+            client_name: doc.client_name || null,
+            display_name: doc.profiles?.name || null,
+            user_role: profilesData?.find(profile => profile.id === doc.user_id)?.role || 'user',
+          };
+        }
+        
+        // Debug log para verificar mapeamento de pagamentos
+        if (doc.filename && (doc.filename.includes('15033_manual_cadeira') || doc.filename.includes('transfer_') || doc.filename.includes('diploma_') || doc.filename.includes('contapdf'))) {
+          console.log('🔍 DEBUG - Document mapping:', {
+            filename: doc.filename,
+            doc_id: doc.id,
+            paymentInfo: paymentInfo,
+            hasPaymentInfo: !!paymentInfo
+          });
+        }
         
         // Verificar se o usuário tem role 'authenticator'
         const userProfile = profilesData?.find(profile => profile.id === doc.user_id);
@@ -157,7 +187,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
             target_language: verifiedDoc.target_language,
             payment_method: paymentInfo?.payment_method || doc.payment_method || null,
             // Para autenticadores, sempre mostrar 'completed' (Paid)
-            payment_status: isAuthenticator ? 'completed' : (paymentInfo?.status || (verifiedDoc.authenticated_by_name ? 'completed' : null)),
+            payment_status: isAuthenticator ? 'completed' : (paymentInfo?.status || (verifiedDoc.authenticated_by_name ? 'completed' : 'pending')),
             client_name: verifiedDoc.client_name || doc.client_name || null,
             // Para exibição na coluna USER/CLIENT: se for autenticador, usar client_name + (user_name)
             display_name: isAuthenticator && verifiedDoc.client_name && verifiedDoc.client_name !== 'Cliente Padrão'
@@ -178,7 +208,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
             document_type: 'regular' as const,
             payment_method: paymentInfo?.payment_method || doc.payment_method || null,
             // Para autenticadores, sempre mostrar 'completed' (Paid)
-            payment_status: isAuthenticator ? 'completed' : (paymentInfo?.status || null),
+            payment_status: isAuthenticator ? 'completed' : (paymentInfo?.status || 'pending'),
             client_name: doc.client_name || null,
             // Para exibição na coluna USER/CLIENT: se for autenticador, usar client_name + (user_name)
             display_name: isAuthenticator && doc.client_name && doc.client_name !== 'Cliente Padrão'
@@ -481,7 +511,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                   </div>
                 </div>
                 <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
-                  <p className="text-xs text-gray-500">{new Date(doc.created_at || '').toLocaleDateString('pt-BR')}</p>
+                  <p className="text-xs text-gray-500">{formatDate(doc.created_at || '')}</p>
                   <button onClick={() => onViewDocument(doc as Document)} className="text-blue-600 hover:text-blue-900">
                     <Eye className="w-4 h-4" />
                   </button>
@@ -604,7 +634,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                     
                     {/* Date */}
                     <td className="px-3 py-3 text-xs text-gray-500">
-                      {new Date(doc.created_at || '').toLocaleDateString('pt-BR')}
+                      {formatDate(doc.created_at || '')}
                     </td>
                     
                     {/* Details */}

@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { getStripeConfig } from '../shared/stripe-config.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,16 +28,15 @@ Deno.serve(async (req: Request) => {
       throw new Error('Session ID é obrigatório');
     }
 
-    // Obter chave secreta do Stripe das variáveis de ambiente
-    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!stripeSecretKey) {
-      throw new Error('STRIPE_SECRET_KEY não configurada');
-    }
+    // Obter configuração do Stripe baseada no ambiente detectado
+    const stripeConfig = getStripeConfig(req);
 
-    // Importar Stripe dinamicamente
-    const stripe = new (await import('https://esm.sh/stripe@14.21.0')).default(stripeSecretKey, {
-      apiVersion: '2024-12-18.acacia',
+    // Importar Stripe dinamicamente com configuração dinâmica
+    const stripe = new (await import('https://esm.sh/stripe@14.21.0')).default(stripeConfig.secretKey, {
+      apiVersion: stripeConfig.apiVersion,
     });
+
+    console.log(`🔧 Using Stripe in ${stripeConfig.environment.environment} mode`);
 
     // Buscar informações da sessão
     const session = await stripe.checkout.sessions.retrieve(sessionId);

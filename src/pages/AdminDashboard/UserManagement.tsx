@@ -48,12 +48,23 @@ export function UserManagement() {
   const updateUserRole = async (userId: string, newRole: string) => {
     try {
       setUpdatingUser(userId);
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: newRole, updated_at: new Date().toISOString() })
-        .eq('id', userId);
+      
+      // Usar função RPC para atualizar role de forma segura
+      const { data, error } = await supabase
+        .rpc('admin_update_user_role', {
+          p_user_id: userId,
+          p_new_role: newRole
+        });
 
-      if (error) throw error;
+      if (error) {
+        console.error('RPC error:', error);
+        throw new Error(`Failed to update role: ${error.message}`);
+      }
+
+      // Verificar se a operação foi bem-sucedida
+      if (data && !data.success) {
+        throw new Error(data.error || 'Failed to update user role');
+      }
 
       // Atualizar estado local
       setUsers(prev => prev.map(user =>
@@ -61,9 +72,9 @@ export function UserManagement() {
       ));
 
       console.log(`User ${userId} role updated to ${newRole}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating user role:', err);
-      alert('Error updating user role');
+      alert(`Error updating user role: ${err.message || 'Unknown error'}`);
     } finally {
       setUpdatingUser(null);
     }
@@ -82,6 +93,7 @@ export function UserManagement() {
   const adminUsers = users.filter(user => user.role === 'admin').length;
   const authenticatorUsers = users.filter(user => user.role === 'authenticator').length;
   const financeUsers = users.filter(user => user.role === 'finance').length;
+  const affiliateUsers = users.filter(user => user.role === 'affiliate').length;
   const regularUsers = users.filter(user => user.role === 'user').length;
 
   const getRoleIcon = (role: string) => {
@@ -92,6 +104,8 @@ export function UserManagement() {
         return <Shield className="w-4 h-4 text-tfe-blue-600" />;
       case 'finance':
         return <DollarSign className="w-4 h-4 text-green-600" />;
+      case 'affiliate':
+        return <Users className="w-4 h-4 text-orange-600" />;
       case 'user':
         return <User className="w-4 h-4 text-gray-600" />;
       default:
@@ -107,6 +121,8 @@ export function UserManagement() {
         return 'bg-tfe-blue-100 text-tfe-blue-800 border-tfe-blue-200';
       case 'finance':
         return 'bg-green-100 text-green-800 border-green-200';
+      case 'affiliate':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'user':
         return 'bg-gray-100 text-gray-800 border-gray-200';
       default:
@@ -201,6 +217,18 @@ export function UserManagement() {
           <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 border border-gray-100">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
+                <p className="text-[11px] sm:text-xs text-gray-600 font-medium truncate">Affiliates</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mt-0.5 sm:mt-1">{affiliateUsers}</p>
+              </div>
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0 ml-2">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-orange-900" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 border border-gray-100">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
                 <p className="text-[11px] sm:text-xs text-gray-600 font-medium truncate">Regular Users</p>
                 <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mt-0.5 sm:mt-1">{regularUsers}</p>
               </div>
@@ -258,8 +286,9 @@ export function UserManagement() {
                     <option value="all">All Roles</option>
                     <option value="admin">Admin</option>
                     <option value="authenticator">Authenticator</option>
-                    <option value="user">User</option>
                     <option value="finance">Finance</option>
+                    <option value="affiliate">Affiliate</option>
+                    <option value="user">User</option>
                   </select>
                 </div>
               </div>
@@ -336,6 +365,7 @@ export function UserManagement() {
                             aria-label="Update user role"
                           >
                             <option value="user">User</option>
+                            <option value="affiliate">Affiliate</option>
                             <option value="authenticator">Authenticator</option>
                             <option value="finance">Finance</option>
                             <option value="admin">Admin</option>
@@ -398,6 +428,7 @@ export function UserManagement() {
                         aria-label="Update user role"
                       >
                         <option value="user">User</option>
+                        <option value="affiliate">Affiliate</option>
                         <option value="authenticator">Authenticator</option>
                         <option value="finance">Finance</option>
                         <option value="admin">Admin</option>

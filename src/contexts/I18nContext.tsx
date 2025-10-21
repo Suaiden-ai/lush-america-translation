@@ -31,11 +31,16 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
   const [currentLanguage, setCurrentLanguage] = useState<Language>('en');
 
   useEffect(() => {
-    // Detectar idioma inicial
+    // Detectar idioma inicial do localStorage ou do i18n
+    const savedLang = localStorage.getItem('i18nextLng') as Language;
     const detectedLang = i18n.language as Language;
     
-    if (detectedLang && ['pt', 'es', 'en'].includes(detectedLang)) {
-      setCurrentLanguage(detectedLang);
+    // Priorizar idioma salvo no localStorage
+    const initialLang = savedLang || detectedLang;
+    
+    if (initialLang && ['pt', 'es', 'en'].includes(initialLang)) {
+      setCurrentLanguage(initialLang);
+      i18n.changeLanguage(initialLang);
     } else {
       // Fallback para inglês se não conseguir detectar
       setCurrentLanguage('en');

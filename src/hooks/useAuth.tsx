@@ -4,7 +4,7 @@ import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { getResetPasswordUrl } from '../utils/urlUtils';
 
 export interface CustomUser extends SupabaseUser {
-  role: 'user' | 'authenticator' | 'admin' | 'finance';
+  role: 'user' | 'authenticator' | 'admin' | 'finance' | 'affiliate';
   phone?: string;
 }
 
@@ -14,7 +14,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
-  signUp: (email: string, password: string, name: string, phone: string, role?: 'user' | 'authenticator') => Promise<any>;
+  signUp: (email: string, password: string, name: string, phone: string, referralCode?: string, role?: 'user' | 'authenticator') => Promise<any>;
   resetPassword: (email: string) => Promise<any>;
 }
 
@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [sessionExpired, setSessionExpired] = useState(false);
 
   // Busca ou cria perfil na tabela profiles
-  const fetchOrCreateProfile = async (userId: string, email: string, name: string, role: 'user' | 'authenticator' | 'admin' | 'finance' = 'user', phone?: string) => {
+  const fetchOrCreateProfile = async (userId: string, email: string, name: string, role: 'user' | 'authenticator' | 'admin' | 'finance' | 'affiliate' = 'user', phone?: string, referralCode?: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -49,6 +49,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (phone && (!data.phone || data.phone !== phone)) {
           updates.phone = phone;
         }
+        if (referralCode && (!data.referred_by_code || data.referred_by_code !== referralCode)) {
+          updates.referred_by_code = referralCode;
+        }
         if (Object.keys(updates).length > 0) {
           await supabase.from('profiles').update(updates).eq('id', userId);
           return { ...data, ...updates };
@@ -57,7 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         const { data: newProfile, error: createError } = await supabase
           .from('profiles')
-          .insert({ id: userId, email, name, role, phone })
+          .insert({ id: userId, email, name, role, phone, referred_by_code: referralCode || null })
           .select()
           .single();
         if (createError) {
@@ -144,7 +147,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(false);
   };
 
-  const signUp = async (email: string, password: string, name: string, phone: string, role: 'user' | 'authenticator' | 'admin' | 'finance' = 'user') => {
+  const signUp = async (email: string, password: string, name: string, phone: string, referralCode?: string, role: 'user' | 'authenticator' | 'admin' | 'finance' = 'user') => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -155,7 +158,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     // Cria perfil imediatamente após registro
     if (data.user) {
-      await fetchOrCreateProfile(data.user.id, email, name, role, phone);
+      await fetchOrCreateProfile(data.user.id, email, name, role, phone, referralCode);
     }
     return data;
   };

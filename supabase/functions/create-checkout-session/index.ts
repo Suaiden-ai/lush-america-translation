@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@14.21.0';
+import { getStripeConfig } from '../shared/stripe-config.ts';
 
 // Definição dos cabeçalhos CORS para reutilização
 const corsHeaders = {
@@ -109,14 +110,13 @@ Deno.serve(async (req: Request) => {
       throw new Error('ID ou caminho do arquivo é obrigatório');
     }
     
-    // Obter chaves de API das variáveis de ambiente com validação
-    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+    // Obter configuração do Stripe baseada no ambiente detectado
+    const stripeConfig = getStripeConfig(req);
+    
+    // Obter variáveis do Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!stripeSecretKey) {
-      throw new Error('STRIPE_SECRET_KEY não configurada');
-    }
     if (!supabaseUrl || !supabaseServiceKey) {
       console.warn('Variáveis de ambiente do Supabase não configuradas. A sessão não será salva no banco de dados.');
     }
@@ -128,11 +128,13 @@ Deno.serve(async (req: Request) => {
     console.log('DEBUG: Preço calculado:', totalPrice);
     console.log('DEBUG: Descrição do serviço:', serviceDescription);
 
-    // Inicializar o cliente Stripe
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2024-04-10', // Usar uma versão de API válida e recente
+    // Inicializar o cliente Stripe com configuração dinâmica
+    const stripe = new Stripe(stripeConfig.secretKey, {
+      apiVersion: stripeConfig.apiVersion,
       httpClient: Stripe.createFetchHttpClient(),
     });
+
+    console.log(`🔧 Using Stripe in ${stripeConfig.environment.environment} mode`);
 
     // Criar sessão de Checkout do Stripe
     const session = await stripe.checkout.sessions.create({

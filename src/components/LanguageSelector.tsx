@@ -23,7 +23,7 @@ const LanguageSelector: React.FC = () => {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+        className="w-full flex items-center space-x-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-lg transition-colors"
         aria-expanded={isOpen}
         aria-haspopup="true"
       >
@@ -34,15 +34,15 @@ const LanguageSelector: React.FC = () => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-300 rounded-md shadow-lg z-50">
+        <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
           <div className="py-1">
             {languages.map((language) => (
               <button
                 key={language.code}
                 onClick={() => handleLanguageChange(language.code)}
-                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
+                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
                   currentLanguage === language.code
-                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    ? 'bg-tfe-blue-50 text-tfe-blue-700 font-medium'
                     : 'text-gray-700'
                 }`}
               >
@@ -50,7 +50,7 @@ const LanguageSelector: React.FC = () => {
                   <span className="text-lg">{language.flag}</span>
                   <span>{language.name}</span>
                   {currentLanguage === language.code && (
-                    <div className="ml-auto w-2 h-2 bg-indigo-600 rounded-full"></div>
+                    <div className="ml-auto w-2 h-2 bg-tfe-blue-600 rounded-full"></div>
                   )}
                 </div>
               </button>
