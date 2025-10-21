@@ -44,7 +44,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
     preset: 'all'
   });
 
-  // Função para buscar e combinar dados de ambas as tabelas de documentos
+  // ✅ Função simplificada com JOIN direto (reversão para query original)
   const loadExtendedDocuments = useCallback(async () => {
     setLoading(true);
     try {
@@ -53,175 +53,67 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       let endDateParam = null;
       
       if (internalDateRange?.startDate) {
-        // Para data de início, usar início do dia (00:00:00)
         const startDate = new Date(internalDateRange.startDate);
         startDate.setHours(0, 0, 0, 0);
         startDateParam = startDate.toISOString();
       }
       
       if (internalDateRange?.endDate) {
-        // Para data de fim, usar fim do dia (23:59:59)
         const endDate = new Date(internalDateRange.endDate);
         endDate.setHours(23, 59, 59, 999);
         endDateParam = endDate.toISOString();
       }
 
-      // Buscar documentos da tabela principal com perfis de usuário
-      let mainDocumentsQuery = supabase
+      // ✅ QUERY SIMPLIFICADA COM LÓGICA ORIGINAL DE PAGAMENTO
+      let query = supabase
         .from('documents')
-        .select('*, profiles:profiles!documents_user_id_fkey(name, email, phone)')
+        .select(`
+          *,
+          profiles!documents_user_id_fkey(name, email, phone, role),
+          payments!payments_document_id_fkey(payment_method, status, amount, currency)
+        `)
         .order('created_at', { ascending: false });
 
       // Aplicar filtros de data
       if (startDateParam) {
-        mainDocumentsQuery = mainDocumentsQuery.gte('created_at', startDateParam);
+        query = query.gte('created_at', startDateParam);
       }
       if (endDateParam) {
-        mainDocumentsQuery = mainDocumentsQuery.lte('created_at', endDateParam);
+        query = query.lte('created_at', endDateParam);
       }
 
-      const { data: mainDocuments, error: mainError } = await mainDocumentsQuery;
+      const { data: documents, error } = await query;
 
-      if (mainError) {
-        console.error('Error loading documents:', mainError);
+      if (error) {
+        console.error('Error loading documents:', error);
+        return;
       }
 
-      // Buscar documentos da tabela documents_to_be_verified
-      let verifiedDocumentsQuery = supabase
-        .from('documents_to_be_verified')
-        .select('*, profiles:profiles!documents_to_be_verified_user_id_fkey(name, email, phone)')
-        .order('created_at', { ascending: false });
+      console.log('🔍 DEBUG - Documents loaded:', documents?.length || 0);
+      console.log('🔍 DEBUG - Sample documents:', documents?.slice(0, 3));
 
-      // Aplicar filtros de data
-      if (startDateParam) {
-        verifiedDocumentsQuery = verifiedDocumentsQuery.gte('created_at', startDateParam);
-      }
-      if (endDateParam) {
-        verifiedDocumentsQuery = verifiedDocumentsQuery.lte('created_at', endDateParam);
-      }
-
-      const { data: verifiedDocuments, error: verifiedError } = await verifiedDocumentsQuery;
-
-      if (verifiedError) {
-        console.error('Error loading verified documents:', verifiedError);
-      }
-
-      // Buscar dados de pagamentos para obter payment_method e status
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('payments')
-        .select('document_id, payment_method, status, amount, currency, created_at');
-
-      if (paymentsError) {
-        console.error('Error loading payments data:', paymentsError);
-      }
-
-      console.log('🔍 DEBUG - Payments data loaded:', paymentsData?.length || 0);
-      console.log('🔍 DEBUG - Sample payments:', paymentsData?.slice(0, 3));
-
-      // Buscar perfis de usuários para verificar roles
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, role');
-
-      if (profilesError) {
-        console.error('Error loading profiles data:', profilesError);
-      }
-
-      console.log('🔍 Profiles data loaded:', profilesData?.length || 0);
-      console.log('🔍 Sample profiles:', profilesData?.slice(0, 5));
-
-      // Priorizar documentos que têm pagamentos (da tabela documents)
-      const documentsWithCorrectStatus = mainDocuments?.map(doc => {
-        const verifiedDoc = verifiedDocuments?.find(vDoc => vDoc.filename === doc.filename);
-        const paymentInfo = paymentsData?.find(payment => payment.document_id === doc.id);
+      // Processar dados com lógica original de pagamento
+      const processedDocuments = documents?.map(doc => {
+        // Lógica original: usar payment_method do documento se não houver na tabela payments
+        const paymentMethod = doc.payments?.[0]?.payment_method || doc.payment_method || null;
+        const paymentStatus = doc.payments?.[0]?.status || 'pending';
         
-        // Se há pagamento, usar dados da tabela documents (não documents_to_be_verified)
-        if (paymentInfo) {
-          return {
-            ...doc,
-            user_name: doc.profiles?.name || null,
-            user_email: doc.profiles?.email || null,
-            user_phone: doc.profiles?.phone || null,
-            document_type: 'regular' as const,
-            payment_method: paymentInfo.payment_method || doc.payment_method || null,
-            payment_status: paymentInfo.status || 'pending',
-            client_name: doc.client_name || null,
-            display_name: doc.profiles?.name || null,
-            user_role: profilesData?.find(profile => profile.id === doc.user_id)?.role || 'user',
-          };
-        }
-        
-        // Debug log para verificar mapeamento de pagamentos
-        if (doc.filename && (doc.filename.includes('15033_manual_cadeira') || doc.filename.includes('transfer_') || doc.filename.includes('diploma_') || doc.filename.includes('contapdf'))) {
-          console.log('🔍 DEBUG - Document mapping:', {
-            filename: doc.filename,
-            doc_id: doc.id,
-            paymentInfo: paymentInfo,
-            hasPaymentInfo: !!paymentInfo
-          });
-        }
-        
-        // Verificar se o usuário tem role 'authenticator'
-        const userProfile = profilesData?.find(profile => profile.id === doc.user_id);
-        const userRole = userProfile?.role || 'user'; // Default para 'user' se não encontrar
-        const isAuthenticator = userRole === 'authenticator';
-        
-        // Debug log para verificar client_name
-        if (verifiedDoc?.client_name) {
-          console.log(`[DocumentsTable] Cliente encontrado: ${verifiedDoc.client_name} para arquivo: ${doc.filename}`, { verifiedDoc });
-        }
-        
-        // Se existe em documents_to_be_verified, usar dados de lá
-        if (verifiedDoc) {
-          return {
-            ...doc,
-            status: verifiedDoc.status,
-            user_name: verifiedDoc.profiles?.name || doc.profiles?.name || null,
-            user_email: verifiedDoc.profiles?.email || doc.profiles?.email || null,
-            user_phone: verifiedDoc.profiles?.phone || doc.profiles?.phone || null,
-            document_type: 'verified' as const,
-            authenticated_by_name: verifiedDoc.authenticated_by_name,
-            authenticated_by_email: verifiedDoc.authenticated_by_email,
-            authentication_date: verifiedDoc.authentication_date,
-            source_language: verifiedDoc.source_language,
-            target_language: verifiedDoc.target_language,
-            payment_method: paymentInfo?.payment_method || doc.payment_method || null,
-            // Para autenticadores, sempre mostrar 'completed' (Paid)
-            payment_status: isAuthenticator ? 'completed' : (paymentInfo?.status || (verifiedDoc.authenticated_by_name ? 'completed' : 'pending')),
-            client_name: verifiedDoc.client_name || doc.client_name || null,
-            // Para exibição na coluna USER/CLIENT: se for autenticador, usar client_name + (user_name)
-            display_name: isAuthenticator && verifiedDoc.client_name && verifiedDoc.client_name !== 'Cliente Padrão'
-              ? `${verifiedDoc.client_name} (${verifiedDoc.profiles?.name || doc.profiles?.name || 'N/A'})`
-              : verifiedDoc.authenticated_by_name && verifiedDoc.client_name && verifiedDoc.client_name !== 'Cliente Padrão'
-              ? `${verifiedDoc.client_name} (${verifiedDoc.authenticated_by_name})`
-              : verifiedDoc.profiles?.name || doc.profiles?.name || null,
-            // Adicionar role do usuário para filtros
-            user_role: userRole,
-          };
-        } else {
-          // Se não existe em documents_to_be_verified, usar dados originais
-          return {
-            ...doc,
-            user_name: doc.profiles?.name || null,
-            user_email: doc.profiles?.email || null,
-            user_phone: doc.profiles?.phone || null,
-            document_type: 'regular' as const,
-            payment_method: paymentInfo?.payment_method || doc.payment_method || null,
-            // Para autenticadores, sempre mostrar 'completed' (Paid)
-            payment_status: isAuthenticator ? 'completed' : (paymentInfo?.status || 'pending'),
-            client_name: doc.client_name || null,
-            // Para exibição na coluna USER/CLIENT: se for autenticador, usar client_name + (user_name)
-            display_name: isAuthenticator && doc.client_name && doc.client_name !== 'Cliente Padrão'
-              ? `${doc.client_name} (${doc.profiles?.name || 'N/A'})`
-              : doc.profiles?.name || null,
-            // Adicionar role do usuário para filtros
-            user_role: userRole,
-          };
-        }
+        return {
+          ...doc,
+          user_name: doc.profiles?.name || null,
+          user_email: doc.profiles?.email || null,
+          user_phone: doc.profiles?.phone || null,
+          user_role: doc.profiles?.role || 'user',
+          payment_method: paymentMethod,
+          payment_status: paymentStatus,
+          display_name: doc.profiles?.name || null,
+          document_type: 'regular' as const,
+          client_name: doc.client_name || null,
+        };
       }) || [];
 
-      setExtendedDocuments(documentsWithCorrectStatus);
-
+      console.log('🔍 DEBUG - Processed documents:', processedDocuments.length);
+      setExtendedDocuments(processedDocuments);
     } catch (error) {
       console.error('Error loading extended documents:', error);
     } finally {

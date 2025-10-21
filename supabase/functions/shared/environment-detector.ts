@@ -15,6 +15,13 @@ export interface EnvironmentInfo {
   userAgent?: string;
 }
 
+export type Environment = 'production' | 'staging' | 'test';
+
+export interface WebhookSecret {
+  env: Environment;
+  secret: string;
+}
+
 /**
  * Detects the current environment based on HTTP request headers
  * 
@@ -75,4 +82,37 @@ export function detectEnvironment(req: Request): EnvironmentInfo {
   console.log(`🎯 Environment detected: ${environment.toUpperCase()}`);
 
   return envInfo;
+}
+
+/**
+ * Gets all available webhook secrets from environment variables
+ * 
+ * This function returns all webhook secrets that are configured,
+ * allowing the webhook to try multiple secrets until finding the correct one.
+ * 
+ * @returns Array of webhook secrets with their environment labels
+ */
+export function getAllWebhookSecrets(): WebhookSecret[] {
+  const secrets: WebhookSecret[] = [];
+  
+  const prodSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET_PROD');
+  const stagingSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET_STAGING');
+  const testSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET_TEST');
+  
+  if (prodSecret) {
+    secrets.push({ env: 'production', secret: prodSecret });
+  }
+  
+  if (stagingSecret) {
+    secrets.push({ env: 'staging', secret: stagingSecret });
+  }
+  
+  if (testSecret) {
+    secrets.push({ env: 'test', secret: testSecret });
+  }
+  
+  console.log(`[webhook-secrets] Encontrados ${secrets.length} webhook secrets disponíveis:`, 
+    secrets.map(s => `${s.env}: ${s.secret.substring(0, 20)}...`));
+  
+  return secrets;
 }
