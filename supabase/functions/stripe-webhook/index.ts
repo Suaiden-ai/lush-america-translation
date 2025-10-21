@@ -1,11 +1,33 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { getStripeConfig } from '../shared/stripe-config.ts';
+import { getAllWebhookSecrets } from '../shared/environment-detector.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+/**
+ * Verifies Stripe webhook signature
+ * 
+ * @param body - Raw request body
+ * @param signature - Stripe signature header
+ * @param secret - Webhook secret to verify against
+ * @returns Promise<boolean> - True if signature is valid
+ */
+async function verifyStripeSignature(body: string, signature: string, secret: string): Promise<boolean> {
+  try {
+    const stripe = new (await import('https://esm.sh/stripe@14.21.0')).default(secret, {
+      apiVersion: '2024-12-18.acacia',
+    });
+    
+    await stripe.webhooks.constructEventAsync(body, signature, secret);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
 
 Deno.serve(async (req: Request) => {
   console.log(`[${new Date().toISOString()}] Webhook Stripe chamado`);
@@ -31,11 +53,35 @@ Deno.serve(async (req: Request) => {
       throw new Error('Stripe signature missing');
     }
 
+    // ✅ NOVA ABORDAGEM: Verificação multi-secret
+    const allSecrets = getAllWebhookSecrets();
+    let validConfig = null;
+    let isValid = false;
+    
+    console.log(`[stripe-webhook] Tentando verificar assinatura com ${allSecrets.length} secrets disponíveis...`);
+    
+    for (const { env, secret } of allSecrets) {
+      console.log(`[stripe-webhook] Tentando ambiente: ${env}`);
+      isValid = await verifyStripeSignature(body, signature, secret);
+      if (isValid) {
+        console.log(`✅ Assinatura verificada com sucesso usando ambiente: ${env}`);
+        validConfig = { environment: env, secret };
+        break;
+      } else {
+        console.log(`❌ Falha na verificação com ambiente: ${env}`);
+      }
+    }
+    
+    if (!isValid || !validConfig) {
+      console.error('❌ Webhook signature verification failed with all available secrets');
+      throw new Error('Webhook signature verification failed');
+    }
+
     // Obter configuração do Stripe baseada no ambiente detectado
     const stripeConfig = getStripeConfig(req);
     
     // Log adicional para debug
-    console.log('🔧 Using Stripe in', stripeConfig.environment.environment, 'mode');
+    console.log('🔧 Using Stripe in', validConfig.environment, 'mode');
     
     // Obter variáveis do Supabase
     const supabaseUrl = Deno.env.get('PROJECT_URL');
@@ -50,25 +96,19 @@ Deno.serve(async (req: Request) => {
       apiVersion: stripeConfig.apiVersion,
     });
 
-    console.log(`🔧 Using Stripe in ${stripeConfig.environment.environment} mode`);
+    console.log(`🔧 Using Stripe in ${validConfig.environment} mode`);
 
     // Criar cliente Supabase
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verificar assinatura do webhook
+    // Verificar assinatura do webhook (já verificada acima)
     let event;
     try {
-      console.log('🔐 Verificando assinatura do webhook...');
-      console.log('🔐 Signature header:', signature);
-      console.log('🔐 Webhook secret (first 20 chars):', stripeConfig.webhookSecret.substring(0, 20) + '...');
-      console.log('🔐 Body length:', body.length);
-      
-      event = await stripe.webhooks.constructEventAsync(body, signature, stripeConfig.webhookSecret);
-      console.log('✅ Assinatura verificada com sucesso');
+      event = await stripe.webhooks.constructEventAsync(body, signature, validConfig.secret);
+      console.log('✅ Evento processado com sucesso');
     } catch (err) {
-      console.error('❌ Webhook signature verification failed:', err.message);
-      console.error('❌ Error details:', err);
-      throw new Error('Webhook signature verification failed');
+      console.error('❌ Erro ao processar evento:', err.message);
+      throw new Error('Failed to process webhook event');
     }
 
     console.log('DEBUG: Webhook event received:', event.type);
