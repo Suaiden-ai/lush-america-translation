@@ -24,6 +24,14 @@ export function WithdrawalTimer({
     }
 
     const updateTimer = () => {
+      // Se já pode sacar (tem saldo disponível), mostrar como disponível
+      if (canRequestWithdrawal) {
+        setIsAvailable(true);
+        setTimeLeft(t('affiliate.withdrawalAvailableNow'));
+        return;
+      }
+
+      // Caso contrário, calcular tempo restante baseado na próxima data de liberação
       const firstPageDate = new Date(firstPageTranslatedAt);
       const now = new Date();
       const diffInMs = now.getTime() - firstPageDate.getTime();
@@ -36,7 +44,7 @@ export function WithdrawalTimer({
         setTimeLeft(t('affiliate.withdrawalAvailableNow'));
       } else {
         setIsAvailable(false);
-        const remainingDays = 30 - diffInDays;
+        const remainingDays = 30 - diffInDays - 1;
         const remainingHours = 23 - diffInHours;
         const remainingMinutes = 59 - diffInMinutes;
         

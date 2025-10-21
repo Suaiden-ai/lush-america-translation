@@ -833,5 +833,264 @@
         ]
       }
     }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Panel de Administración",
+      "subtitle": "Gestiona proyectos de traducción y monitorea métricas de negocio",
+      "tabs": {
+        "overview": "Resumen",
+        "zelleReceipts": "Recibos Zelle"
+      }
+    },
+    "stats": {
+      "totalDocuments": "Total de Documentos",
+      "completedDocuments": "Documentos Completados",
+      "pendingDocuments": "Documentos Pendientes",
+      "totalRevenue": "Ingresos Totales",
+      "thisMonth": "Este Mes",
+      "lastMonth": "Mes Pasado",
+      "loading": "Cargando estadísticas...",
+      "error": "Error al cargar estadísticas",
+      "allTime": "Todo el tiempo",
+      "average": "Promedio",
+      "activeUsers": "Usuarios Activos",
+      "registeredUsers": "Usuarios registrados",
+      "completed": "Completado",
+      "completedDescription": "Traducido y Autenticado",
+      "processing": "En Proceso",
+      "processingDescription": "No traducido y no autenticado",
+      "pending": "Pendiente",
+      "pendingDescription": "Traducido, esperando aprobación del Autenticador",
+      "statusBreakdown": "Desglose por Estado",
+      "docs": "docs",
+      "translated": "Traducidos",
+      "successRate": "Tasa de Éxito"
+    },
+    "documents": {
+      "title": "Documentos",
+      "table": {
+        "columns": {
+          "clientName": "Nombre del Cliente",
+          "documentName": "Nombre del Documento",
+          "uploadDate": "Fecha de Subida",
+          "status": "Estado",
+          "pages": "Páginas",
+          "amount": "Cantidad",
+          "actions": "Acciones"
+        },
+        "status": {
+          "pending": "Pendiente",
+          "processing": "En Proceso",
+          "completed": "Completado",
+          "cancelled": "Cancelado",
+          "paid": "Pagado",
+          "pendingVerification": "Verificación Pendiente",
+          "failed": "Falló",
+          "refunded": "Reembolsado",
+          "unknown": "Desconocido",
+          "draft": "Borrador"
+        },
+        "actions": {
+          "view": "Ver",
+          "download": "Descargar",
+          "edit": "Editar"
+        },
+        "noDocuments": "No se encontraron documentos",
+        "noDocumentsDescription": "Intenta ajustar tus criterios de búsqueda o filtro.",
+        "loading": "Cargando documentos...",
+        "showing": "Mostrando {filtered} de {total} documentos",
+        "total": "Total",
+        "exportCsv": "Exportar CSV",
+        "searchPlaceholder": "Buscar por nombre, email, archivo, cliente...",
+        "filters": {
+          "allStatus": "Todos los Estados",
+          "allUserRoles": "Todos los Roles",
+          "user": "Usuario",
+          "authenticator": "Autenticador"
+        },
+        "modal": {
+          "title": "Detalles del Documento",
+          "fileInformation": "Información del Archivo",
+          "edit": "Editar",
+          "filename": "Nombre del Archivo",
+          "enterFilename": "Ingrese el nombre del archivo",
+          "pages": "Páginas",
+          "enterPages": "Ingrese el número de páginas",
+          "totalCost": "Costo Total",
+          "status": "Estado",
+          "sourceLanguage": "Idioma de Origen",
+          "enterSourceLanguage": "Ingrese el idioma de origen",
+          "targetLanguage": "Idioma de Destino",
+          "enterTargetLanguage": "Ingrese el idioma de destino",
+          "bankStatement": "Extracto Bancario",
+          "authenticated": "Autenticado",
+          "cancel": "Cancelar",
+          "saving": "Guardando...",
+          "saveChanges": "Guardar Cambios",
+          "userInformation": "Información del Usuario",
+          "loadingUserInfo": "Cargando información del usuario...",
+          "name": "Nombre",
+          "enterFullName": "Ingrese el nombre completo",
+          "email": "Correo Electrónico",
+          "enterEmail": "Ingrese la dirección de correo electrónico",
+          "phoneNumber": "Número de Teléfono",
+          "enterPhoneOptional": "Ingrese el número de teléfono (opcional)",
+          "userId": "ID del Usuario",
+          "documentDetails": "Detalles del Documento",
+          "translationType": "Tipo de Traducción",
+          "timeline": "Cronología",
+          "created": "Creado",
+          "lastUpdated": "Última Actualización",
+          "verification": "Verificación",
+          "verificationCode": "Código de Verificación",
+          "paymentInformation": "Información de Pago",
+          "loadingPaymentInfo": "Cargando información de pago...",
+          "amount": "Cantidad",
+          "paymentMethod": "Método de Pago",
+          "paymentDate": "Fecha de Pago",
+          "paymentActions": "Acciones de Pago",
+          "cancelAndRefund": "Cancelar y reembolsar este pago",
+          "cancelPayment": "Cancelar Pago",
+          "noPaymentInfo": "No se encontró información de pago para este documento.",
+          "fileActions": "Acciones de Archivo",
+          "viewTranslated": "Ver Traducido",
+          "viewOriginal": "Ver Original",
+          "downloadTranslated": "Descargar Traducido",
+          "downloadOriginal": "Descargar Original",
+          "close": "Cerrar",
+          "userInfoNotAvailable": "Información del usuario no disponible",
+          "notSpecified": "No especificado",
+          "yes": "Sí",
+          "no": "No",
+          "notProvided": "No proporcionado",
+          "stripeSessionId": "ID de Sesión de Stripe"
+        }
+      }
+    },
+    "userManagement": {
+      "title": "Gestión de Usuarios",
+      "subtitle": "Gestiona roles y permisos de usuarios",
+      "stats": {
+        "totalUsers": "Total de Usuarios",
+        "activeUsers": "Usuarios Activos",
+        "adminUsers": "Usuarios Admin",
+        "authenticatorUsers": "Usuarios Autenticadores",
+        "financeUsers": "Usuarios Finance"
+      },
+      "table": {
+        "columns": {
+          "name": "Nombre",
+          "email": "Correo Electrónico",
+          "role": "Rol",
+          "status": "Estado",
+          "lastLogin": "Último Acceso",
+          "actions": "Acciones"
+        },
+        "roles": {
+          "user": "Usuario",
+          "admin": "Admin",
+          "authenticator": "Autenticador",
+          "finance": "Finance"
+        },
+        "status": {
+          "active": "Activo",
+          "inactive": "Inactivo"
+        },
+        "actions": {
+          "edit": "Editar",
+          "delete": "Eliminar",
+          "changeRole": "Cambiar Rol"
+        }
+      }
+    },
+    "authenticatorControl": {
+      "title": "Control de Autenticadores",
+      "subtitle": "Gestiona autenticadores y su carga de trabajo",
+      "table": {
+        "columns": {
+          "name": "Nombre",
+          "email": "Correo Electrónico",
+          "documentsPending": "Documentos Pendientes",
+          "lastActivity": "Última Actividad",
+          "status": "Estado",
+          "actions": "Acciones"
+        }
+      }
+    },
+    "zelleReceipts": {
+      "title": "Recibos Zelle",
+      "subtitle": "Gestiona recibos de pago Zelle"
+    }
+  },
+  "finance": {
+    "dashboard": {
+      "title": "Panel Financiero",
+      "subtitle": "Monitorea métricas financieras y procesamiento de pagos",
+      "tabs": {
+        "overview": "Resumen",
+        "payments": "Pagos",
+        "zelleReceipts": "Recibos Zelle"
+      }
+    },
+    "stats": {
+      "totalRevenue": "Ingresos Totales",
+      "monthlyRevenue": "Ingresos Mensuales",
+      "pendingPayments": "Pagos Pendientes",
+      "completedPayments": "Pagos Completados",
+      "averageOrderValue": "Valor Promedio del Pedido",
+      "conversionRate": "Tasa de Conversión"
+    },
+    "payments": {
+      "title": "Pagos",
+      "table": {
+        "columns": {
+          "clientName": "Nombre del Cliente",
+          "amount": "Cantidad",
+          "status": "Estado",
+          "method": "Método de Pago",
+          "date": "Fecha",
+          "actions": "Acciones"
+        },
+        "status": {
+          "pending": "Pendiente",
+          "completed": "Completado",
+          "failed": "Falló",
+          "refunded": "Reembolsado"
+        },
+        "methods": {
+          "stripe": "Stripe",
+          "zelle": "Zelle"
+        }
+      }
+    },
+    "reports": {
+      "title": "Reportes",
+      "subtitle": "Reportes financieros y análisis"
+    },
+    "affiliates": {
+      "title": "Gestión de Afiliados",
+      "subtitle": "Gestiona comisiones y pagos de afiliados"
+    }
+  },
+  "authenticator": {
+    "dashboard": {
+      "title": "Panel del Autenticador",
+      "subtitle": "Verifica y autentica documentos",
+      "navigation": {
+        "overview": "Resumen",
+        "authenticate": "Autenticar",
+        "translated": "Traducidos",
+        "upload": "Subir"
+      }
+    },
+    "verification": {
+      "title": "Verificación de Documentos",
+      "subtitle": "Verifica autenticidad y calidad de documentos"
+    },
+    "documents": {
+      "title": "Documentos",
+      "subtitle": "Gestiona flujo de trabajo de autenticación de documentos"
+    }
   }
 }

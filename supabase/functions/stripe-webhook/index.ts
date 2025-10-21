@@ -30,9 +30,10 @@ async function verifyStripeSignature(body: string, signature: string, secret: st
 }
 
 Deno.serve(async (req: Request) => {
-  console.log(`[${new Date().toISOString()}] Webhook Stripe chamado`);
-  console.log(`Method: ${req.method}`);
-  console.log(`URL: ${req.url}`);
+  console.log(`🔍 [WEBHOOK DEBUG] [${new Date().toISOString()}] Webhook Stripe chamado`);
+  console.log(`🔍 [WEBHOOK DEBUG] Method: ${req.method}`);
+  console.log(`🔍 [WEBHOOK DEBUG] URL: ${req.url}`);
+  console.log(`🔍 [WEBHOOK DEBUG] Headers:`, Object.fromEntries(req.headers.entries()));
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -111,8 +112,10 @@ Deno.serve(async (req: Request) => {
       throw new Error('Failed to process webhook event');
     }
 
-    console.log('DEBUG: Webhook event received:', event.type);
-    console.log('DEBUG: Event data:', JSON.stringify(event.data.object, null, 2));
+    console.log('🔍 [WEBHOOK DEBUG] Webhook event received:', event.type);
+    console.log('🔍 [WEBHOOK DEBUG] Event data:', JSON.stringify(event.data.object, null, 2));
+    console.log('🔍 [WEBHOOK DEBUG] Event ID:', event.id);
+    console.log('🔍 [WEBHOOK DEBUG] Event created:', event.created);
 
     // Processar eventos específicos
     switch (event.type) {
@@ -156,8 +159,8 @@ Deno.serve(async (req: Request) => {
 });
 
 async function handleCheckoutSessionCompleted(session: any, supabase: any) {
-  console.log('DEBUG: Processando checkout session completed:', session.id);
-  console.log('DEBUG: Sessão completa:', JSON.stringify(session, null, 2));
+  console.log('🔍 [WEBHOOK DEBUG] Processando checkout session completed:', session.id);
+  console.log('🔍 [WEBHOOK DEBUG] Sessão completa:', JSON.stringify(session, null, 2));
   
   try {
     const {
@@ -172,9 +175,25 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       documentId
     } = session.metadata;
 
-    console.log('DEBUG: Metadados da sessão:', {
+    console.log('🔍 [WEBHOOK DEBUG] Metadados da sessão:', {
       fileId, userId, filename, pages, isCertified, isNotarized, isBankStatement, totalPrice, documentId
     });
+
+    // 🔍 DEBUG: Verificar se é um documento de autenticador
+    console.log('🔍 [WEBHOOK DEBUG] Verificando se é documento de autenticador...');
+    const { data: userProfile, error: userError } = await supabase
+      .from('profiles')
+      .select('role, name, email')
+      .eq('id', userId)
+      .single();
+    
+    if (userError) {
+      console.log('🔍 [WEBHOOK DEBUG] Erro ao buscar perfil do usuário:', userError);
+    } else {
+      console.log('🔍 [WEBHOOK DEBUG] Perfil do usuário:', userProfile);
+      console.log('🔍 [WEBHOOK DEBUG] Role do usuário:', userProfile?.role);
+      console.log('🔍 [WEBHOOK DEBUG] É autenticador?', userProfile?.role === 'authenticator');
+    }
 
     if (!documentId) {
       console.log('WARNING: documentId não encontrado nos metadados, pulando processamento');
@@ -186,13 +205,29 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       return;
     }
 
-    // Atualizar o documento existente com status processing
-    console.log('DEBUG: Atualizando documento existente para status processing');
+    // 🔍 DEBUG: Verificar status atual do documento antes de alterar
+    console.log('🔍 [WEBHOOK DEBUG] Verificando status atual do documento...');
+    const { data: currentDocument, error: currentError } = await supabase
+      .from('documents')
+      .select('id, filename, status, user_id, created_at, updated_at')
+      .eq('id', documentId)
+      .single();
+    
+    if (currentError) {
+      console.log('🔍 [WEBHOOK DEBUG] Erro ao buscar documento atual:', currentError);
+    } else {
+      console.log('🔍 [WEBHOOK DEBUG] Documento atual encontrado:', currentDocument);
+      console.log('🔍 [WEBHOOK DEBUG] Status atual:', currentDocument?.status);
+      console.log('🔍 [WEBHOOK DEBUG] Vai alterar de', currentDocument?.status, 'para pending');
+    }
+
+    // Atualizar o documento existente com status pending
+    console.log('🔍 [WEBHOOK DEBUG] Atualizando documento existente para status pending');
     
     const { data: updatedDocument, error: updateError } = await supabase
       .from('documents')
       .update({
-        status: 'processing',
+        status: 'pending',
         updated_at: new Date().toISOString()
       })
       .eq('id', documentId)

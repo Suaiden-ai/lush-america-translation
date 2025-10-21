@@ -54,13 +54,13 @@
     "passwordResetSuccess": "Senha redefinida com sucesso",
     "firstNameRequired": "Nome é obrigatório",
     "emailRequired": "E-mail é obrigatório",
-    "phoneRequired": "Telefone é obrigatório",
-    "invalidEmail": "Digite um e-mail válido",
-    "invalidPhone": "Digite um telefone válido",
+    "phoneRequired": "Número de telefone é obrigatório",
+    "invalidEmail": "Por favor, insira um e-mail válido",
+    "invalidPhone": "Por favor, insira um número de telefone válido",
     "passwordRequired": "Senha é obrigatória",
     "passwordsDoNotMatch": "As senhas não coincidem",
-    "registrationFailed": "Falha no registro. Tente novamente.",
-    "emailAlreadyRegistered": "Este e-mail já está registrado. Tente fazer login.",
+    "registrationFailed": "Falha no cadastro. Tente novamente.",
+    "emailAlreadyRegistered": "Este e-mail já está cadastrado. Tente fazer login.",
     "passwordTooShort": "A senha deve ter pelo menos 6 caracteres.",
     "referralCode": "Código de Indicação (Opcional)",
     "referralCodePlaceholder": "Digite o código de indicação",
@@ -70,7 +70,59 @@
     "welcome": "Bem-vindo",
     "welcomeBack": "Bem-vindo de volta",
     "overview": "Visão Geral",
-    "stats": "Estatísticas",
+    "statistics": {
+      "title": "Suas Estatísticas",
+      "description": "Visão geral da sua atividade de tradução de documentos",
+      "welcome": {
+        "title": "Bem-vindo ao seu Painel!",
+        "description": "Envie seu primeiro documento para começar a acompanhar o progresso e estatísticas das suas traduções."
+      },
+      "cards": {
+        "totalDocuments": "Total de Documentos",
+        "inProgress": "Em Progresso",
+        "completed": "Concluídos",
+        "totalSpent": "Total Gasto",
+        "thisMonth": "Este Mês",
+        "successRate": "Taxa de Sucesso",
+        "descriptions": {
+          "pagesTotal": "páginas no total",
+          "pendingProgress": "pendentes,",
+          "inProgressText": "em progresso",
+          "readyDownload": "Pronto para download",
+          "avgPerDocument": "média por documento",
+          "documentsUploaded": "Documentos enviados",
+          "completionRate": "Taxa de conclusão"
+        }
+      },
+      "features": {
+        "perPage": "Por página",
+        "turnaround": "Tempo de entrega",
+        "accepted": "Aceito",
+        "translation": "Translation"
+      }
+    },
+    "recentActivity": {
+      "title": "Atividade Recente",
+      "description": "Sua atividade recente de documentos aparecerá aqui assim que você começar a enviar documentos.",
+      "noActivity": {
+        "title": "Nenhuma Atividade Recente",
+        "description": "Sua atividade recente de documentos aparecerá aqui assim que você começar a enviar documentos."
+      },
+      "status": {
+        "pending": "Pendente",
+        "processing": "Processando",
+        "inProgress": "Em Progresso",
+        "completed": "Concluído",
+        "approved": "Aprovado",
+        "rejected": "Rejeitado",
+        "unknown": "Desconhecido"
+      },
+      "actions": {
+        "download": "Baixar",
+        "view": "Visualizar"
+      },
+      "loading": "Carregando status..."
+    },
     "quickActions": {
       "title": "Ações Rápidas",
       "description": "Tarefas comuns e atalhos",
@@ -89,7 +141,7 @@
         },
         "translations": {
           "title": "Serviços de Tradução",
-          "description": "Saiba mais sobre nossos serviços"
+          "description": "Conheça nossos serviços"
         },
         "contact": {
           "title": "Contatar Suporte",
@@ -99,21 +151,21 @@
       "stats": {
         "pricing": "Preços",
         "perPage": "por página",
-        "turnaround": "Prazo",
+        "turnaround": "Tempo de entrega",
         "deliveryTime": "tempo de entrega"
       },
       "features": {
         "title": "✨ O que você recebe:",
         "list": {
-          "uscisAccepted": "Traduções aceitas pela USCIS",
-          "officialCertification": "Certificação oficial e autenticação",
+          "uscisAccepted": "Traduções aceitas pelo USCIS",
+          "officialCertification": "Certificação e autenticação oficial",
           "digitalVerification": "Sistema de verificação digital",
           "support": "Suporte ao cliente 24/7"
         }
       },
       "help": {
         "title": "Precisa de Ajuda?",
-        "description": "Consulte nossas Perguntas Frequentes ou entre em contato com o suporte para assistência com suas necessidades de tradução.",
+        "description": "Consulte nosso FAQ ou entre em contato com o suporte para assistência com suas necessidades de tradução.",
         "buttons": {
           "viewFaq": "Ver FAQ",
           "contactSupport": "Contatar Suporte"
@@ -124,64 +176,11 @@
     "pendingDocuments": "Documentos Pendentes",
     "completedDocuments": "Documentos Concluídos",
     "processingDocuments": "Documentos em Processamento",
-    "uploadDescription": "Envie seus documentos para serviços de tradução profissional. Todas as traduções são certificadas e aceitas pela USCIS e autoridades dos EUA.",
+    "uploadDescription": "Envie seus documentos para serviços de tradução profissional. Todas as traduções são certificadas e aceitas pelo USCIS e autoridades dos EUA.",
     "notifications": {
       "translationReady": "Sua tradução está pronta!",
       "download": "Baixar",
       "close": "Fechar notificação"
-    },
-    "statistics": {
-      "title": "Suas Estatísticas",
-      "description": "Visão geral da sua atividade de tradução de documentos",
-      "welcome": {
-        "title": "Bem-vindo ao seu Painel!",
-        "description": "Envie seu primeiro documento para começar a acompanhar o progresso e estatísticas das suas traduções."
-      },
-      "cards": {
-        "totalDocuments": "Total de Documentos",
-        "inProgress": "Em Andamento",
-        "completed": "Concluídos",
-        "totalSpent": "Total Gasto",
-        "thisMonth": "Este Mês",
-        "successRate": "Taxa de Sucesso",
-        "descriptions": {
-          "pagesTotal": "páginas no total",
-          "pendingProgress": "pendente,",
-          "inProgressText": "em andamento",
-          "readyDownload": "Prontos para download",
-          "avgPerDocument": "média por documento",
-          "documentsUploaded": "Documentos enviados",
-          "completionRate": "Taxa de conclusão"
-        }
-      },
-      "features": {
-        "perPage": "Por página",
-        "turnaround": "Prazo",
-        "accepted": "Aceito",
-        "translation": "Tradução"
-      }
-    },
-    "recentActivity": {
-      "title": "Atividade Recente",
-      "description": "Sua atividade recente de documentos aparecerá aqui assim que você começar a enviar documentos.",
-      "noActivity": {
-        "title": "Nenhuma Atividade Recente",
-        "description": "Sua atividade recente de documentos aparecerá aqui assim que você começar a enviar documentos."
-      },
-      "status": {
-        "pending": "Pendente",
-        "processing": "Em Andamento",
-        "inProgress": "Em Progresso",
-        "completed": "Concluído",
-        "approved": "Aprovado",
-        "rejected": "Rejeitado",
-        "unknown": "Desconhecido"
-      },
-      "actions": {
-        "download": "Baixar",
-        "view": "Visualizar"
-      },
-      "loading": "Carregando status..."
     }
   },
   "documents": {
@@ -197,7 +196,7 @@
     "targetLanguage": "Idioma de Destino",
     "translationProgress": "Progresso da Tradução",
     "pending": "Pendente",
-    "processing": "Em Processamento",
+    "processing": "Processando",
     "completed": "Concluído",
     "cancelled": "Cancelado",
     "draft": "Rascunho"
@@ -207,7 +206,7 @@
     "folderName": "Nome da Pasta",
     "folderColor": "Cor da Pasta",
     "parentFolder": "Pasta Pai",
-    "noParent": "Sem pasta pai",
+    "noParent": "Nenhuma pasta pai",
     "folderCreated": "Pasta criada com sucesso",
     "folderUpdated": "Pasta atualizada com sucesso",
     "folderDeleted": "Pasta excluída com sucesso"
@@ -216,8 +215,8 @@
     "notifications": "Notificações",
     "noNotifications": "Nenhuma notificação",
     "markAllAsRead": "Marcar todas como lidas",
-    "unreadCount": "{{count}} não lida",
-    "unreadCount_plural": "{{count}} não lidas"
+    "unreadCount": "{{count}} unread",
+    "unreadCount_plural": "{{count}} unread"
   },
   "payments": {
     "payment": "Pagamento",
@@ -227,12 +226,12 @@
     "paymentDate": "Data do Pagamento",
     "paymentSuccess": "Pagamento realizado com sucesso",
     "paymentCancelled": "Pagamento cancelado",
-    "paymentFailed": "Falha no pagamento"
+    "paymentFailed": "Pagamento falhou"
   },
   "errors": {
     "somethingWentWrong": "Algo deu errado",
-    "tryAgain": "Tente novamente",
-    "networkError": "Erro de conexão",
+    "tryAgain": "Tentar novamente",
+    "networkError": "Erro de rede",
     "unauthorized": "Não autorizado",
     "forbidden": "Acesso negado",
     "notFound": "Não encontrado",
@@ -346,10 +345,10 @@
     "totalClientsCount": "Total de clientes",
     "byYourClients": "Pelos seus clientes",
     "pagesToReachLevel2": "páginas para atingir o Nível 2",
-    "earnXPerPage": "Ganhando {rate} por página",
+    "earnXPerPage": "Ganhe {rate} por página",
     "insteadOf": "em vez de",
     "level2Achieved": "Nível 2 Atingido!",
-    "earningXPerPage": "Ganhando {rate} por página",
+    "earningXPerPage": "Ganando {rate} por página",
     "withdrawalAvailable": "Saque Disponível",
     "youCanRequestWithdrawal": "Você pode solicitar um saque de",
     "noClientsYet": "Nenhum Cliente Ainda",
@@ -372,7 +371,7 @@
     "affiliateTools": "Ferramentas de Afiliado",
     "referredClients": "Clientes Indicados",
     "summary": "Resumo",
-    "searchClients": "Buscar clientes...",
+    "searchClients": "Pesquisar clientes...",
     "client": "Cliente",
     "registered": "Registrado",
     "pages": "Páginas",
@@ -392,9 +391,9 @@
     "withdrawalAvailable": "Saque Disponível",
     "withdrawalNotAvailable": "Saque Ainda Não Disponível",
     "withdrawalAvailableNow": "Disponível agora!",
-    "withdrawalAvailableFor": "Disponível há {days} dias",
-    "withdrawalAvailableIn": "Faltam {days} dias, {hours}h {minutes}min",
-    "withdrawalAvailableInHours": "Faltam {hours}h {minutes}min",
+    "withdrawalAvailableFor": "Disponível por {days} dias",
+    "withdrawalAvailableIn": "{days} dias, {hours}h {minutes}m restantes",
+    "withdrawalAvailableInHours": "{hours}h {minutes}m restantes",
     "startEarningToUnlockWithdrawals": "Comece a ganhar para desbloquear saques",
     "ready": "Pronto",
     "commissionsAndWithdrawals": "Comissões e Saques",
@@ -426,25 +425,25 @@
     "requestId": "ID da Solicitação",
     "requestedAt": "Solicitado em",
     "processedAt": "Processado em",
-    "adminNotes": "Observações do Administrador",
+    "adminNotes": "Notas do Admin",
     "close": "Fechar",
-    "noAdminNotes": "Nenhuma observação do administrador",
+    "noAdminNotes": "Nenhuma nota do admin",
     "transactionId": "ID da Transação",
     "bankName": "Nome do Banco",
     "accountNumber": "Número da Conta",
     "accountHolder": "Titular da Conta",
-    "routingNumber": "Código de Roteamento",
+    "routingNumber": "Número de Roteamento",
     "email": "E-mail",
     "phone": "Telefone",
-    "withdrawalStatus": "Status de Resgate",
-    "withdrawalAvailable": "Resgate Disponível",
-    "withdrawalNotAvailable": "Resgate Não Disponível",
-    "daysUntilWithdrawal": "Dias até o resgate",
+    "withdrawalStatus": "Status do Saque",
+    "withdrawalAvailable": "Saque Disponível",
+    "withdrawalNotAvailable": "Saque Não Disponível",
+    "daysUntilWithdrawal": "Dias até o saque",
     "firstPageTranslated": "Primeira página traduzida",
-    "withdrawalRules": "Regras de Resgate",
-    "withdrawalAvailableAfter30Days": "Resgate disponível após 30 dias da primeira página traduzida",
-    "canRequestWithdrawal": "Pode solicitar resgate",
-    "cannotRequestWithdrawal": "Não pode solicitar resgate ainda",
+    "withdrawalRules": "Regras de Saque",
+      "withdrawalAvailableAfter30Days": "Saque disponível após 30 dias da primeira página traduzida",
+      "canRequestWithdrawal": "Pode solicitar saque",
+      "cannotRequestWithdrawal": "Ainda não pode solicitar saque",
     "clientsTab": "Clientes",
     "overviewTab": "Visão Geral",
     "totalClientsInList": "Total de Clientes: {count}",
@@ -453,26 +452,26 @@
     "activeDocuments": "Documentos Ativos",
     "viewClientDetails": "Ver Detalhes",
     "noClientsYet": "Nenhum cliente indicado ainda",
-    "searchClientPlaceholder": "Buscar por nome ou email..."
+      "searchClientPlaceholder": "Pesquisar por nome ou e-mail..."
   },
   "company": {
     "name": "LUSH AMERICA TRANSLATIONS"
   },
   "hero": {
-    "title1": "Traduções de Documentos",
-    "title2": "Profissionais",
-    "description": "Serviços de tradução certificada para documentos de imigração com autenticação oficial e verificação. Taxa de aceitação do USCIS de 99,9%.",
+    "title1": "Tradução",
+    "title2": "Profissional de Documentos",
+    "description": "Serviços de tradução certificada para documentos de imigração com autenticação e verificação oficial. Taxa de aceitação do USCIS de 99,9%.",
     "startTranslation": "Iniciar Tradução",
     "verifyDocument": "Verificar Documento",
-    "successRate": "taxa de sucesso de 95%",
+    "successRate": "Taxa de sucesso de 95%",
     "startNow": "Quero Começar Agora",
-    "talkToSpecialist": "Falar com Especialista",
+    "talkToSpecialist": "Falar com um Especialista",
     "personalized": "100% Personalizado",
     "fastResults": "Resultados Rápidos"
   },
   "stats": {
-    "uscisAcceptance": "Aceitação USCIS",
-    "avgTurnaround": "Prazo Médio",
+    "uscisAcceptance": "Aceitação do USCIS",
+    "avgTurnaround": "Tempo Médio de Entrega",
     "documentsTranslated": "Documentos Traduzidos",
     "languagesSupported": "Idiomas Suportados"
   },
@@ -483,12 +482,12 @@
     "mostPopular": "Mais Popular",
     "chooseBankStatements": "Escolher Extratos Bancários",
     "getStartedNow": "Começar Agora",
-    "note": "* Preços são por página padrão (250 palavras). Documentos complexos podem exigir taxas adicionais.",
+    "note": "* Preços por página padrão (250 palavras). Documentos complexos podem exigir taxas adicionais.",
     "certifiedTranslation": {
       "name": "Tradução Certificada",
-      "description": "Tradução certificada oficial com autenticação legal",
+      "description": "Tradução oficial certificada com autenticação legal",
       "features": {
-        "turnaround": "Prazo de 24-48 horas",
+        "turnaround": "Tempo de entrega de 24-48 horas",
         "notarization": "Notarização oficial",
         "authentication": "Autenticação legal",
         "uscis": "Aceito pelo USCIS",
@@ -501,7 +500,7 @@
       "name": "Extratos Bancários",
       "description": "Tradução especializada para documentos financeiros com verificação aprimorada",
       "features": {
-        "turnaround": "Prazo de 24-48 horas",
+        "turnaround": "Tempo de entrega de 24-48 horas",
         "expertise": "Especialização em documentos financeiros",
         "verification": "Processo de verificação aprimorado",
         "uscis": "Aceito pelo USCIS",
@@ -513,7 +512,7 @@
   },
   "howItWorks": {
     "title": "Como Funciona Nosso Processo de Tradução",
-    "description": "Processo de tradução de documentos simples, seguro e profissional em 4 etapas fáceis",
+    "description": "Tradução de documentos simples, segura e profissional em 4 passos fáceis",
     "steps": {
       "upload": {
         "title": "Enviar Documento",
@@ -529,49 +528,49 @@
       },
       "receive": {
         "title": "Receber Tradução",
-        "description": "Receba sua tradução certificada com código de verificação. Entrega por e-mail ou cópia física disponível."
+        "description": "Obtenha sua tradução certificada com código de verificação. Entrega por e-mail ou cópia física disponível."
       }
     }
   },
   "features": {
-    "title": "Por Que Escolher Nossos Serviços de Tradução?",
-    "description": "Qualidade profissional com aceitação garantida pelas autoridades americanas",
+    "title": "Por que Escolher Nossos Serviços de Tradução?",
+    "description": "Qualidade profissional com aceitação garantida pelas autoridades dos EUA",
     "certified": {
       "title": "Certificado",
       "description": "Todas as traduções são certificadas por profissionais licenciados e autenticadas com selos e assinaturas oficiais. Taxa de aceitação do USCIS de 99,9%."
     },
     "fastTurnaround": {
-      "title": "Prazo Rápido",
-      "description": "Traduções padrão concluídas em 24-48 horas. Serviço expresso disponível para documentos urgentes (4-8 horas) com processamento prioritário."
+      "title": "Entrega Rápida",
+      "description": "Traduções padrão concluídas em 24-48 horas. Serviço expresso disponível para documentos urgentes (4-8 horas) com processamento acelerado."
     }
   },
   "testimonials": {
-    "title": "O Que Nossos Clientes Dizem",
-    "description": "Feedback real de clientes satisfeitos que confiaram seus documentos importantes a nós",
+    "title": "O que Nossos Clientes Dizem",
+    "description": "Feedback real de clientes satisfeitos que confiaram em nós com seus documentos importantes",
     "items": {
       "0": {
         "name": "David Thompson",
         "location": "Canadá → Nova York",
-        "text": "Serviço rápido e profissional. Minha tradução de certidão de nascimento foi aceita pelo USCIS sem problemas.",
+        "text": "Serviço rápido e profissional. A tradução da minha certidão de nascimento foi aceita pelo USCIS sem problemas.",
         "document": "Certidão de Nascimento"
       },
       "1": {
         "name": "Jessica Martinez",
         "location": "México → Texas",
-        "text": "Excelente qualidade e prazo rápido. O sistema de verificação me deu tranquilidade.",
+        "text": "Qualidade excelente e entrega rápida. O sistema de verificação me deu tranquilidade.",
         "document": "Histórico Acadêmico"
       },
       "2": {
         "name": "Ryan Anderson",
         "location": "Brasil → Califórnia",
-        "text": "Serviço profissional com preços competitivos. Minha tradução de certidão de casamento ficou perfeita.",
+        "text": "Serviço profissional com preços competitivos. A tradução da minha certidão de casamento foi perfeita.",
         "document": "Certidão de Casamento"
       }
     }
   },
   "contact": {
     "title": "Precisa de Ajuda? Entre em Contato",
-    "description": "Nossos especialistas em tradução estão aqui para ajudar com qualquer dúvida",
+    "description": "Nossos especialistas em tradução estão aqui para ajudá-lo com qualquer dúvida",
     "phone": {
       "title": "Telefone",
       "hours": "Seg-Sex: 9h-18h EST"
@@ -582,7 +581,7 @@
     },
     "whatsapp": {
       "title": "WhatsApp",
-      "description": "Mensagem instantânea"
+      "description": "Mensagens instantâneas"
     }
   },
   "documentTypes": {
@@ -603,7 +602,7 @@
       "businessContracts": "Contratos Comerciais",
       "technicalManuals": "Manuais Técnicos",
       "websiteContent": "Conteúdo de Website",
-      "marketingMaterials": "Material de Marketing"
+      "marketingMaterials": "Materiais de Marketing"
     }
   },
   "faq": {
@@ -612,27 +611,27 @@
     "items": {
       "0": {
         "question": "Quanto tempo leva a tradução?",
-        "answer": "Traduções padrão são concluídas em 24-48 horas. Serviços expressos estão disponíveis para documentos urgentes (4-8 horas) com taxa adicional."
+        "answer": "Traduções padrão são concluídas em 24-48 horas. Serviços urgentes estão disponíveis para documentos urgentes (4-8 horas) com taxa adicional."
       },
       "1": {
         "question": "Suas traduções são aceitas pelo USCIS?",
-        "answer": "Sim, todas as nossas traduções são certificadas e autenticadas, atendendo aos requisitos do USCIS. Elas incluem declarações de certificação oficial e são aceitas por todas as autoridades de imigração americanas."
+        "answer": "Sim, todas as nossas traduções são certificadas e autenticadas, atendendo aos requisitos do USCIS. Elas incluem declarações de certificação oficial e são aceitas por todas as autoridades de imigração dos EUA."
       },
       "2": {
         "question": "Que documentos vocês podem traduzir?",
-        "answer": "Traduzimos todos os documentos de imigração incluindo certidões de nascimento, certidões de casamento, históricos acadêmicos, registros médicos, antecedentes criminais e muito mais. Entre em contato para tipos específicos de documentos."
+        "answer": "Traduzimos todos os documentos de imigração, incluindo certidões de nascimento, certidões de casamento, históricos acadêmicos, registros médicos, certidões de antecedentes criminais e muito mais. Entre em contato conosco para tipos específicos de documentos."
       },
       "3": {
         "question": "Como verifico se minha tradução é autêntica?",
-        "answer": "Cada tradução vem com um código de verificação único. Você pode verificar a autenticidade em nosso website ou nos contatar diretamente com o código."
+        "answer": "Cada tradução vem com um código de verificação único. Você pode verificar a autenticidade em nosso website ou entrar em contato conosco diretamente com o código."
       },
       "4": {
-        "question": "Vocês oferecem serviços expressos?",
-        "answer": "Sim, oferecemos serviços expressos para documentos urgentes. Prazo de 4-8 horas está disponível por taxa adicional de 50%. Entre em contato para preços específicos do serviço expresso."
+        "question": "Vocês oferecem serviços urgentes?",
+        "answer": "Sim, oferecemos serviços urgentes para documentos urgentes. Entrega em 4-8 horas está disponível por uma taxa adicional de 50%. Entre em contato conosco para preços específicos de urgência."
       },
       "5": {
         "question": "Que idiomas vocês suportam?",
-        "answer": "Suportamos Português, Português (Portugal), Espanhol, Alemão, Árabe, Hebraico, Japonês e Coreano. Todos os documentos são traduzidos para inglês para requisitos do USCIS e autoridades americanas."
+        "answer": "Suportamos português, português (Portugal), espanhol, alemão, árabe, hebraico, japonês e coreano. Todos os documentos são traduzidos para inglês para atender aos requisitos do USCIS e das autoridades dos EUA."
       }
     }
   },
@@ -646,193 +645,452 @@
     "hebrew": "Hebraico",
     "japanese": "Japonês",
     "korean": "Coreano",
-    "description": "Todos os documentos são traduzidos para inglês para requisitos do USCIS e autoridades americanas."
+    "description": "Todos os documentos são traduzidos para inglês para atender aos requisitos do USCIS e das autoridades americanas."
   },
   "footer": {
     "description": "Transformando sonhos em realidade através de mentoria especializada para bolsas de estudo nos Estados Unidos.",
     "services": {
       "title": "Nossos Serviços",
-      "documentTranslation": "Tradução de Documentos",
-      "documentVerification": "Verificação de Documentos"
+      "documentTranslation": "Document Translation",
+      "documentVerification": "Document Verification"
     },
     "contact": {
-      "title": "Contato",
-      "location": "Estados Unidos"
+      "title": "Contact",
+      "location": "United States"
     },
-    "copyright": "© 2025 Lush America Translations. Todos os direitos reservados.",
+    "copyright": "© 2025 Lush America Translations. All rights reserved.",
     "links": {
-      "privacy": "Política de Privacidade",
-      "terms": "Termos de Uso",
-      "cookies": "Política de Cookies"
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Use",
+      "cookies": "Cookie Policy"
     }
   },
   "about": {
-    "title": "Sobre",
-    "titleUs": "Nós",
-    "description": "Na Lush America Translations, ajudamos estudantes internacionais a realizar seu sonho de estudar nos Estados Unidos. Oferecemos orientação completa, desde a seleção da escola até a obtenção da bolsa ideal — com excelência, transparência e resultados comprovados.",
-    "scholarshipsSecured": "Bolsas Conquistadas",
-    "partnerSchools": "Escolas Parceiras",
-    "countriesServed": "Países Atendidos",
-    "monthsAverage": "Meses em Média",
+    "title": "About",
+    "titleUs": "Us",
+    "description": "At Lush America Translations, we help international students realize their dream of studying in the United States. We offer complete guidance, from school selection to securing the ideal scholarship — with excellence, transparency and proven results.",
+    "scholarshipsSecured": "Scholarships Secured",
+    "partnerSchools": "Partner Schools",
+    "countriesServed": "Countries Served",
+    "monthsAverage": "Months Average",
     "features": {
       "globalNetwork": {
-        "title": "Rede Global",
-        "description": "Acesso a mais de 50 escolas parceiras nos Estados Unidos com oportunidades exclusivas de bolsas."
+        "title": "Global Network",
+        "description": "Access to 50+ partner schools across the United States with exclusive scholarship opportunities."
       },
       "expertGuidance": {
-        "title": "Orientação Especializada",
-        "description": "Consultores especializados com anos de experiência em educação internacional e processos de visto."
+        "title": "Expert Guidance",
+        "description": "Specialized advisors with years of experience in international education and visa processes."
       },
       "endToEndSupport": {
-        "title": "Suporte Completo",
-        "description": "Desde a consulta inicial até a chegada nos EUA, cuidamos de cada etapa da sua jornada."
+        "title": "End-to-End Support",
+        "description": "From initial consultation to arrival in the USA, we handle every step of your journey."
       }
     },
     "values": {
-      "title": "Nossos Valores",
-      "subtitle": "Princípios que guiam nossa missão de transformar vidas através da educação",
+      "title": "Our Values",
+      "subtitle": "Principles that guide our mission to transform lives through education",
       "passion": {
-        "title": "Paixão pela Educação",
-        "description": "Acreditamos no poder transformador da educação internacional"
+        "title": "Passion for Education",
+        "description": "We believe in the transformative power of international education"
       },
       "innovation": {
-        "title": "Inovação Contínua",
-        "description": "Sempre buscamos as melhores práticas e tecnologias"
+        "title": "Continuous Innovation",
+        "description": "We always seek the best practices and technologies"
       },
       "partnership": {
-        "title": "Verdadeira Parceria",
-        "description": "Construímos relacionamentos duradouros com nossos estudantes"
+        "title": "True Partnership",
+        "description": "We build lasting relationships with our students"
       },
       "excellence": {
-        "title": "Excelência em Tudo",
-        "description": "Compromisso com a qualidade em cada detalhe"
+        "title": "Excellence in Everything",
+        "description": "Commitment to quality in every detail"
       }
     }
   },
   "upload": {
-    "pageTitle": "Tradução de Documentos",
-    "pageDescription": "Tenha seus documentos traduzidos profissionalmente com nosso serviço seguro e confiável.",
-    "howItWorksTitle": "Como Funciona",
+    "pageTitle": "Document Translation",
+    "pageDescription": "Get your documents professionally translated with our secure and reliable service.",
+    "howItWorksTitle": "How It Works",
     "steps": {
       "upload": {
-        "title": "Enviar Documento",
-        "description": "Selecione seu arquivo PDF ou imagem"
+        "title": "Upload Document",
+        "description": "Select your PDF or image file"
       },
       "choose": {
-        "title": "Escolher Serviço",
-        "description": "Selecione tipo de tradução e idioma"
+        "title": "Choose Service",
+        "description": "Select translation type and language"
       },
       "receive": {
-        "title": "Receber Tradução",
-        "description": "Receba seu documento traduzido"
+        "title": "Get Translation",
+        "description": "Receive your translated document"
       }
     },
     "form": {
-      "selectDocument": "1. Selecionar Documento",
+      "selectDocument": "1. Select Document",
       "uploadArea": {
-        "clickToUpload": "Clique para enviar ou arraste e solte",
-        "supportedFormats": "PDF, JPG, PNG até 10MB",
-        "removeFile": "Remover arquivo"
+        "clickToUpload": "Click to upload or drag and drop",
+        "supportedFormats": "PDF, JPG, PNG up to 10MB",
+        "removeFile": "Remove file"
       },
-      "numberOfPages": "2. Número de Páginas",
-      "translationType": "3. Tipo de Tradução",
-      "isBankStatement": "4. É um extrato bancário?",
-      "originalLanguage": "5. Idioma Original do Documento",
-      "targetLanguage": "6. Idioma de Destino (Traduzir Para)",
+      "numberOfPages": "2. Number of Pages",
+      "translationType": "3. Translation Type",
+      "isBankStatement": "4. Is it a bank statement?",
+      "originalLanguage": "5. Original Document Language",
+      "targetLanguage": "6. Target Language (Translation To)",
       "selectOptions": {
-        "yes": "Sim",
-        "no": "Não"
+        "yes": "Yes",
+        "no": "No"
       }
     },
     "summary": {
-      "title": "Resumo do Pedido",
-      "fileName": "Arquivo",
-      "pages": "páginas",
-      "page": "página",
-      "originalLang": "Idioma Original",
-      "targetLang": "Idioma de Destino",
-      "translationType": "Tipo de Tradução",
-      "bankStatement": "Extrato Bancário",
+      "title": "Order Summary",
+      "fileName": "File",
+      "pages": "pages",
+      "page": "page",
+      "originalLang": "Original Language",
+      "targetLang": "Target Language",
+      "translationType": "Translation Type",
+      "bankStatement": "Bank Statement",
       "pricing": {
-        "title": "Preços",
-        "perPage": "por página",
-        "certified": "Certificada",
-        "bankStatementFee": "Taxa de extrato bancário",
-        "totalCost": "Custo Total"
+        "title": "Pricing",
+        "perPage": "per page",
+        "certified": "Certified",
+        "bankStatementFee": "Bank statement fee",
+        "totalCost": "Total Cost"
       },
       "guarantees": {
-        "title": "Nossas Garantias",
-        "uscisAccepted": "Aceito pela USCIS",
-        "certifiedTranslation": "Tradução Certificada",
-        "fastDelivery": "Entrega Rápida",
-        "moneyBack": "Garantia de Devolução"
+        "title": "Our Guarantees",
+        "uscisAccepted": "USCIS Accepted",
+        "certifiedTranslation": "Certified Translation",
+        "fastDelivery": "Fast Delivery",
+        "moneyBack": "Money Back Guarantee"
       },
-      "processPayment": "Processar Pagamento"
+      "processPayment": "Process Payment"
     },
     "errors": {
-      "noFile": "Nenhum arquivo selecionado",
-      "invalidFile": "Tipo de arquivo inválido",
-      "fileTooLarge": "Arquivo muito grande",
-      "uploadFailed": "Falha no envio",
-      "paymentFailed": "Falha no pagamento"
+      "noFile": "No file selected",
+      "invalidFile": "Invalid file type",
+      "fileTooLarge": "File too large",
+      "uploadFailed": "Upload failed",
+      "paymentFailed": "Payment failed"
     },
     "success": {
-      "uploaded": "Documento enviado com sucesso!",
-      "processing": "Seu documento está sendo processado."
+      "uploaded": "Document uploaded successfully!",
+      "processing": "Your document is being processed."
     },
     "serviceInfo": {
-      "title": "Informações do Serviço",
+      "title": "Service Information",
       "translationTypes": {
-        "title": "Tipos de Tradução",
+        "title": "Translation Types",
         "certified": {
-          "title": "Certificada",
-          "price": "$20/página",
-          "description": "Tradução certificada oficial com autenticação legal completa para todos os fins, incluindo documentos judiciais, processos legais, imigração e aplicações USCIS.",
+          "title": "Certified",
+          "price": "$20/page",
+          "description": "Official certified translation with complete legal authentication for all purposes including court documents, legal proceedings, immigration, and USCIS applications.",
           "features": [
-            "Carimbo de certificação oficial",
-            "Certificação de tabelião público",
-            "Aceito pela USCIS",
-            "Código de verificação digital",
-            "Autenticação de documento legal",
-            "Formato aceito por tribunais",
-            "Verificação aprimorada",
-            "Prazo de 24-48 horas"
+            "Official certification stamp",
+            "Notary public certification",
+            "USCIS accepted",
+            "Digital verification code",
+            "Legal document authentication",
+            "Court-accepted format",
+            "Enhanced verification",
+            "24-48 hour turnaround"
           ]
         }
       },
       "documentTypes": {
-        "title": "Tipos de Documento",
+        "title": "Document Types",
         "regular": {
-          "title": "Documentos Regulares",
-          "price": "Taxa padrão",
-          "description": "Certidões de nascimento, certidões de casamento, diplomas, históricos escolares e outros documentos oficiais."
+          "title": "Regular Documents",
+          "price": "Standard rate",
+          "description": "Birth certificates, marriage certificates, diplomas, transcripts, and other official documents."
         },
         "bankStatements": {
-          "title": "Extratos Bancários",
-          "price": "+$5/página",
-          "description": "Verificação adicional e formatação necessária para documentos financeiros.",
+          "title": "Bank Statements",
+          "price": "+$5/page",
+          "description": "Additional verification and formatting required for financial documents.",
           "features": [
-            "Processo de verificação aprimorado",
-            "Formatação de documentos financeiros",
-            "Medidas de segurança adicionais"
+            "Enhanced verification process",
+            "Financial document formatting",
+            "Additional security measures"
           ]
         }
       },
       "supportedLanguages": {
-        "title": "Idiomas Suportados",
-        "note": "Todos os documentos são traduzidos para o inglês para requisitos da USCIS e autoridades americanas."
+        "title": "Supported Languages",
+        "note": "All documents are translated to English for USCIS and US authority requirements."
       },
       "serviceFeatures": {
-        "title": "Características do Serviço",
+        "title": "Service Features",
         "features": [
-          "Aceito pela USCIS e Governo",
-          "Certificação Oficial",
-          "Sistema de Verificação Digital",
-          "Prazo de 24-48 Horas",
-          "Manuseio Seguro de Arquivos",
-          "Suporte ao Cliente 24/7"
+          "USCIS & Government Accepted",
+          "Official Certification",
+          "Digital Verification System",
+          "24-48 Hour Turnaround",
+          "Secure File Handling",
+          "24/7 Customer Support"
         ]
       }
+    }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Admin Dashboard",
+      "subtitle": "Manage translation projects and monitor business metrics",
+      "tabs": {
+        "overview": "Overview",
+        "zelleReceipts": "Zelle Receipts"
+      }
+    },
+    "stats": {
+      "totalDocuments": "Total Documents",
+      "completedDocuments": "Completed Documents",
+      "pendingDocuments": "Pending Documents",
+      "totalRevenue": "Total Revenue",
+      "thisMonth": "This Month",
+      "lastMonth": "Last Month",
+      "loading": "Loading statistics...",
+      "error": "Error loading statistics",
+      "allTime": "All time",
+      "average": "Avg",
+      "activeUsers": "Active Users",
+      "registeredUsers": "Registered users",
+      "completed": "Completed",
+      "completedDescription": "Translated and Authenticated",
+      "processing": "Processing",
+      "processingDescription": "Not translated and not authenticated",
+      "pending": "Pending",
+      "pendingDescription": "Translated, awaiting Authenticator approval",
+      "statusBreakdown": "Status Breakdown",
+      "docs": "docs",
+      "translated": "Translated",
+      "successRate": "Success Rate"
+    },
+    "documents": {
+      "title": "Documents",
+      "table": {
+        "columns": {
+          "clientName": "Client Name",
+          "documentName": "Document Name",
+          "uploadDate": "Upload Date",
+          "status": "Status",
+          "pages": "Pages",
+          "amount": "Amount",
+          "actions": "Actions"
+        },
+        "status": {
+          "pending": "Pending",
+          "processing": "Processing",
+          "completed": "Completed",
+          "cancelled": "Cancelled",
+          "paid": "Paid",
+          "pendingVerification": "Pending Verification",
+          "failed": "Failed",
+          "refunded": "Refunded",
+          "unknown": "Unknown",
+          "draft": "Draft"
+        },
+        "actions": {
+          "view": "View",
+          "download": "Download",
+          "edit": "Edit"
+        },
+        "noDocuments": "No documents found",
+        "noDocumentsDescription": "Try adjusting your search or filter criteria.",
+        "loading": "Loading documents...",
+        "showing": "Showing {filtered} of {total} documents",
+        "total": "Total",
+        "exportCsv": "Export CSV",
+        "searchPlaceholder": "Search by name, email, filename, client...",
+        "filters": {
+          "allStatus": "All Status",
+          "allUserRoles": "All User Roles",
+          "user": "User",
+          "authenticator": "Authenticator"
+        },
+        "modal": {
+          "title": "Document Details",
+          "fileInformation": "File Information",
+          "edit": "Edit",
+          "filename": "Filename",
+          "enterFilename": "Enter filename",
+          "pages": "Pages",
+          "enterPages": "Enter number of pages",
+          "totalCost": "Total Cost",
+          "status": "Status",
+          "sourceLanguage": "Source Language",
+          "enterSourceLanguage": "Enter source language",
+          "targetLanguage": "Target Language",
+          "enterTargetLanguage": "Enter target language",
+          "bankStatement": "Bank Statement",
+          "authenticated": "Authenticated",
+          "cancel": "Cancel",
+          "saving": "Saving...",
+          "saveChanges": "Save Changes",
+          "userInformation": "User Information",
+          "loadingUserInfo": "Loading user information...",
+          "name": "Name",
+          "enterFullName": "Enter full name",
+          "email": "Email",
+          "enterEmail": "Enter email address",
+          "phoneNumber": "Phone Number",
+          "enterPhoneOptional": "Enter phone number (optional)",
+          "userId": "User ID",
+          "documentDetails": "Document Details",
+          "translationType": "Translation Type",
+          "timeline": "Timeline",
+          "created": "Created",
+          "lastUpdated": "Last Updated",
+          "verification": "Verification",
+          "verificationCode": "Verification Code",
+          "paymentInformation": "Payment Information",
+          "loadingPaymentInfo": "Loading payment information...",
+          "amount": "Amount",
+          "paymentMethod": "Payment Method",
+          "paymentDate": "Payment Date",
+          "paymentActions": "Payment Actions",
+          "cancelAndRefund": "Cancel and refund this payment",
+          "cancelPayment": "Cancel Payment",
+          "noPaymentInfo": "No payment information found for this document.",
+          "fileActions": "File Actions",
+          "viewTranslated": "View Translated",
+          "viewOriginal": "View Original",
+          "downloadTranslated": "Download Translated",
+          "downloadOriginal": "Download Original",
+          "close": "Close",
+          "userInfoNotAvailable": "User information not available",
+          "notSpecified": "Not specified",
+          "yes": "Yes",
+          "no": "No",
+          "notProvided": "Not provided",
+          "stripeSessionId": "Stripe Session ID"
+        }
+      }
+    },
+    "userManagement": {
+      "title": "User Management",
+      "subtitle": "Manage user roles and permissions",
+      "stats": {
+        "totalUsers": "Total Users",
+        "activeUsers": "Active Users",
+        "adminUsers": "Admin Users",
+        "authenticatorUsers": "Authenticator Users",
+        "financeUsers": "Finance Users"
+      },
+      "table": {
+        "columns": {
+          "name": "Name",
+          "email": "Email",
+          "role": "Role",
+          "status": "Status",
+          "lastLogin": "Last Login",
+          "actions": "Actions"
+        },
+        "roles": {
+          "user": "User",
+          "admin": "Admin",
+          "authenticator": "Authenticator",
+          "finance": "Finance"
+        },
+        "status": {
+          "active": "Active",
+          "inactive": "Inactive"
+        },
+        "actions": {
+          "edit": "Edit",
+          "delete": "Delete",
+          "changeRole": "Change Role"
+        }
+      }
+    },
+    "authenticatorControl": {
+      "title": "Authenticator Control",
+      "subtitle": "Manage authenticators and their workload",
+      "table": {
+        "columns": {
+          "name": "Name",
+          "email": "Email",
+          "documentsPending": "Documents Pending",
+          "lastActivity": "Last Activity",
+          "status": "Status",
+          "actions": "Actions"
+        }
+      }
+    },
+    "zelleReceipts": {
+      "title": "Zelle Receipts",
+      "subtitle": "Manage Zelle payment receipts"
+    }
+  },
+  "finance": {
+    "dashboard": {
+      "title": "Finance Dashboard",
+      "subtitle": "Monitor financial metrics and payment processing",
+      "tabs": {
+        "overview": "Overview",
+        "payments": "Payments",
+        "zelleReceipts": "Zelle Receipts"
+      }
+    },
+    "stats": {
+      "totalRevenue": "Total Revenue",
+      "monthlyRevenue": "Monthly Revenue",
+      "pendingPayments": "Pending Payments",
+      "completedPayments": "Completed Payments",
+      "averageOrderValue": "Average Order Value",
+      "conversionRate": "Conversion Rate"
+    },
+    "payments": {
+      "title": "Payments",
+      "table": {
+        "columns": {
+          "clientName": "Client Name",
+          "amount": "Amount",
+          "status": "Status",
+          "method": "Payment Method",
+          "date": "Date",
+          "actions": "Actions"
+        },
+        "status": {
+          "pending": "Pending",
+          "completed": "Completed",
+          "failed": "Failed",
+          "refunded": "Refunded"
+        },
+        "methods": {
+          "stripe": "Stripe",
+          "zelle": "Zelle"
+        }
+      }
+    },
+    "reports": {
+      "title": "Reports",
+      "subtitle": "Financial reports and analytics"
+    },
+    "affiliates": {
+      "title": "Affiliate Management",
+      "subtitle": "Manage affiliate commissions and payouts"
+    }
+  },
+  "authenticator": {
+    "dashboard": {
+      "title": "Authenticator Dashboard",
+      "subtitle": "Verify and authenticate documents",
+      "navigation": {
+        "overview": "Overview",
+        "authenticate": "Authenticate",
+        "translated": "Translated",
+        "upload": "Upload"
+      }
+    },
+    "verification": {
+      "title": "Document Verification",
+      "subtitle": "Verify document authenticity and quality"
+    },
+    "documents": {
+      "title": "Documents",
+      "subtitle": "Manage document authentication workflow"
     }
   }
 }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Filter, ChevronDown, ChevronUp, Eye, Clock, XCircle } from 'lucide-react';
+import { Users, Search, Filter, ChevronDown, ChevronUp, Eye, Clock, XCircle, User, Mail, Calendar, FileText, DollarSign } from 'lucide-react';
 import { useAffiliateAdmin } from '../../hooks/useAffiliate';
 import { formatDate } from '../../utils/dateUtils';
 import { useI18n } from '../../contexts/I18nContext';
+import { useClientsCache } from '../../hooks/useClientsCache';
 
 export function FinanceAffiliateManagement() {
   const { t } = useI18n();
@@ -10,7 +11,8 @@ export function FinanceAffiliateManagement() {
     allAffiliates,
     loading,
     error,
-    fetchAllAffiliates
+    fetchAllAffiliates,
+    fetchAffiliateClients
   } = useAffiliateAdmin();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,17 +25,59 @@ export function FinanceAffiliateManagement() {
   const [balanceFilter, setBalanceFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
   
-  // Removed modal tab states - only showing overview
-  // Removed client-related state variables
-  
-  // Removed dropdown states for client view
+  // Dropdown states for inline client view
+  const [expandedAffiliate, setExpandedAffiliate] = useState<string | null>(null);
+  const [affiliateClients, setAffiliateClients] = useState<any[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+
+  // Cache for clients data
+  const {
+    saveClientsCache,
+    getCachedClients
+  } = useClientsCache();
   
   // Timer state for withdrawal countdown
   const [timeLeft, setTimeLeft] = useState<string>('');
 
   useEffect(() => {
+    console.log('🔍 DEBUG FinanceAffiliateManagement - Carregando affiliates...');
     fetchAllAffiliates();
   }, []);
+
+  // Função para alternar expansão de afiliado
+  const toggleAffiliateExpand = async (affiliateId: string) => {
+    if (expandedAffiliate === affiliateId) {
+      setExpandedAffiliate(null);
+      setAffiliateClients([]);
+    } else {
+      setExpandedAffiliate(affiliateId);
+      
+      // Verificar cache
+      const cachedClients = getCachedClients(affiliateId);
+      if (cachedClients) {
+        setAffiliateClients(cachedClients);
+        return;
+      }
+      
+      setLoadingClients(true);
+      try {
+        const clients = await fetchAffiliateClients(affiliateId);
+        setAffiliateClients(clients);
+        saveClientsCache(affiliateId, clients);
+      } catch (error) {
+        console.error('Error loading clients:', error);
+      } finally {
+        setLoadingClients(false);
+      }
+    }
+  };
+
+  // Filtrar clientes
+  const filteredClients = affiliateClients.filter(client => 
+    client.client_name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+    client.client_email.toLowerCase().includes(clientSearchTerm.toLowerCase())
+  );
 
   // Função para calcular tempo restante até a próxima liberação
   const calculateTimeLeft = (nextWithdrawalDate: string | null) => {
@@ -84,6 +128,15 @@ export function FinanceAffiliateManagement() {
   // Removed clients tab functionality
 
   // Removed client-related functions
+
+  // 🔍 DEBUG: Verificar dados dos affiliates
+  console.log('🔍 DEBUG FinanceAffiliateManagement - allAffiliates:', allAffiliates);
+  console.log('🔍 DEBUG FinanceAffiliateManagement - allAffiliates length:', allAffiliates?.length);
+  if (allAffiliates && allAffiliates.length > 0) {
+    console.log('🔍 DEBUG FinanceAffiliateManagement - Primeiro affiliate:', allAffiliates[0]);
+    console.log('🔍 DEBUG FinanceAffiliateManagement - Available balance:', allAffiliates[0]?.available_balance);
+    console.log('🔍 DEBUG FinanceAffiliateManagement - Pending balance:', allAffiliates[0]?.pending_balance);
+  }
 
   const filteredAffiliates = allAffiliates.filter(affiliate => {
     // Search filter
@@ -265,34 +318,34 @@ export function FinanceAffiliateManagement() {
         {/* Affiliates Table */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Affiliate
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Code
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Level
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Clients
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Pages
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Available Balance
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Available
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pending Balance
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Pending
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total Earned
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Total
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -301,66 +354,180 @@ export function FinanceAffiliateManagement() {
                 {filteredAffiliates.map((affiliate) => (
                   <React.Fragment key={affiliate.affiliate_id}>
                     <tr className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
-                          <Users className="w-5 h-5 text-orange-600" />
+                        <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <Users className="w-4 h-4 text-orange-600" />
                         </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{affiliate.user_name}</div>
-                          <div className="text-sm text-gray-500">{affiliate.user_email}</div>
+                        <div className="ml-3">
+                          <div className="text-sm font-medium text-gray-900 truncate max-w-[150px]">{affiliate.user_name}</div>
+                          <div className="text-xs text-gray-500 truncate max-w-[150px]">{affiliate.user_email}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-mono text-gray-900">{affiliate.referral_code}</span>
+                    <td className="px-3 py-4 whitespace-nowrap">
+                      <span className="text-xs font-mono text-gray-900">{affiliate.referral_code}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    <td className="px-3 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         affiliate.current_level === 2 
                           ? 'bg-purple-100 text-purple-800' 
                           : 'bg-blue-100 text-blue-800'
                       }`}>
-                        Level {affiliate.current_level}
+                        L{affiliate.current_level}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 text-center">
                       {affiliate.total_clients}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 text-center">
                       {affiliate.total_pages}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
                       <span className="font-medium text-green-600">
                         ${affiliate.available_balance.toFixed(2)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
                       <span className="font-medium text-orange-600">
                         ${affiliate.pending_balance.toFixed(2)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
                       <span className="font-medium text-blue-600">
                         ${affiliate.total_earned.toFixed(2)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center gap-2">
+                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleAffiliateExpand(affiliate.affiliate_id)}
+                          className="text-tfe-blue-600 hover:text-tfe-blue-900 flex items-center gap-1 text-xs"
+                        >
+                          {expandedAffiliate === affiliate.affiliate_id ? (
+                            <ChevronUp className="w-3 h-3" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3" />
+                          )}
+                          {expandedAffiliate === affiliate.affiliate_id ? 'Hide' : 'View'}
+                        </button>
                         <button
                           onClick={() => {
                             setSelectedAffiliate(affiliate);
                             setShowAffiliateModal(true);
                           }}
-                          className="text-tfe-blue-600 hover:text-tfe-blue-900 flex items-center gap-1"
+                          className="text-gray-600 hover:text-gray-900 flex items-center gap-1 text-xs"
                         >
-                          <Eye className="w-4 h-4" />
-                          View Details
+                          <Eye className="w-3 h-3" />
+                          Details
                         </button>
                       </div>
                     </td>
                   </tr>
-                  {/* Removed expanded client view */}
+                  {expandedAffiliate === affiliate.affiliate_id && (
+                    <tr key={`${affiliate.affiliate_id}-expanded`}>
+                      <td colSpan={9} className="px-0 py-0 bg-gray-50">
+                        <div className="px-6 py-4 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-lg font-semibold text-gray-900">
+                              {t('affiliate.totalClientsInList').replace('{count}', affiliate.total_clients)}
+                            </h4>
+                            <div className="flex items-center gap-2">
+                              <Search className="w-4 h-4 text-gray-400" />
+                              <input
+                                type="text"
+                                placeholder={t('affiliate.searchClientPlaceholder')}
+                                value={clientSearchTerm}
+                                onChange={(e) => setClientSearchTerm(e.target.value)}
+                                className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-tfe-blue-500"
+                              />
+                            </div>
+                          </div>
+
+                          {loadingClients ? (
+                            <div className="flex items-center justify-center py-8">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-tfe-blue-600"></div>
+                            </div>
+                          ) : filteredClients.length === 0 ? (
+                            <div className="text-center py-8">
+                              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                              <h3 className="text-lg font-medium text-gray-900 mb-2">{t('affiliate.noClientsYet')}</h3>
+                            </div>
+                          ) : (
+                            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      {t('affiliate.clientName')}
+                                    </th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Email
+                                    </th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Registered
+                                    </th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Pages
+                                    </th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Commission
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {filteredClients.map((client) => (
+                                    <tr key={client.client_id} className="hover:bg-gray-50">
+                                      <td className="px-4 py-3 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                          <User className="w-4 h-4 text-gray-400 mr-2" />
+                                          <div className="text-sm font-medium text-gray-900">
+                                            {client.client_name}
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                          <Mail className="w-4 h-4 text-gray-400 mr-2" />
+                                          <div className="text-sm text-gray-900">
+                                            {client.client_email}
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                          <Calendar className="w-4 h-4 text-gray-400 mr-2" />
+                                          <div className="text-sm text-gray-900">
+                                            {formatDate(client.registered_at)}
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                          <FileText className="w-4 h-4 text-gray-400 mr-2" />
+                                          <div className="text-sm text-gray-900">
+                                            {client.total_pages}
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                          <DollarSign className="w-4 h-4 text-gray-400 mr-2" />
+                                          <div className="text-sm font-medium text-green-600">
+                                            ${client.total_commission.toFixed(2)}
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                   </React.Fragment>
                 ))}
               </tbody>

@@ -833,5 +833,264 @@
         ]
       }
     }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Admin Dashboard",
+      "subtitle": "Manage translation projects and monitor business metrics",
+      "tabs": {
+        "overview": "Overview",
+        "zelleReceipts": "Zelle Receipts"
+      }
+    },
+    "stats": {
+      "totalDocuments": "Total Documents",
+      "completedDocuments": "Completed Documents",
+      "pendingDocuments": "Pending Documents",
+      "totalRevenue": "Total Revenue",
+      "thisMonth": "This Month",
+      "lastMonth": "Last Month",
+      "loading": "Loading statistics...",
+      "error": "Error loading statistics",
+      "allTime": "All time",
+      "average": "Avg",
+      "activeUsers": "Active Users",
+      "registeredUsers": "Registered users",
+      "completed": "Completed",
+      "completedDescription": "Translated and Authenticated",
+      "processing": "Processing",
+      "processingDescription": "Not translated and not authenticated",
+      "pending": "Pending",
+      "pendingDescription": "Translated, awaiting Authenticator approval",
+      "statusBreakdown": "Status Breakdown",
+      "docs": "docs",
+      "translated": "Translated",
+      "successRate": "Success Rate"
+    },
+    "documents": {
+      "title": "Documents",
+      "table": {
+        "columns": {
+          "clientName": "Client Name",
+          "documentName": "Document Name",
+          "uploadDate": "Upload Date",
+          "status": "Status",
+          "pages": "Pages",
+          "amount": "Amount",
+          "actions": "Actions"
+        },
+        "status": {
+          "pending": "Pending",
+          "processing": "Processing",
+          "completed": "Completed",
+          "cancelled": "Cancelled",
+          "paid": "Paid",
+          "pendingVerification": "Pending Verification",
+          "failed": "Failed",
+          "refunded": "Refunded",
+          "unknown": "Unknown",
+          "draft": "Draft"
+        },
+        "actions": {
+          "view": "View",
+          "download": "Download",
+          "edit": "Edit"
+        },
+        "noDocuments": "No documents found",
+        "noDocumentsDescription": "Try adjusting your search or filter criteria.",
+        "loading": "Loading documents...",
+        "showing": "Showing {filtered} of {total} documents",
+        "total": "Total",
+        "exportCsv": "Export CSV",
+        "searchPlaceholder": "Search by name, email, filename, client...",
+        "filters": {
+          "allStatus": "All Status",
+          "allUserRoles": "All User Roles",
+          "user": "User",
+          "authenticator": "Authenticator"
+        },
+        "modal": {
+          "title": "Document Details",
+          "fileInformation": "File Information",
+          "edit": "Edit",
+          "filename": "Filename",
+          "enterFilename": "Enter filename",
+          "pages": "Pages",
+          "enterPages": "Enter number of pages",
+          "totalCost": "Total Cost",
+          "status": "Status",
+          "sourceLanguage": "Source Language",
+          "enterSourceLanguage": "Enter source language",
+          "targetLanguage": "Target Language",
+          "enterTargetLanguage": "Enter target language",
+          "bankStatement": "Bank Statement",
+          "authenticated": "Authenticated",
+          "cancel": "Cancel",
+          "saving": "Saving...",
+          "saveChanges": "Save Changes",
+          "userInformation": "User Information",
+          "loadingUserInfo": "Loading user information...",
+          "name": "Name",
+          "enterFullName": "Enter full name",
+          "email": "Email",
+          "enterEmail": "Enter email address",
+          "phoneNumber": "Phone Number",
+          "enterPhoneOptional": "Enter phone number (optional)",
+          "userId": "User ID",
+          "documentDetails": "Document Details",
+          "translationType": "Translation Type",
+          "timeline": "Timeline",
+          "created": "Created",
+          "lastUpdated": "Last Updated",
+          "verification": "Verification",
+          "verificationCode": "Verification Code",
+          "paymentInformation": "Payment Information",
+          "loadingPaymentInfo": "Loading payment information...",
+          "amount": "Amount",
+          "paymentMethod": "Payment Method",
+          "paymentDate": "Payment Date",
+          "paymentActions": "Payment Actions",
+          "cancelAndRefund": "Cancel and refund this payment",
+          "cancelPayment": "Cancel Payment",
+          "noPaymentInfo": "No payment information found for this document.",
+          "fileActions": "File Actions",
+          "viewTranslated": "View Translated",
+          "viewOriginal": "View Original",
+          "downloadTranslated": "Download Translated",
+          "downloadOriginal": "Download Original",
+          "close": "Close",
+          "userInfoNotAvailable": "User information not available",
+          "notSpecified": "Not specified",
+          "yes": "Yes",
+          "no": "No",
+          "notProvided": "Not provided",
+          "stripeSessionId": "Stripe Session ID"
+        }
+      }
+    },
+    "userManagement": {
+      "title": "User Management",
+      "subtitle": "Manage user roles and permissions",
+      "stats": {
+        "totalUsers": "Total Users",
+        "activeUsers": "Active Users",
+        "adminUsers": "Admin Users",
+        "authenticatorUsers": "Authenticator Users",
+        "financeUsers": "Finance Users"
+      },
+      "table": {
+        "columns": {
+          "name": "Name",
+          "email": "Email",
+          "role": "Role",
+          "status": "Status",
+          "lastLogin": "Last Login",
+          "actions": "Actions"
+        },
+        "roles": {
+          "user": "User",
+          "admin": "Admin",
+          "authenticator": "Authenticator",
+          "finance": "Finance"
+        },
+        "status": {
+          "active": "Active",
+          "inactive": "Inactive"
+        },
+        "actions": {
+          "edit": "Edit",
+          "delete": "Delete",
+          "changeRole": "Change Role"
+        }
+      }
+    },
+    "authenticatorControl": {
+      "title": "Authenticator Control",
+      "subtitle": "Manage authenticators and their workload",
+      "table": {
+        "columns": {
+          "name": "Name",
+          "email": "Email",
+          "documentsPending": "Documents Pending",
+          "lastActivity": "Last Activity",
+          "status": "Status",
+          "actions": "Actions"
+        }
+      }
+    },
+    "zelleReceipts": {
+      "title": "Zelle Receipts",
+      "subtitle": "Manage Zelle payment receipts"
+    }
+  },
+  "finance": {
+    "dashboard": {
+      "title": "Finance Dashboard",
+      "subtitle": "Monitor financial metrics and payment processing",
+      "tabs": {
+        "overview": "Overview",
+        "payments": "Payments",
+        "zelleReceipts": "Zelle Receipts"
+      }
+    },
+    "stats": {
+      "totalRevenue": "Total Revenue",
+      "monthlyRevenue": "Monthly Revenue",
+      "pendingPayments": "Pending Payments",
+      "completedPayments": "Completed Payments",
+      "averageOrderValue": "Average Order Value",
+      "conversionRate": "Conversion Rate"
+    },
+    "payments": {
+      "title": "Payments",
+      "table": {
+        "columns": {
+          "clientName": "Client Name",
+          "amount": "Amount",
+          "status": "Status",
+          "method": "Payment Method",
+          "date": "Date",
+          "actions": "Actions"
+        },
+        "status": {
+          "pending": "Pending",
+          "completed": "Completed",
+          "failed": "Failed",
+          "refunded": "Refunded"
+        },
+        "methods": {
+          "stripe": "Stripe",
+          "zelle": "Zelle"
+        }
+      }
+    },
+    "reports": {
+      "title": "Reports",
+      "subtitle": "Financial reports and analytics"
+    },
+    "affiliates": {
+      "title": "Affiliate Management",
+      "subtitle": "Manage affiliate commissions and payouts"
+    }
+  },
+  "authenticator": {
+    "dashboard": {
+      "title": "Authenticator Dashboard",
+      "subtitle": "Verify and authenticate documents",
+      "navigation": {
+        "overview": "Overview",
+        "authenticate": "Authenticate",
+        "translated": "Translated",
+        "upload": "Upload"
+      }
+    },
+    "verification": {
+      "title": "Document Verification",
+      "subtitle": "Verify document authenticity and quality"
+    },
+    "documents": {
+      "title": "Documents",
+      "subtitle": "Manage document authentication workflow"
+    }
   }
 }

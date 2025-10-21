@@ -3,6 +3,7 @@ import { FileText, CheckCircle, Clock, DollarSign, Users, AlertCircle } from 'lu
 import { Document } from '../../App';
 import { supabase } from '../../lib/supabase';
 import { DateRange } from '../../components/DateRangeFilter';
+import { useI18n } from '../../contexts/I18nContext';
 
 interface StatsCardsProps {
   documents: Document[];
@@ -10,6 +11,7 @@ interface StatsCardsProps {
 }
 
 export function StatsCards({ documents, dateRange }: StatsCardsProps) {
+  const { t } = useI18n();
   const [extendedStats, setExtendedStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   
@@ -147,27 +149,27 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
 
   const stats = [
     {
-      title: 'Total Documents',
+      title: t('admin.stats.totalDocuments'),
       value: validDocuments.length,
-      subtitle: 'All time',
+      subtitle: t('admin.stats.allTime'),
       icon: FileText,
       bgColor: 'bg-tfe-blue-100',
       iconColor: 'text-tfe-blue-950',
       trend: null
     },
     {
-      title: 'Total Revenue',
+      title: t('admin.stats.totalRevenue'),
       value: `$${totalRevenue.toLocaleString()}`,
-      subtitle: `Avg: $${avgRevenuePerDoc.toFixed(0)}/doc`,
+      subtitle: `${t('admin.stats.average')}: $${avgRevenuePerDoc.toFixed(0)}/doc`,
       icon: DollarSign,
       bgColor: 'bg-green-100',
       iconColor: 'text-green-900',
       trend: 'up'
     },
     {
-      title: 'Active Users',
+      title: t('admin.stats.activeUsers'),
       value: extendedStats?.active_users || uniqueUsers,
-      subtitle: 'Registered users',
+      subtitle: t('admin.stats.registeredUsers'),
       icon: Users,
       bgColor: 'bg-purple-100',
       iconColor: 'text-purple-900',
@@ -177,31 +179,31 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
 
   const statusStats = [
     {
-      title: 'Completed',
+      title: t('admin.stats.completed'),
       value: extendedStats?.completed || completedDocuments,
       icon: CheckCircle,
       bgColor: 'bg-green-100',
       iconColor: 'text-green-900',
       textColor: 'text-green-700',
-      description: 'Translated and Authenticated'
+      description: t('admin.stats.completedDescription')
     },
     {
-      title: 'Processing', 
+      title: t('admin.stats.processing'), 
       value: extendedStats?.processing || processingDocuments,
       icon: Clock,
       bgColor: 'bg-blue-100',
       iconColor: 'text-blue-900',
       textColor: 'text-blue-700',
-      description: 'Not translated and not authenticated'
+      description: t('admin.stats.processingDescription')
     },
     {
-      title: 'Pending',
+      title: t('admin.stats.pending'),
       value: extendedStats?.pending || pendingDocuments,
       icon: AlertCircle,
       bgColor: 'bg-yellow-100',
       iconColor: 'text-yellow-900',
       textColor: 'text-yellow-700',
-      description: 'Translated, awaiting Authenticator approval'
+      description: t('admin.stats.pendingDescription')
     }
   ];
 
@@ -232,7 +234,7 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
       <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 lg:p-6 w-full">
         <div className="flex items-center gap-2 mb-3 sm:mb-4 lg:mb-6">
           <AlertCircle className="w-4 h-4 text-gray-600 flex-shrink-0" />
-          <h3 className="text-sm sm:text-base font-semibold text-gray-900">Status Breakdown</h3>
+          <h3 className="text-sm sm:text-base font-semibold text-gray-900">{t('admin.stats.statusBreakdown')}</h3>
           {loading && (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-tfe-blue-600"></div>
           )}
@@ -253,7 +255,7 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
                   </div>
                   <div className="text-right">
                     <div className="text-xl sm:text-2xl font-bold text-gray-900">{stat.value}</div>
-                    <div className="text-xs text-gray-500">docs</div>
+                    <div className="text-xs text-gray-500">{t('admin.stats.docs')}</div>
                   </div>
                 </div>
                 <div className="pt-3 border-t border-gray-300">
@@ -270,19 +272,19 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
               <div className="min-w-0">
                 <p className="text-lg font-bold text-gray-900">{extendedStats.total_documents}</p>
-                <p className="text-xs text-gray-500 truncate">Total Documents</p>
+                <p className="text-xs text-gray-500 truncate">{t('admin.stats.totalDocuments')}</p>
               </div>
               <div className="min-w-0">
                 <p className="text-lg font-bold text-green-600">{extendedStats.translated}</p>
-                <p className="text-xs text-gray-500 truncate">Translated</p>
+                <p className="text-xs text-gray-500 truncate">{t('admin.stats.translated')}</p>
               </div>
               <div className="min-w-0">
                 <p className="text-lg font-bold text-blue-600">{((extendedStats.completed / extendedStats.total_documents) * 100).toFixed(1)}%</p>
-                <p className="text-xs text-gray-500 truncate">Success Rate</p>
+                <p className="text-xs text-gray-500 truncate">{t('admin.stats.successRate')}</p>
               </div>
               <div className="min-w-0">
                 <p className="text-lg font-bold text-purple-600">{extendedStats.active_users}</p>
-                <p className="text-xs text-gray-500 truncate">Active Users</p>
+                <p className="text-xs text-gray-500 truncate">{t('admin.stats.activeUsers')}</p>
               </div>
             </div>
           </div>

@@ -3,19 +3,20 @@ import { StatsCards } from './StatsCards';
 import { DocumentsTable } from './DocumentsTable';
 import { DocumentDetailsModal } from './DocumentDetailsModal';
 import { ZelleReceiptsAdmin } from '../../components/ZelleReceiptsAdmin';
-import { FinanceAffiliateManagement } from '../FinanceDashboard/FinanceAffiliateManagement';
 import { Document } from '../../App';
-import { Home, Receipt, Users } from 'lucide-react';
+import { Home, Receipt } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { DateRange } from '../../components/DateRangeFilter';
+import { useI18n } from '../../contexts/I18nContext';
 
 interface AdminDashboardProps {
   documents: Document[];
 }
 
 export function AdminDashboard({ documents }: AdminDashboardProps) {
+  const { t } = useI18n();
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'affiliates' | 'zelle-receipts'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'zelle-receipts'>('overview');
   const [dateRange, setDateRange] = useState<DateRange>({
     startDate: null,
     endDate: null,
@@ -28,8 +29,6 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
   useEffect(() => {
     if (location.hash === '#zelle-receipts') {
       setActiveTab('zelle-receipts');
-    } else if (location.hash === '#affiliates') {
-      setActiveTab('affiliates');
     } else {
       setActiveTab('overview');
     }
@@ -43,7 +42,7 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
     setSelectedDocument(null);
   };
 
-  const handleTabChange = (tab: 'overview' | 'affiliates' | 'zelle-receipts') => {
+  const handleTabChange = (tab: 'overview' | 'zelle-receipts') => {
     setActiveTab(tab);
     // Atualizar a URL para refletir a aba ativa
     if (tab === 'overview') {
@@ -54,17 +53,16 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
   };
 
   const tabs = [
-    { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'affiliates', label: 'Affiliates', icon: Users },
-    { id: 'zelle-receipts', label: 'Zelle Receipts', icon: Receipt },
+    { id: 'overview', label: t('admin.dashboard.tabs.overview'), icon: Home },
+    { id: 'zelle-receipts', label: t('admin.dashboard.tabs.zelleReceipts'), icon: Receipt },
   ];
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="p-3 sm:p-4 lg:p-6 w-full max-w-none">
         <div className="mb-4 sm:mb-6 lg:mb-8">
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm sm:text-base lg:text-lg text-gray-600 mt-1 sm:mt-2">Manage translation projects and monitor business metrics</p>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">{t('admin.dashboard.title')}</h1>
+          <p className="text-sm sm:text-base lg:text-lg text-gray-600 mt-1 sm:mt-2">{t('admin.dashboard.subtitle')}</p>
         </div>
 
         {/* Tab Navigation */}
@@ -121,11 +119,6 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
             </div>
           )}
 
-          {activeTab === 'affiliates' && (
-            <div className="space-y-4 sm:space-y-6 w-full">
-              <FinanceAffiliateManagement />
-            </div>
-          )}
 
           {activeTab === 'zelle-receipts' && (
             <div className="space-y-4 sm:space-y-6 w-full">

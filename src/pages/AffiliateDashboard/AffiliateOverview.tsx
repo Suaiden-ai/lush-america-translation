@@ -4,7 +4,6 @@ import { useAffiliate } from '../../hooks/useAffiliate';
 import { useI18n } from '../../contexts/I18nContext';
 import { ArcProgressBar } from '../../components/ArcProgressBar';
 import { CommissionBadge } from '../../components/CommissionBadge';
-import { WithdrawalStatus } from '../../components/WithdrawalStatus';
 
 export function AffiliateOverview() {
   const { user } = useAuth();
@@ -46,6 +45,7 @@ export function AffiliateOverview() {
     );
   }
 
+
   const cards = [
     {
       title: t('affiliate.availableBalance'),
@@ -61,9 +61,28 @@ export function AffiliateOverview() {
       icon: Clock,
       color: 'text-orange-600',
       bgColor: 'bg-orange-100',
-      description: stats.next_withdrawal_date ? 
-        `${t('affiliate.availableIn')} ${Math.ceil((new Date(stats.next_withdrawal_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} ${t('affiliate.days')}` : 
-        'No pending funds'
+      description: stats.next_withdrawal_date ? (() => {
+        const now = new Date();
+        const withdrawalDate = new Date(stats.next_withdrawal_date);
+        const diffInMs = withdrawalDate.getTime() - now.getTime();
+        
+        
+        if (diffInMs <= 0) {
+          return t('affiliate.availableNow');
+        }
+        
+        const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+        const diffInHours = Math.floor((diffInMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const diffInMinutes = Math.floor((diffInMs % (1000 * 60 * 60)) / (1000 * 60));
+        
+        if (diffInDays > 0) {
+          return `${t('affiliate.availableIn')} ${diffInDays} ${t('affiliate.days')}, ${diffInHours}h ${diffInMinutes}m`;
+        } else if (diffInHours > 0) {
+          return `${t('affiliate.availableIn')} ${diffInHours}h ${diffInMinutes}m`;
+        } else {
+          return `${t('affiliate.availableIn')} ${diffInMinutes}m`;
+        }
+      })() : 'No pending funds'
     },
     {
       title: t('affiliate.totalEarned'),
@@ -93,13 +112,6 @@ export function AffiliateOverview() {
 
   return (
     <div className="space-y-8">
-      {/* Withdrawal Status */}
-      <WithdrawalStatus 
-        canRequestWithdrawal={stats.available_balance > 0}
-        daysUntilAvailable={stats.next_withdrawal_date ? Math.ceil((new Date(stats.next_withdrawal_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null}
-        availableBalance={stats.available_balance}
-      />
-
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card, index) => {
