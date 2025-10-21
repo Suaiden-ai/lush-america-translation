@@ -109,10 +109,10 @@ export function AffiliateEarnings() {
     setSubmitError(null);
     
     // Real-time validation for amount
-    if (field === 'amount' && value > (stats?.total_balance || 0)) {
+    if (field === 'amount' && value > (stats?.available_balance || 0)) {
       setFormErrors(prev => ({ 
         ...prev, 
-        amount: `Insufficient balance. Maximum: $${(stats?.total_balance || 0).toFixed(2)}` 
+        amount: `Insufficient balance. Maximum: $${(stats?.available_balance || 0).toFixed(2)}` 
       }));
     }
   };
@@ -411,6 +411,7 @@ export function AffiliateEarnings() {
     );
   }
 
+
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -478,10 +479,27 @@ export function AffiliateEarnings() {
               <p className="text-sm text-gray-600">{t('affiliate.pendingBalance')}</p>
               <p className="text-xl font-bold text-orange-600">${stats.pending_balance.toFixed(2)}</p>
               <p className="text-xs text-gray-500 mt-1">
-                {stats.next_withdrawal_date ? 
-                  `${t('affiliate.availableIn')} ${Math.ceil((new Date(stats.next_withdrawal_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} ${t('affiliate.days')}` : 
-                  'No pending funds'
-                }
+                {stats.next_withdrawal_date ? (() => {
+                  const now = new Date();
+                  const withdrawalDate = new Date(stats.next_withdrawal_date);
+                  const diffInMs = withdrawalDate.getTime() - now.getTime();
+                  
+                  if (diffInMs <= 0) {
+                    return t('affiliate.availableNow');
+                  }
+                  
+                  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+                  const diffInHours = Math.floor((diffInMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                  const diffInMinutes = Math.floor((diffInMs % (1000 * 60 * 60)) / (1000 * 60));
+                  
+                  if (diffInDays > 0) {
+                    return `${t('affiliate.availableIn')} ${diffInDays} ${t('affiliate.days')}, ${diffInHours}h ${diffInMinutes}m`;
+                  } else if (diffInHours > 0) {
+                    return `${t('affiliate.availableIn')} ${diffInHours}h ${diffInMinutes}m`;
+                  } else {
+                    return `${t('affiliate.availableIn')} ${diffInMinutes}m`;
+                  }
+                })() : 'No pending funds'}
               </p>
             </div>
           </div>
@@ -512,9 +530,9 @@ export function AffiliateEarnings() {
 
       {/* Withdrawal Timer */}
       <WithdrawalTimer 
-        firstPageTranslatedAt={stats.next_withdrawal_date ? new Date(new Date(stats.next_withdrawal_date).getTime() - (30 * 24 * 60 * 60 * 1000)).toISOString() : (stats.pending_balance > 0 ? new Date().toISOString() : null)}
+        firstPageTranslatedAt={stats.first_page_translated_at}
         canRequestWithdrawal={stats.available_balance > 0}
-        daysUntilWithdrawalAvailable={stats.next_withdrawal_date ? Math.ceil((new Date(stats.next_withdrawal_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : undefined}
+        daysUntilWithdrawalAvailable={stats.next_withdrawal_date ? Math.floor((new Date(stats.next_withdrawal_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : undefined}
       />
 
       {/* Tab Navigation */}
@@ -880,10 +898,27 @@ export function AffiliateEarnings() {
                         <h4 className="text-sm font-semibold text-gray-900">{t('affiliate.pendingBalance')}</h4>
                         <p className="text-2xl font-bold text-orange-900">${stats.pending_balance.toFixed(2)}</p>
                         <p className="text-xs text-gray-600 mt-1">
-                          {stats.next_withdrawal_date ? 
-                            `${t('affiliate.availableIn')} ${Math.ceil((new Date(stats.next_withdrawal_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} ${t('affiliate.days')}` : 
-                            'No pending funds'
-                          }
+                          {stats.next_withdrawal_date ? (() => {
+                            const now = new Date();
+                            const withdrawalDate = new Date(stats.next_withdrawal_date);
+                            const diffInMs = withdrawalDate.getTime() - now.getTime();
+                            
+                            if (diffInMs <= 0) {
+                              return t('affiliate.availableNow');
+                            }
+                            
+                            const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+                            const diffInHours = Math.floor((diffInMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                            const diffInMinutes = Math.floor((diffInMs % (1000 * 60 * 60)) / (1000 * 60));
+                            
+                            if (diffInDays > 0) {
+                              return `${t('affiliate.availableIn')} ${diffInDays} ${t('affiliate.days')}, ${diffInHours}h ${diffInMinutes}m`;
+                            } else if (diffInHours > 0) {
+                              return `${t('affiliate.availableIn')} ${diffInHours}h ${diffInMinutes}m`;
+                            } else {
+                              return `${t('affiliate.availableIn')} ${diffInMinutes}m`;
+                            }
+                          })() : 'No pending funds'}
                         </p>
                       </div>
                       <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
@@ -919,7 +954,7 @@ export function AffiliateEarnings() {
                     <p className="mt-1 text-sm text-red-600">{formErrors.amount}</p>
                   )}
                   <p className="mt-1 text-xs text-gray-500">
-                    Maximum: ${stats.total_balance.toFixed(2)}
+                    Maximum: ${stats.available_balance.toFixed(2)}
                   </p>
                 </div>
 

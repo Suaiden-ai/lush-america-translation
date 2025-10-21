@@ -5,6 +5,7 @@ import { Document } from '../../App';
 import { DateRange } from '../../components/DateRangeFilter';
 import { GoogleStyleDatePicker } from '../../components/GoogleStyleDatePicker';
 import { formatDate } from '../../utils/dateUtils';
+import { useI18n } from '../../contexts/I18nContext';
 
 // Interface estendida para incluir dados de tabelas relacionadas
 interface ExtendedDocument extends Omit<Document, 'client_name' | 'payment_method'> {
@@ -33,6 +34,7 @@ interface DocumentsTableProps {
 }
 
 export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }: DocumentsTableProps) {
+  const { t } = useI18n();
   const [extendedDocuments, setExtendedDocuments] = useState<ExtendedDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -197,12 +199,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
   // Formata o texto do status de pagamento
   const getPaymentStatusText = (paymentStatus: string | null | undefined) => {
     switch (paymentStatus) {
-      case 'completed': return 'Paid';
-      case 'pending': return 'Pending';
-      case 'pending_verification': return 'Pending Verification';
-      case 'failed': return 'Failed';
-      case 'refunded': return 'Refunded';
-      default: return 'Unknown';
+      case 'completed': return t('admin.documents.table.status.paid');
+      case 'pending': return t('admin.documents.table.status.pending');
+      case 'pending_verification': return t('admin.documents.table.status.pendingVerification');
+      case 'failed': return t('admin.documents.table.status.failed');
+      case 'refunded': return t('admin.documents.table.status.refunded');
+      default: return t('admin.documents.table.status.unknown');
     }
   };
 
@@ -267,11 +269,11 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h3 className="text-lg font-medium text-gray-900">All Documents</h3>
+            <h3 className="text-lg font-medium text-gray-900">{t('admin.documents.title')}</h3>
             <p className="text-sm text-gray-500">
-              Showing {filteredDocuments.length} of {extendedDocuments.length} documents
+              {t('admin.documents.table.showing', { filtered: filteredDocuments.length, total: extendedDocuments.length })}
               <span className="mx-2">•</span>
-              <span className="font-medium text-green-600">Total: ${totalAmountFiltered.toFixed(2)}</span>
+              <span className="font-medium text-green-600">{t('admin.documents.table.total')}: ${totalAmountFiltered.toFixed(2)}</span>
             </p>
           </div>
           <button
@@ -279,7 +281,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
             className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-tfe-blue-500"
           >
             <Download className="w-4 h-4 mr-2" />
-            <span>Export CSV</span>
+            <span>{t('admin.documents.table.exportCsv')}</span>
           </button>
         </div>
       </div>
@@ -291,7 +293,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           <div className="sm:col-span-2">
             <input
               type="text"
-              placeholder="Search by name, email, filename, client..."
+              placeholder={t('admin.documents.table.searchPlaceholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
@@ -308,12 +310,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
               aria-label="Filter by document status"
             >
-              <option value="all">All Status</option>
-              <option value="completed">Completed</option>
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="failed">Failed</option>
-              <option value="draft">Draft</option>
+              <option value="all">{t('admin.documents.table.filters.allStatus')}</option>
+              <option value="completed">{t('admin.documents.table.status.completed')}</option>
+              <option value="pending">{t('admin.documents.table.status.pending')}</option>
+              <option value="processing">{t('admin.documents.table.status.processing')}</option>
+              <option value="failed">{t('admin.documents.table.status.failed')}</option>
+              <option value="draft">{t('admin.documents.table.status.draft')}</option>
             </select>
           </div>
 
@@ -326,9 +328,9 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
               aria-label="Filter by user role"
             >
-              <option value="all">All User Roles</option>
-              <option value="user">User</option>
-              <option value="authenticator">Authenticator</option>
+              <option value="all">{t('admin.documents.table.filters.allUserRoles')}</option>
+              <option value="user">{t('admin.documents.table.filters.user')}</option>
+              <option value="authenticator">{t('admin.documents.table.filters.authenticator')}</option>
             </select>
           </div>
 
@@ -350,8 +352,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       {filteredDocuments.length === 0 ? (
         <div className="text-center py-8 px-4">
           <FileText className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-          <p className="text-base font-medium text-gray-700">No documents found</p>
-          <p className="text-sm text-gray-500">Try adjusting your search or filter criteria.</p>
+          <p className="text-base font-medium text-gray-700">{t('admin.documents.table.noDocuments')}</p>
+          <p className="text-sm text-gray-500">{t('admin.documents.table.noDocumentsDescription')}</p>
         </div>
       ) : (
         <>

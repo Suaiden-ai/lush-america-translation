@@ -12,6 +12,7 @@ export interface AffiliateStats {
   current_level: number;
   referral_code: string;
   pages_to_next_level: number;
+  first_page_translated_at: string | null;
 }
 
 export interface AffiliateClient {
@@ -171,9 +172,20 @@ export function useAffiliate(userId?: string) {
       setLoading(true);
       setError(null);
       
+      // Primeiro, buscar o affiliate_id do usuário
+      const { data: affiliateData, error: affiliateError } = await supabase
+        .from('affiliates')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+
+      if (affiliateError || !affiliateData) {
+        throw new Error('Affiliate not found for this user');
+      }
+
       const { data, error } = await supabase
         .rpc('create_withdrawal_request', {
-          p_affiliate_user_id: userId,
+          p_affiliate_id: affiliateData.id,
           p_amount: requestData.amount,
           p_payment_method: requestData.payment_method,
           p_payment_details: requestData.payment_details
@@ -246,10 +258,19 @@ export function useAffiliateAdmin() {
       setLoading(true);
       setError(null);
       
+      console.log('🔍 DEBUG fetchAllAffiliates - Chamando get_all_affiliates_admin');
       const { data, error } = await supabase
         .rpc('get_all_affiliates_admin');
       
       if (error) throw error;
+      
+      console.log('🔍 DEBUG fetchAllAffiliates - Dados recebidos:', data);
+      console.log('🔍 DEBUG fetchAllAffiliates - Quantidade de affiliates:', data?.length);
+      if (data && data.length > 0) {
+        console.log('🔍 DEBUG fetchAllAffiliates - Primeiro affiliate:', data[0]);
+        console.log('🔍 DEBUG fetchAllAffiliates - Available balance:', data[0]?.available_balance);
+        console.log('🔍 DEBUG fetchAllAffiliates - Pending balance:', data[0]?.pending_balance);
+      }
       
       setAllAffiliates(data || []);
     } catch (err: any) {

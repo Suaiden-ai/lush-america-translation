@@ -78,6 +78,9 @@ Deno.serve(async (req) => {
     if (sourceLanguage) updateData.idioma_raiz = sourceLanguage;
     if (targetLanguage) updateData.idioma_destino = targetLanguage;
     if (clientName) updateData.client_name = clientName;
+    
+    // ✅ SEMPRE definir status como pending para evitar erro NULL
+    updateData.status = 'pending';
 
     // Atualizar documento na tabela documents
     const { data: updateResult, error: updateError } = await supabase
