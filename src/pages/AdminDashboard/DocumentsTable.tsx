@@ -64,7 +64,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         endDateParam = endDate.toISOString();
       }
 
-      // ✅ QUERY ORIGINAL SIMPLES COM JOIN DIRETO
+      // ✅ QUERY SIMPLIFICADA COM LÓGICA ORIGINAL DE PAGAMENTO
       let query = supabase
         .from('documents')
         .select(`
@@ -92,19 +92,25 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       console.log('🔍 DEBUG - Documents loaded:', documents?.length || 0);
       console.log('🔍 DEBUG - Sample documents:', documents?.slice(0, 3));
 
-      // Processar dados simples
-      const processedDocuments = documents?.map(doc => ({
-        ...doc,
-        user_name: doc.profiles?.name || null,
-        user_email: doc.profiles?.email || null,
-        user_phone: doc.profiles?.phone || null,
-        user_role: doc.profiles?.role || 'user',
-        payment_method: doc.payments?.[0]?.payment_method || null,
-        payment_status: doc.payments?.[0]?.status || 'pending',
-        display_name: doc.profiles?.name || null,
-        document_type: 'regular' as const,
-        client_name: doc.client_name || null,
-      })) || [];
+      // Processar dados com lógica original de pagamento
+      const processedDocuments = documents?.map(doc => {
+        // Lógica original: usar payment_method do documento se não houver na tabela payments
+        const paymentMethod = doc.payments?.[0]?.payment_method || doc.payment_method || null;
+        const paymentStatus = doc.payments?.[0]?.status || 'pending';
+        
+        return {
+          ...doc,
+          user_name: doc.profiles?.name || null,
+          user_email: doc.profiles?.email || null,
+          user_phone: doc.profiles?.phone || null,
+          user_role: doc.profiles?.role || 'user',
+          payment_method: paymentMethod,
+          payment_status: paymentStatus,
+          display_name: doc.profiles?.name || null,
+          document_type: 'regular' as const,
+          client_name: doc.client_name || null,
+        };
+      }) || [];
 
       console.log('🔍 DEBUG - Processed documents:', processedDocuments.length);
       setExtendedDocuments(processedDocuments);
