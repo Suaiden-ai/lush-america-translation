@@ -191,6 +191,25 @@ export default function DocumentsToAuthenticate({ user }: Props) {
         return;
       }
 
+      // ✅ CORREÇÃO: Atualizar também a tabela documents original se existir
+      if (doc.original_document_id) {
+        const { error: updateOriginalError } = await supabase
+          .from('documents')
+          .update({ 
+            status: 'completed',
+            authenticated_by: user?.id,
+            authenticated_by_name: user?.user_metadata?.name || user?.email,
+            authenticated_by_email: user?.email,
+            authentication_date: new Date().toISOString()
+          })
+          .eq('id', doc.original_document_id);
+        
+        if (updateOriginalError) {
+          console.error('[DocumentsToAuthenticate] Erro ao atualizar documento original:', updateOriginalError);
+          // Não interrompemos o processo, apenas logamos o erro
+        }
+      }
+
       // Inserir em translated_documents com dados do autenticador
       const authData = {
         authenticated_by: user?.id,
