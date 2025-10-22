@@ -315,6 +315,23 @@ export default function AuthenticatorDashboard() {
       alert('Erro ao aprovar documento. Tente novamente.');
       return;
     }
+
+    // ✅ CORREÇÃO: Atualizar também a tabela documents original
+    const { error: updateOriginalError } = await supabase
+      .from('documents')
+      .update({ 
+        status: 'completed',
+        authenticated_by: authData.authenticated_by,
+        authenticated_by_name: authData.authenticated_by_name,
+        authenticated_by_email: authData.authenticated_by_email,
+        authentication_date: authData.authentication_date
+      })
+      .eq('id', document.id);
+    
+    if (updateOriginalError) {
+      console.error('[AuthenticatorDashboard] Erro ao atualizar documento original:', updateOriginalError);
+      // Não interrompemos o processo, apenas logamos o erro
+    }
     
     // Inserir em translated_documents com dados do autenticador
     const { error: insertError } = await supabase.from('translated_documents').insert({
