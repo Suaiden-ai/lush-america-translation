@@ -123,12 +123,16 @@ Deno.serve(async (req: Request) => {
         await handleCheckoutSessionCompleted(event.data.object, supabase);
         break;
       
+      case 'checkout.session.expired':
+        await handleCheckoutSessionExpired(event.data.object, supabase);
+        break;
+      
       case 'payment_intent.succeeded':
         console.log('Payment succeeded:', event.data.object.id);
         break;
       
       case 'payment_intent.payment_failed':
-        console.log('Payment failed:', event.data.object.id);
+        await handlePaymentFailed(event.data.object, supabase);
         break;
       
       default:
@@ -163,6 +167,18 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
   console.log('🔍 [WEBHOOK DEBUG] Sessão completa:', JSON.stringify(session, null, 2));
   
   try {
+    // ✅ VALIDAÇÃO CRÍTICA: Verificar se pagamento foi realmente aprovado
+    if (session.payment_status !== 'paid' || session.status !== 'complete') {
+      console.log('⚠️ [WEBHOOK WARNING] Pagamento não foi aprovado.');
+      console.log('⚠️ payment_status:', session.payment_status);
+      console.log('⚠️ status:', session.status);
+      console.log('⚠️ Session ID:', session.id);
+      console.log('⚠️ NÃO processando documento.');
+      return;
+    }
+
+    console.log('✅ [WEBHOOK DEBUG] Pagamento confirmado. Processando documento...');
+
     const {
       fileId,
       userId,
@@ -421,5 +437,72 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
     console.error('ERROR: Erro ao processar checkout session:', error);
     console.error('DEBUG: Stack trace:', error.stack);
     throw error;
+  }
+}
+
+async function handleCheckoutSessionExpired(session: any, supabase: any) {
+  console.log('🔍 [WEBHOOK DEBUG] Processando checkout session expired:', session.id);
+  
+  try {
+    // Atualizar o status da sessão para expirado
+    const { error: sessionUpdateError } = await supabase
+      .from('stripe_sessions')
+      .update({
+        payment_status: 'expired',
+        updated_at: new Date().toISOString()
+      })
+      .eq('session_id', session.id);
+
+    if (sessionUpdateError) {
+      console.error('WARNING: Erro ao atualizar stripe_sessions para expired:', sessionUpdateError);
+    } else {
+      console.log('✅ Sessão marcada como expirada na stripe_sessions');
+    }
+
+  } catch (error) {
+    console.error('ERROR: Erro ao processar session expired:', error);
+  }
+}
+
+async function handlePaymentFailed(paymentIntent: any, supabase: any) {
+  console.log('🔍 [WEBHOOK DEBUG] Processando payment intent failed:', paymentIntent.id);
+  
+  try {
+    // Buscar a sessão associada pelo payment_intent_id
+    const { data: sessionData, error: sessionError } = await supabase
+      .from('stripe_sessions')
+      .select('session_id')
+      .eq('session_id', paymentIntent.id)
+      .single();
+
+    // Se não encontrar diretamente, pode estar em outro formato
+    if (sessionError || !sessionData) {
+      // Tentar buscar pelo ID do payment intent
+      const { data: allSessions } = await supabase
+        .from('stripe_sessions')
+        .select('*');
+      
+      console.log('🔍 Total de sessões no banco:', allSessions?.length || 0);
+    }
+
+    // Atualizar sessões relacionadas para failed
+    if (sessionData) {
+      const { error: updateError } = await supabase
+        .from('stripe_sessions')
+        .update({
+          payment_status: 'failed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('session_id', sessionData.session_id);
+
+      if (updateError) {
+        console.error('WARNING: Erro ao atualizar stripe_sessions para failed:', updateError);
+      } else {
+        console.log('✅ Sessão marcada como failed na stripe_sessions');
+      }
+    }
+
+  } catch (error) {
+    console.error('ERROR: Erro ao processar payment failed:', error);
   }
 } 
