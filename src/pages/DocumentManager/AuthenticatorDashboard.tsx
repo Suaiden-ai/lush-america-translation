@@ -141,13 +141,22 @@ export default function AuthenticatorDashboard() {
           
           // Determinar o status do documento para autenticação:
           // - Se existe na tabela de verificação, usar o status de lá
-          // - Se não existe, consideramos como 'pending' para autenticação se não está 'completed'
+          // - Se não existe, só considerar 'pending' se NÃO for 'draft' E tiver pagamento confirmado
           let authStatus;
           if (verifiedDoc) {
             authStatus = verifiedDoc.status;
           } else {
-            // Se o documento da tabela principal não está 'completed', ele pode estar pendente para autenticação
-            authStatus = doc.status === 'completed' ? 'completed' : 'pending';
+            // ✅ CORREÇÃO: Apenas documentos com status 'pending' devem aparecer
+            // Documentos 'draft' (sem pagamento) não devem aparecer aqui
+            if (doc.status === 'completed') {
+              authStatus = 'completed';
+            } else if (doc.status === 'pending') {
+              // Verificar se tem file_url válido antes de mostrar
+              authStatus = doc.file_url ? 'pending' : 'no-file';
+            } else {
+              // Documentos 'draft' (sem pagamento) não são para autenticação
+              authStatus = 'draft';
+            }
           }
           
           const finalDoc = {
@@ -202,7 +211,10 @@ export default function AuthenticatorDashboard() {
         });
 
         // Filtrar apenas documentos pendentes para a lista
-        const pendingDocs = validDocuments.filter(doc => doc.status === 'pending');
+        // ✅ CORREÇÃO: Filtrar documentos com status 'pending' E que não sejam 'draft' ou 'no-file'
+        const pendingDocs = validDocuments.filter(doc => 
+          doc.status === 'pending' && doc.status !== 'draft' && doc.status !== 'no-file'
+        );
         setDocuments(pendingDocs);
         
       } catch (err) {
