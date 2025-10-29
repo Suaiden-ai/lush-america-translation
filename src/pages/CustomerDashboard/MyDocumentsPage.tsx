@@ -6,6 +6,8 @@ import { useTranslatedDocuments } from '../../hooks/useDocuments';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { formatDateTime } from '../../utils/dateUtils';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
 
 export default function MyDocumentsPage() {
   const { user } = useAuth();
@@ -720,8 +722,35 @@ export default function MyDocumentsPage() {
                 <button 
                   className="text-gray-400 hover:text-tfe-blue-600 p-2 rounded-full transition-colors" 
                   title="View document"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
+                    
+                    // Log de visualização do documento
+                    try {
+                      await Logger.log(
+                        ActionTypes.DOCUMENT.VIEWED,
+                        `Document viewed: ${item.original_filename || item.filename}`,
+                        {
+                          entityType: 'document',
+                          entityId: item.id,
+                          metadata: {
+                            document_id: item.id,
+                            filename: item.original_filename || item.filename,
+                            file_url: item.translated_file_url,
+                            file_type: (item.original_filename || item.filename)?.split('.').pop()?.toLowerCase(),
+                            user_id: user?.id,
+                            timestamp: new Date().toISOString(),
+                            view_type: 'new_tab'
+                          },
+                          affectedUserId: user?.id,
+                          performerType: 'user'
+                        }
+                      );
+                      console.log('✅ Document view logged successfully');
+                    } catch (logError) {
+                      console.error('Error logging document view:', logError);
+                    }
+                    
                     window.open(item.translated_file_url, '_blank');
                   }}
                 >
@@ -732,6 +761,33 @@ export default function MyDocumentsPage() {
                   title="Download document"
                   onClick={async (e) => {
                     e.stopPropagation();
+                    
+                    // Log de download do documento
+                    try {
+                      await Logger.log(
+                        ActionTypes.DOCUMENT.DOWNLOADED,
+                        `Document downloaded: ${item.original_filename || item.filename}`,
+                        {
+                          entityType: 'document',
+                          entityId: item.id,
+                          metadata: {
+                            document_id: item.id,
+                            filename: item.original_filename || item.filename,
+                            file_url: item.translated_file_url,
+                            file_type: (item.original_filename || item.filename)?.split('.').pop()?.toLowerCase(),
+                            user_id: user?.id,
+                            timestamp: new Date().toISOString(),
+                            download_type: 'my_documents_download'
+                          },
+                          affectedUserId: user?.id,
+                          performerType: 'user'
+                        }
+                      );
+                      console.log('✅ Document download logged successfully');
+                    } catch (logError) {
+                      console.error('Error logging document download:', logError);
+                    }
+                    
                     try {
                       const response = await fetch(item.translated_file_url);
                       const blob = await response.blob();
@@ -858,7 +914,33 @@ export default function MyDocumentsPage() {
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button 
                 className="flex-1 px-4 py-2 bg-tfe-blue-600 text-white rounded-lg font-medium hover:bg-tfe-blue-700 transition-colors flex items-center justify-center gap-2 text-sm"
-                onClick={() => {
+                onClick={async () => {
+                  // Log de visualização do documento
+                  try {
+                    await Logger.log(
+                      ActionTypes.DOCUMENT.VIEWED,
+                      `Document viewed: ${selectedFile.original_filename || selectedFile.filename}`,
+                      {
+                        entityType: 'document',
+                        entityId: selectedFile.id,
+                        metadata: {
+                          document_id: selectedFile.id,
+                          filename: selectedFile.original_filename || selectedFile.filename,
+                          file_url: selectedFile.translated_file_url,
+                          file_type: (selectedFile.original_filename || selectedFile.filename)?.split('.').pop()?.toLowerCase(),
+                          user_id: user?.id,
+                          timestamp: new Date().toISOString(),
+                          view_type: 'modal_view'
+                        },
+                        affectedUserId: user?.id,
+                        performerType: 'user'
+                      }
+                    );
+                    console.log('✅ Document view logged successfully');
+                  } catch (logError) {
+                    console.error('Error logging document view:', logError);
+                  }
+                  
                   window.open(selectedFile.translated_file_url, '_blank');
                 }}
               >
@@ -868,6 +950,32 @@ export default function MyDocumentsPage() {
               <button 
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm"
                 onClick={async () => {
+                  // Log de download do documento
+                  try {
+                    await Logger.log(
+                      ActionTypes.DOCUMENT.DOWNLOADED,
+                      `Document downloaded: ${selectedFile.original_filename || selectedFile.filename}`,
+                      {
+                        entityType: 'document',
+                        entityId: selectedFile.id,
+                        metadata: {
+                          document_id: selectedFile.id,
+                          filename: selectedFile.original_filename || selectedFile.filename,
+                          file_url: selectedFile.translated_file_url,
+                          file_type: (selectedFile.original_filename || selectedFile.filename)?.split('.').pop()?.toLowerCase(),
+                          user_id: user?.id,
+                          timestamp: new Date().toISOString(),
+                          download_type: 'modal_download'
+                        },
+                        affectedUserId: user?.id,
+                        performerType: 'user'
+                      }
+                    );
+                    console.log('✅ Document download logged successfully');
+                  } catch (logError) {
+                    console.error('Error logging document download:', logError);
+                  }
+                  
                   try {
                     const response = await fetch(selectedFile.translated_file_url);
                     const blob = await response.blob();

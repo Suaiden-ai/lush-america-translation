@@ -4,6 +4,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { FileText, Check, Clock, ShieldCheck, Download, CheckCircle, XCircle, Eye, Upload as UploadIcon, Phone } from 'lucide-react';
 import { getValidFileUrl } from '../../utils/fileUtils';
 import { notifyTranslationCompleted } from '../../utils/webhookNotifications';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
 
 interface Document {
   id: string;
@@ -201,21 +203,35 @@ export default function AuthenticatorDashboard() {
         console.log(`- Documentos válidos: ${validDocuments.length}`);
         console.log(`- Documentos filtrados: ${mainDocuments.length - validDocuments.length}`);
         
+        // Debug: mostrar status dos documentos
+        console.log('🔍 DEBUG - Status dos documentos:');
+        validDocuments.forEach((doc, index) => {
+          if (index < 5) { // Mostrar apenas os primeiros 5
+            console.log(`  ${index + 1}. ${doc.filename} - Status: ${doc.status}`);
+          }
+        });
+        
         // Calcular estatísticas
         const pendingCount = validDocuments.filter(doc => doc.status === 'pending').length;
         const approvedCount = validDocuments.filter(doc => doc.status === 'completed').length;
+
+        console.log(`📈 Estatísticas: Pending: ${pendingCount}, Approved: ${approvedCount}`);
 
         setStats({
           pending: pendingCount,
           approved: approvedCount
         });
 
-        // Filtrar apenas documentos pendentes para a lista
-        // ✅ CORREÇÃO: Filtrar documentos com status 'pending' E que não sejam 'draft' ou 'no-file'
-        const pendingDocs = validDocuments.filter(doc => 
-          doc.status === 'pending' && doc.status !== 'draft' && doc.status !== 'no-file'
+        // Filtrar documentos pendentes E aprovados para a lista
+        // ✅ CORREÇÃO: Mostrar documentos 'pending' (para aprovar) e 'completed' (já aprovados)
+        const relevantDocs = validDocuments.filter(doc => 
+          (doc.status === 'pending' || doc.status === 'completed') && 
+          doc.status !== 'draft' && 
+          doc.status !== 'no-file'
         );
-        setDocuments(pendingDocs);
+        
+        console.log(`🎯 Documentos relevantes (pending + completed): ${relevantDocs.length}`);
+        setDocuments(relevantDocs);
         
       } catch (err) {
         console.error('[AuthenticatorDashboard] Unexpected error:', err);
@@ -291,6 +307,36 @@ export default function AuthenticatorDashboard() {
       }
       
       verificationId = newVerificationDoc.id;
+      
+      // Log de documento pronto para autenticação
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.READY_FOR_AUTHENTICATION,
+          `Document ready for authentication: ${document.filename}`,
+          {
+            entityType: 'document',
+            entityId: verificationId,
+            metadata: {
+              document_id: verificationId,
+              original_document_id: document.id,
+              filename: document.filename,
+              verification_code: document.verification_code,
+              user_id: document.user_id,
+              pages: document.pages,
+              total_cost: document.total_cost,
+              source_language: document.source_language || (document as any).idioma_raiz,
+              target_language: document.target_language || (document as any).idioma_destino,
+              is_bank_statement: document.is_bank_statement,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: document.user_id,
+            performerType: 'system'
+          }
+        );
+        console.log('✅ Document ready for authentication logged successfully');
+      } catch (logError) {
+        console.error('Error logging document ready for authentication:', logError);
+      }
     }
     
     // Buscar o documento de verificação
@@ -363,6 +409,66 @@ export default function AuthenticatorDashboard() {
     
     if (insertError) {
       console.error('[AuthenticatorDashboard] Erro ao inserir em translated_documents:', insertError);
+    }
+
+    // Log da aprovação do documento pelo autenticador
+    try {
+      await Logger.log(
+        ActionTypes.DOCUMENT.APPROVED,
+        `Document approved by authenticator: ${doc.filename}`,
+        {
+          entityType: 'document',
+          entityId: verificationId,
+          metadata: {
+            document_id: verificationId,
+            original_document_id: document.id,
+            filename: doc.filename,
+            verification_code: doc.verification_code,
+            user_id: doc.user_id,
+            pages: doc.pages,
+            total_cost: doc.total_cost,
+            source_language: doc.source_language,
+            target_language: doc.target_language,
+            is_bank_statement: doc.is_bank_statement,
+            authenticated_by: authData.authenticated_by,
+            authenticated_by_name: authData.authenticated_by_name,
+            authenticated_by_email: authData.authenticated_by_email,
+            authentication_date: authData.authentication_date,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: doc.user_id,
+          performerType: 'authenticator'
+        }
+      );
+      console.log('✅ Document approval logged successfully');
+    } catch (logError) {
+      console.error('Error logging document approval:', logError);
+    }
+
+    // Log da mudança de status para completed
+    try {
+      await Logger.log(
+        ActionTypes.DOCUMENT.STATUS_CHANGED,
+        `Document status changed to completed: ${doc.filename}`,
+        {
+          entityType: 'document',
+          entityId: verificationId,
+          metadata: {
+            document_id: verificationId,
+            filename: doc.filename,
+            previous_status: 'pending',
+            new_status: 'completed',
+            authenticated_by: authData.authenticated_by,
+            authenticated_by_name: authData.authenticated_by_name,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: doc.user_id,
+          performerType: 'authenticator'
+        }
+      );
+      console.log('✅ Document status change logged successfully');
+    } catch (logError) {
+      console.error('Error logging document status change:', logError);
     }
 
     // Notificar que a tradução foi completada
@@ -471,6 +577,18 @@ export default function AuthenticatorDashboard() {
         authentication_date: new Date().toISOString()
       };
       
+      // Gerar novo código de verificação único para a correção
+      const generateVerificationCode = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let result = '';
+        for (let i = 0; i < 9; i++) {
+          result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+      };
+      
+      const newVerificationCode = generateVerificationCode();
+      
       // Debug: verificar os valores dos idiomas antes da inserção
       console.log('DEBUG: Idiomas antes da inserção em translated_documents:');
       console.log('doc.source_language:', doc.source_language);
@@ -478,6 +596,7 @@ export default function AuthenticatorDashboard() {
       console.log('Valores finais que serão inseridos:');
       console.log('source_language:', doc.source_language || 'Portuguese');
       console.log('target_language:', doc.target_language || 'English');
+      console.log('Novo verification_code:', newVerificationCode);
       
       // Inserir na tabela translated_documents com dados do autenticador
       const { error: insertError } = await supabase.from('translated_documents').insert({
@@ -491,10 +610,76 @@ export default function AuthenticatorDashboard() {
         status: 'completed',
         total_cost: doc.total_cost,
         is_authenticated: true,
-        verification_code: originalDoc.verification_code,
+        verification_code: newVerificationCode, // Usar novo código único
         ...authData
       } as any);
       if (insertError) throw insertError;
+      
+      // Log da rejeição do documento pelo autenticador
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.REJECTED,
+          `Document rejected by authenticator: ${doc.filename}`,
+          {
+            entityType: 'document',
+            entityId: finalVerificationId,
+            metadata: {
+              document_id: finalVerificationId,
+              original_document_id: doc.id,
+              filename: doc.filename,
+              original_verification_code: originalDoc.verification_code,
+              new_verification_code: newVerificationCode,
+              user_id: doc.user_id,
+              pages: doc.pages,
+              total_cost: doc.total_cost,
+              source_language: doc.source_language,
+              target_language: doc.target_language,
+              is_bank_statement: doc.is_bank_statement,
+              correction_file_url: publicUrl,
+              correction_filename: state.file.name,
+              authenticated_by: authData.authenticated_by,
+              authenticated_by_name: authData.authenticated_by_name,
+              authenticated_by_email: authData.authenticated_by_email,
+              authentication_date: authData.authentication_date,
+              reason: 'Document correction after rejection',
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: doc.user_id,
+            performerType: 'authenticator'
+          }
+        );
+        console.log('✅ Document rejection logged successfully');
+      } catch (logError) {
+        console.error('Error logging document rejection:', logError);
+      }
+
+      // Log da mudança de status para completed após correção
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.STATUS_CHANGED,
+          `Document status changed to completed after correction: ${doc.filename}`,
+          {
+            entityType: 'document',
+            entityId: finalVerificationId,
+            metadata: {
+              document_id: finalVerificationId,
+              filename: doc.filename,
+              previous_status: 'pending',
+              new_status: 'completed',
+              correction_file_url: publicUrl,
+              correction_filename: state.file.name,
+              authenticated_by: authData.authenticated_by,
+              authenticated_by_name: authData.authenticated_by_name,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: doc.user_id,
+            performerType: 'authenticator'
+          }
+        );
+        console.log('✅ Document status change after correction logged successfully');
+      } catch (logError) {
+        console.error('Error logging document status change after correction:', logError);
+      }
       
       // Atualizar status do documento original para 'completed' com dados do autenticador
       if (doc.verification_id) {
@@ -523,6 +708,36 @@ export default function AuthenticatorDashboard() {
             ...authData
           })
           .eq('id', doc.id);
+      }
+      
+      // Log de upload manual pelo autenticador
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.MANUAL_UPLOAD_BY_AUTHENTICATOR,
+          `Authenticator uploaded corrected document: ${state.file.name}`,
+          {
+            entityType: 'document',
+            entityId: finalVerificationId,
+            metadata: {
+              original_document_id: doc.id,
+              new_document_id: finalVerificationId,
+              filename: state.file.name,
+              file_size: state.file.size,
+              file_type: state.file.type,
+              verification_code: doc.verification_code,
+              user_id: doc.user_id,
+              authenticator_id: currentUser?.id,
+              authenticator_name: currentUser?.user_metadata?.name || currentUser?.email,
+              reason: 'Document correction after rejection',
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: doc.user_id,
+            performerType: 'authenticator'
+          }
+        );
+        console.log('✅ Manual upload by authenticator logged successfully');
+      } catch (logError) {
+        console.error('Error logging manual upload by authenticator:', logError);
       }
       
       // Remover o documento da lista após sucesso

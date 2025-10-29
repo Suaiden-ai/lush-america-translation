@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     }
 
     // Obter parâmetros do body
-    const { userId } = await req.json().catch(() => ({}));
+    const { userId, executionId } = await req.json().catch(() => ({}));
     
     // Validar userId que é sempre obrigatório
     if (!userId) {
@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
       method: req.method,
       url: req.url,
       userId: userId,
+      executionId: executionId,
       timestamp: new Date().toISOString()
     });
     

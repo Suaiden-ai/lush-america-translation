@@ -90,7 +90,7 @@ export function DocumentVerification() {
                           Document Verified ✓
                         </h3>
                         <p className="text-green-700">
-                          This document was translated by TheFutureOfEnglish
+                          This document was translated by Lush America Translations
                         </p>
                       </div>
                     </div>

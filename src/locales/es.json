@@ -345,10 +345,10 @@
     "totalClientsCount": "Total de clientes",
     "byYourClients": "Por tus clientes",
     "pagesToReachLevel2": "páginas para alcanzar el Nivel 2",
-    "earnXPerPage": "Gana {rate} por página",
+    "earnXPerPage": "Gana {{rate}} por página",
     "insteadOf": "en lugar de",
     "level2Achieved": "¡Nivel 2 Alcanzado!",
-    "earningXPerPage": "Ganando {rate} por página",
+    "earningXPerPage": "Ganando {{rate}} por página",
     "withdrawalAvailable": "Retiro Disponible",
     "youCanRequestWithdrawal": "Puedes solicitar un retiro de",
     "noClientsYet": "Sin Clientes Aún",
@@ -356,7 +356,7 @@
     "commissionsPendingMaturation": "Comisiones pendientes de maduración de 30 días",
     "withdrawalNotAvailable": "Retiro No Disponible",
     "oneDayRemaining": "1 día restante hasta que el retiro esté disponible",
-    "daysRemaining": "{days} días restantes hasta que el retiro esté disponible",
+    "daysRemaining": "{{days}} días restantes hasta que el retiro esté disponible",
     "howToEarnCommissions": "Cómo Ganar Comisiones",
     "shareYourReferralCode": "Comparte tu código de referencia",
     "clientsRegisterUsingCode": "Los clientes se registran usando tu código",
@@ -391,9 +391,9 @@
     "withdrawalAvailable": "Retiro Disponible",
     "withdrawalNotAvailable": "Retiro Aún No Disponible",
     "withdrawalAvailableNow": "¡Disponible ahora!",
-    "withdrawalAvailableFor": "Disponible por {days} días",
-    "withdrawalAvailableIn": "Faltan {days} días, {hours}h {minutes}min",
-    "withdrawalAvailableInHours": "Faltan {hours}h {minutes}min",
+    "withdrawalAvailableFor": "Disponible por {{days}} días",
+    "withdrawalAvailableIn": "Faltan {{days}} días, {{hours}}h {{minutes}}min",
+    "withdrawalAvailableInHours": "Faltan {{hours}}h {{minutes}}min",
     "startEarningToUnlockWithdrawals": "Comienza a ganar para desbloquear retiros",
     "ready": "Listo",
     "commissionsAndWithdrawals": "Comisiones y Retiros",
@@ -419,7 +419,7 @@
     "rejected": "Rechazado",
     "amountToRequest": "Cantidad a Solicitar",
     "paymentMethodDetails": "Detalles del Método de Pago",
-    "availableInDays": "Disponible en {days} días",
+    "availableInDays": "Disponible en {{days}} días",
     "noTranslatedPagesYet": "Aún no hay páginas traducidas",
     "withdrawalDetails": "Detalles de la Solicitud de Retiro",
     "requestId": "ID de la Solicitud",
@@ -446,7 +446,7 @@
     "cannotRequestWithdrawal": "No puede solicitar retiro aún",
     "clientsTab": "Clientes",
     "overviewTab": "Resumen",
-    "totalClientsInList": "Total de Clientes: {count}",
+    "totalClientsInList": "Total de Clientes: {{count}}",
     "clientName": "Nombre del Cliente",
     "lastDocumentDate": "Último Documento",
     "activeDocuments": "Documentos Activos",
@@ -899,7 +899,7 @@
         "noDocuments": "No se encontraron documentos",
         "noDocumentsDescription": "Intenta ajustar tus criterios de búsqueda o filtro.",
         "loading": "Cargando documentos...",
-        "showing": "Mostrando {filtered} de {total} documentos",
+        "showing": "Mostrando {{filtered}} de {{total}} documentos",
         "total": "Total",
         "exportCsv": "Exportar CSV",
         "searchPlaceholder": "Buscar por nombre, email, archivo, cliente...",
@@ -1021,6 +1021,49 @@
     "zelleReceipts": {
       "title": "Recibos Zelle",
       "subtitle": "Gestiona recibos de pago Zelle"
+    },
+    "activityLogs": {
+      "title": "Registros de Actividad",
+      "subtitle": "Seguimiento completo de todas las acciones de usuarios",
+      "stats": {
+        "totalLogs": "Total de Registros",
+        "today": "Registros de Hoy",
+        "uniqueUsers": "Usuarios Únicos"
+      },
+      "filters": {
+        "title": "Filtros",
+        "actionType": "Tipo de Acción",
+        "performerType": "Tipo de Usuario",
+        "entityType": "Tipo de Entidad",
+        "fromDate": "Desde Fecha",
+        "toDate": "Hasta Fecha",
+        "allActions": "Todas las Acciones",
+        "allTypes": "Todos los Tipos",
+        "allEntities": "Todas las Entidades",
+        "clearAll": "Limpiar Filtros"
+      },
+      "searchPlaceholder": "Buscar por usuario, acción o descripción...",
+      "loading": "Cargando...",
+      "loadMore": "Cargar Más",
+      "empty": {
+        "title": "No se encontraron registros",
+        "description": "No hay registros de actividad para mostrar con los filtros seleccionados."
+      },
+      "error": {
+        "title": "Error al cargar registros"
+      },
+      "types": {
+        "zelle_selected": "Método Zelle Seleccionado",
+        "zelle_checkout_opened": "Checkout Zelle Abierto",
+        "zelle_receipt_attached": "Recibo Adjunto",
+        "zelle_receipt_uploaded": "Recibo Subido",
+        "zelle_receipt_upload_failed": "Error al Subir Recibo",
+        "zelle_validation_attempted": "Validación Intentada",
+        "zelle_validation_success": "Validación Exitosa",
+        "zelle_validation_failed": "Validación Falló",
+        "zelle_pending_manual_review": "Pendiente Revisión Manual",
+        "zelle_confirmation_code_saved": "Código de Confirmación Guardado"
+      }
     }
   },
   "finance": {

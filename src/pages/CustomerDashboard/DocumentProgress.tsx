@@ -6,6 +6,8 @@ import { DocumentDetailsModal } from './DocumentDetailsModal';
 import ImagePreviewModal from '../../components/ImagePreviewModal';
 import { db } from '../../lib/supabase';
 import { getValidFileUrl } from '../../utils/fileUtils';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
 
 export default function DocumentProgress() {
   const { user } = useAuth();
@@ -15,10 +17,36 @@ export default function DocumentProgress() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Função para download automático (incluindo PDFs)
-  const handleDownload = async (url: string, filename: string) => {
+  const handleDownload = async (url: string, filename: string, documentId: string) => {
     try {
       // Obter uma URL válida
       const validUrl = await getValidFileUrl(url);
+      
+      // Log de download do documento
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.DOWNLOADED,
+          `Document downloaded: ${filename}`,
+          {
+            entityType: 'document',
+            entityId: documentId,
+            metadata: {
+              document_id: documentId,
+              filename: filename,
+              file_url: validUrl,
+              file_type: filename.split('.').pop()?.toLowerCase(),
+              user_id: user?.id,
+              timestamp: new Date().toISOString(),
+              download_type: 'progress_page_download'
+            },
+            affectedUserId: user?.id,
+            performerType: 'user'
+          }
+        );
+        console.log('✅ Document download logged successfully');
+      } catch (logError) {
+        console.error('Error logging document download:', logError);
+      }
       
       // Fazer o download
       const response = await fetch(validUrl);
@@ -220,7 +248,7 @@ export default function DocumentProgress() {
             className="flex-1 inline-flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 bg-tfe-blue-600 text-white rounded-lg font-medium hover:bg-tfe-blue-700 transition-colors text-xs sm:text-sm"
             onClick={async (e) => {
               e.preventDefault();
-              await handleDownload(doc.translated_file_url, doc.filename || 'translated_document');
+              await handleDownload(doc.translated_file_url, doc.original_filename || doc.filename || 'translated_document', doc.id);
             }}
             title="Download file"
           >
@@ -230,6 +258,32 @@ export default function DocumentProgress() {
           <button
             onClick={async () => {
               try {
+                // Log de visualização do documento
+                  try {
+                    await Logger.log(
+                      ActionTypes.DOCUMENT.VIEWED,
+                      `Document viewed: ${doc.original_filename || doc.filename}`,
+                      {
+                        entityType: 'document',
+                        entityId: doc.id,
+                        metadata: {
+                          document_id: doc.id,
+                          filename: doc.original_filename || doc.filename,
+                          file_url: doc.translated_file_url,
+                          file_type: (doc.original_filename || doc.filename)?.split('.').pop()?.toLowerCase(),
+                          user_id: user?.id,
+                          timestamp: new Date().toISOString(),
+                          view_type: 'progress_page_view'
+                        },
+                        affectedUserId: user?.id,
+                        performerType: 'user'
+                      }
+                    );
+                  console.log('✅ Document view logged successfully');
+                } catch (logError) {
+                  console.error('Error logging document view:', logError);
+                }
+
                 if (doc.translated_file_url && (doc.translated_file_url.endsWith('.pdf') || doc.filename?.toLowerCase().endsWith('.pdf'))) {
                   const validUrl = await getValidFileUrl(doc.translated_file_url);
                   window.open(validUrl, '_blank', 'noopener,noreferrer');
@@ -312,7 +366,7 @@ export default function DocumentProgress() {
                 className="inline-flex items-center justify-center gap-1 px-3 py-2 sm:py-1.5 bg-tfe-blue-600 text-white rounded-lg font-medium hover:bg-tfe-blue-700 transition-colors text-xs"
                 onClick={async (e) => {
                   e.preventDefault();
-                  await handleDownload(doc.translated_file_url, doc.filename || 'translated_document');
+                  await handleDownload(doc.translated_file_url, doc.original_filename || doc.filename || 'translated_document', doc.id);
                 }}
                 title="Download file"
               >
@@ -322,6 +376,32 @@ export default function DocumentProgress() {
               <button
                 onClick={async () => {
                   try {
+                    // Log de visualização do documento
+                    try {
+                      await Logger.log(
+                        ActionTypes.DOCUMENT.VIEWED,
+                        `Document viewed: ${doc.original_filename || doc.filename}`,
+                        {
+                          entityType: 'document',
+                          entityId: doc.id,
+                        metadata: {
+                          document_id: doc.id,
+                          filename: doc.original_filename || doc.filename,
+                          file_url: doc.translated_file_url,
+                          file_type: (doc.original_filename || doc.filename)?.split('.').pop()?.toLowerCase(),
+                          user_id: user?.id,
+                          timestamp: new Date().toISOString(),
+                          view_type: 'progress_page_list_view'
+                        },
+                          affectedUserId: user?.id,
+                          performerType: 'user'
+                        }
+                      );
+                      console.log('✅ Document view logged successfully');
+                    } catch (logError) {
+                      console.error('Error logging document view:', logError);
+                    }
+
                     if (doc.translated_file_url && (doc.translated_file_url.endsWith('.pdf') || doc.filename?.toLowerCase().endsWith('.pdf'))) {
                       const validUrl = await getValidFileUrl(doc.translated_file_url);
                       window.open(validUrl, '_blank', 'noopener,noreferrer');

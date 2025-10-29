@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { CheckCircle, XCircle, Clock, FileText, User, Calendar, FileImage, Phone, Eye } from 'lucide-react';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
 
 interface Document {
   id: string;
@@ -236,6 +238,38 @@ export default function DocumentsToAuthenticate({ user }: Props) {
       if (insertError) {
         console.error('[DocumentsToAuthenticate] Erro ao inserir em translated_documents:', insertError);
         // Não interrompemos o processo, mas logamos o erro
+      } else {
+        // Log de documento entregue ao usuário
+        try {
+          await Logger.log(
+            ActionTypes.DOCUMENT.DELIVERED,
+            `Document delivered to user: ${doc.filename}`,
+            {
+              entityType: 'document',
+              entityId: doc.id,
+              metadata: {
+                document_id: doc.id,
+                filename: doc.filename,
+                verification_code: doc.verification_code,
+                user_id: doc.user_id,
+                pages: doc.pages,
+                total_cost: doc.total_cost,
+                source_language: doc.source_language || 'portuguese',
+                target_language: doc.target_language || 'english',
+                translated_file_url: doc.translated_file_url || doc.file_url,
+                authenticated_by: user?.id,
+                authenticated_by_name: user?.user_metadata?.name || user?.email,
+                delivered_at: new Date().toISOString(),
+                final_status: 'completed'
+              },
+              affectedUserId: doc.user_id,
+              performerType: 'authenticator'
+            }
+          );
+          console.log('✅ Document delivered logged successfully');
+        } catch (logError) {
+          console.error('Error logging document delivered:', logError);
+        }
       }
 
       // Atualizar o documento original na tabela documents para completed
@@ -262,11 +296,47 @@ export default function DocumentsToAuthenticate({ user }: Props) {
         }
       }
 
+      // Log de aprovação bem-sucedida
+      await Logger.log(
+        ActionTypes.DOCUMENT_APPROVE,
+        `Document approved: ${doc.filename}`,
+        {
+          entityType: 'document',
+          entityId: docId,
+          metadata: {
+            filename: doc.filename,
+            document_type: doc.tipo_trad,
+            pages: doc.pages,
+            verification_code: doc.verification_code,
+            authenticated_by_name: user?.user_metadata?.name || user?.email,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: doc.user_id,
+          performerType: 'authenticator'
+        }
+      );
+
       setDocuments(prev => prev.filter(doc => doc.id !== docId));
       console.log('[DocumentsToAuthenticate] Documento aprovado com sucesso');
       
     } catch (err) {
       console.error('[DocumentsToAuthenticate] Erro inesperado ao aprovar:', err);
+      
+      // Log de falha na aprovação
+      await Logger.log(
+        ActionTypes.DOCUMENT_APPROVE,
+        `Failed to approve document: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        {
+          entityType: 'document',
+          entityId: docId,
+          metadata: {
+            error_message: err instanceof Error ? err.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          },
+          performerType: 'authenticator'
+        }
+      );
+      
       alert('Erro inesperado ao aprovar documento.');
     } finally {
       setProcessingDoc(null);
@@ -326,6 +396,25 @@ export default function DocumentsToAuthenticate({ user }: Props) {
         return;
       }
 
+      // Log de rejeição bem-sucedida
+      await Logger.log(
+        ActionTypes.DOCUMENT_REJECT,
+        `Document rejected: ${selectedDocForRejection.filename}`,
+        {
+          entityType: 'document',
+          entityId: selectedDocForRejection.id,
+          metadata: {
+            filename: selectedDocForRejection.filename,
+            rejection_reason: finalReason,
+            rejection_comment: finalComment,
+            rejected_by_name: user?.user_metadata?.name || user?.email,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: selectedDocForRejection.user_id,
+          performerType: 'authenticator'
+        }
+      );
+
       // Remover documento da lista
       setDocuments(prev => prev.filter(doc => doc.id !== selectedDocForRejection.id));
       console.log('[DocumentsToAuthenticate] Documento rejeitado com sucesso');
@@ -336,6 +425,26 @@ export default function DocumentsToAuthenticate({ user }: Props) {
       
     } catch (err) {
       console.error('[DocumentsToAuthenticate] Erro inesperado ao rejeitar:', err);
+      
+      // Log de falha na rejeição
+      if (selectedDocForRejection) {
+        await Logger.log(
+          ActionTypes.DOCUMENT_REJECT,
+          `Failed to reject document: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          {
+            entityType: 'document',
+            entityId: selectedDocForRejection.id,
+            metadata: {
+              filename: selectedDocForRejection.filename,
+              error_message: err instanceof Error ? err.message : 'Unknown error',
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: selectedDocForRejection.user_id,
+            performerType: 'authenticator'
+          }
+        );
+      }
+      
       alert('Erro inesperado ao rejeitar documento.');
     } finally {
       setRejectionLoading(false);

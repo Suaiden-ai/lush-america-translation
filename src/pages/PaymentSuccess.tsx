@@ -4,6 +4,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fileStorage } from '../utils/fileStorage';
 import { generateUniqueFileName } from '../utils/fileUtils';
+import { Logger } from '../lib/loggingHelpers';
+import { ActionTypes } from '../types/actionTypes';
 
 export function PaymentSuccess() {
   const [searchParams] = useSearchParams();
@@ -33,6 +35,8 @@ export function PaymentSuccess() {
   }, [searchParams]);
 
   const handlePaymentSuccess = async (sessionId: string) => {
+    let sessionData: any = null; // Declarar fora do try para acessar no catch
+    
     try {
       console.log('DEBUG: Processando sucesso do pagamento para session:', sessionId);
       
@@ -55,13 +59,14 @@ export function PaymentSuccess() {
         return;
       }
 
-      const sessionData = await response.json();
+      sessionData = await response.json();
       console.log('DEBUG: Dados da sessão:', sessionData);
 
       const { fileId, userId, filename, documentId, isMobile: sessionIsMobile } = sessionData.metadata;
 
       let storedFile = null;
       let publicUrl = null;
+      let documentData = null; // Declarar aqui para estar disponível em todo o escopo
 
       // Função consolidada para fazer upload do arquivo
       const uploadFileToStorage = async (file: File) => {
@@ -276,8 +281,6 @@ export function PaymentSuccess() {
         // Desktop: recuperar arquivo do IndexedDB
         console.log('DEBUG: Desktop detectado, recuperando arquivo do IndexedDB:', fileId);
         console.log('DEBUG: userId recebido:', userId);
-        
-        let documentData = null;
 
         // Tentar recuperar do IndexedDB primeiro
         try {
@@ -399,6 +402,32 @@ export function PaymentSuccess() {
       const updateResult = await updateResponse.json();
       console.log('DEBUG: Documento atualizado via Edge Function:', updateResult);
 
+      // Log de upload de documento com todas as informações
+      try {
+        await Logger.logDocument('DOCUMENT_UPLOADED', 'Document uploaded successfully', {
+          document_id: documentId,
+          filename: sessionData.metadata.filename,
+          original_filename: sessionData.metadata.originalFilename || sessionData.metadata.filename,
+          pages: parseInt(sessionData.metadata.pages),
+          translation_type: sessionData.metadata.isCertified === 'true' ? 'Certified' : 'Standard',
+          is_bank_statement: sessionData.metadata.isBankStatement === 'true',
+          original_language: sessionData.metadata.originalLanguage,
+          target_language: sessionData.metadata.targetLanguage,
+          source_currency: sessionData.metadata.sourceCurrency || null,
+          target_currency: sessionData.metadata.targetCurrency || null,
+          total_cost: parseFloat(sessionData.metadata.totalPrice),
+          file_size: documentData?.file?.size || 0,
+          file_type: documentData?.file?.type || 'application/pdf',
+          public_url: publicUrl,
+          stripe_session_id: sessionData.id,
+          payment_intent: sessionData.payment_intent,
+          upload_timestamp: new Date().toISOString()
+        });
+        console.log('✅ Document upload logged successfully');
+      } catch (logError) {
+        console.error('Error logging document upload:', logError);
+      }
+
       // Chamada manual para send-translation-webhook (Storage Trigger não existe)
       console.log('DEBUG: 🚀 INICIANDO ENVIO PARA N8N - CHAMADA MANUAL');
       console.log('DEBUG: Chamando send-translation-webhook para enviar para n8n');
@@ -489,6 +518,27 @@ export function PaymentSuccess() {
         console.log('DEBUG: Mobile - arquivo não estava no IndexedDB');
       }
 
+      // Log de sucesso no upload
+      await Logger.log(
+        ActionTypes.DOCUMENT.UPLOADED,
+        `Document uploaded successfully: ${filename}`,
+        {
+          entityType: 'document',
+          entityId: documentId,
+          metadata: {
+            filename,
+            file_size: storedFile?.file?.size,
+            page_count: storedFile?.metadata?.pageCount,
+            document_type: storedFile?.metadata?.documentType,
+            is_mobile: sessionIsMobile === 'true',
+            stripe_session_id: sessionId,
+            public_url: publicUrl,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: userId
+        }
+      );
+
       setSuccess(true);
       setUploadProgress(100);
 
@@ -496,6 +546,28 @@ export function PaymentSuccess() {
 
     } catch (err: any) {
       console.error('ERROR: Erro no processamento:', err);
+      
+      // Log de falha no upload
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await Logger.log(
+          ActionTypes.DOCUMENT.UPLOAD_FAILED,
+          `Document upload failed: ${err.message}`,
+          {
+            entityType: 'document',
+            entityId: sessionData?.metadata?.documentId,
+            metadata: {
+              filename: sessionData?.metadata?.filename,
+              error_message: err.message,
+              error_type: err.name,
+              stripe_session_id: sessionId,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: sessionData?.metadata?.userId
+          }
+        );
+      }
+      
       setError(err.message || 'Erro ao processar pagamento');
     } finally {
       setIsUploading(false);

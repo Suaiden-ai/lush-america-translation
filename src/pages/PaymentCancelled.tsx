@@ -1,30 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { XCircle, ArrowLeft, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { Logger } from '../lib/loggingHelpers';
+import { ActionTypes } from '../types/actionTypes';
 
 export function PaymentCancelled() {
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false); // Começa como false pois agora limpamos ao clicar no botão
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cleanupComplete, setCleanupComplete] = useState(false);
+  const hasExecutedRef = useRef(false); // Usar useRef para evitar problemas com StrictMode
+  const executionIdRef = useRef<string | null>(null); // ID único para cada execução
 
   useEffect(() => {
-    // Chamar a função de limpeza assim que a página carregar
-    // Mas só se não foi executada ainda
-    if (!cleanupComplete) {
+    // Chamar a função de limpeza apenas uma vez quando a página carregar
+    if (!hasExecutedRef.current && !cleanupComplete && !isLoading) {
+      hasExecutedRef.current = true;
+      executionIdRef.current = `cleanup_${Date.now()}_${Math.random()}`;
+      console.log('DEBUG: Executando cleanup com ID:', executionIdRef.current);
       cleanupDraftDocuments();
     }
-  }, [cleanupComplete]);
+  }, []); // Array vazio para executar apenas uma vez
 
   // Função para chamar a Edge Function que limpa o documento
   const cleanupDraftDocuments = async () => {
-    // Evitar chamadas duplas
-    if (isLoading) {
-      console.log('DEBUG: cleanupDraftDocuments já está executando, ignorando');
+    // Evitar chamadas duplas - múltiplas proteções
+    if (isLoading || hasExecutedRef.current === false) {
+      console.log('DEBUG: cleanupDraftDocuments já está executando ou não foi autorizado, ignorando');
       return;
     }
 
+    console.log('DEBUG: Iniciando cleanupDraftDocuments - ID:', executionIdRef.current);
     setIsLoading(true);
     setError(null);
     setCleanupComplete(false);
@@ -51,7 +58,8 @@ export function PaymentCancelled() {
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ 
-          userId: userId  // Garantir que estamos usando o userId correto
+          userId: userId,  // Garantir que estamos usando o userId correto
+          executionId: executionIdRef.current // ID único para rastrear execução
         }),
       });
 
@@ -77,6 +85,31 @@ export function PaymentCancelled() {
         userId: userId,
         result
       });
+      
+      // Log de cancelamento de checkout
+      try {
+        await Logger.log(
+          ActionTypes.PAYMENT.CANCELLED,
+          `User cancelled checkout session`,
+          {
+            entityType: 'checkout',
+            entityId: userId,
+            metadata: {
+              user_id: userId,
+              user_email: session.user.email,
+              reason: 'user_cancelled',
+              cleanup_result: result,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: userId,
+            performerType: 'user'
+          }
+        );
+        console.log('✅ Checkout cancellation logged successfully');
+      } catch (logError) {
+        console.error('Error logging checkout cancellation:', logError);
+      }
+      
       setCleanupComplete(true);
 
     } catch (err: any) {
@@ -135,6 +168,13 @@ export function PaymentCancelled() {
         <div className="mb-6">
           <button
             onClick={async () => {
+              // Se já executou o cleanup, apenas navegar
+              if (cleanupComplete) {
+                navigate('/customer-dashboard');
+                return;
+              }
+              
+              // Se não executou, executar e depois navegar
               await cleanupDraftDocuments();
               navigate('/customer-dashboard');
             }}

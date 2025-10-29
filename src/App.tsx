@@ -14,6 +14,7 @@ import { Translations } from './pages/Translations';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { UserManagement } from './pages/AdminDashboard/UserManagement';
 import { AuthenticatorControl } from './pages/AdminDashboard/AuthenticatorControl';
+import { ActionLogs } from './pages/AdminDashboard/ActionLogs';
 import { CustomerDashboard } from './pages/CustomerDashboard';
 import { FinanceDashboard } from './pages/FinanceDashboard';
 import { AffiliateManagementPage as FinanceAffiliateManagementPage } from './pages/FinanceDashboard/AffiliateManagementPage';
@@ -175,7 +176,8 @@ function App() {
                            location.pathname.startsWith('/finance') ||
                            location.pathname === '/user-management' ||
                            location.pathname === '/authenticator-control' ||
-                           location.pathname === '/affiliate-management';
+                           location.pathname === '/affiliate-management' ||
+                           location.pathname === '/activity-logs';
     
     // Se está na área de Dashboard, mostrar apenas itens do Dashboard (botão Home é separado)
     if (isDashboardArea) {
@@ -193,6 +195,7 @@ function App() {
           { id: 'user-management', label: 'User Management', icon: Users, page: 'user-management' as Page },
           { id: 'authenticator-control', label: 'Authenticator Control', icon: UserCheck, page: 'authenticator-control' as Page },
           { id: 'affiliate-management', label: 'Affiliate Management', icon: Users, page: 'affiliate-management' as Page },
+          { id: 'activity-logs', label: 'Activity Logs', icon: FileText, page: 'activity-logs' as Page },
         ];
         return items;
       }
@@ -482,6 +485,19 @@ function App() {
               subtitle="Manage affiliates and commission payments"
             >
               <AffiliateManagementPage />
+            </AdminLayout>
+          ) : <Navigate to="/login" />} />
+          
+          <Route path="/activity-logs" element={user && user.role === 'admin' ? (
+            <AdminLayout 
+              user={user} 
+              onLogout={handleLogout} 
+              onMobileMenuOpen={() => setIsMobileMenuOpen(true)}
+              navItems={getNavItems()}
+              title="Activity Logs"
+              subtitle="Complete tracking of all user actions"
+            >
+              <ActionLogs />
             </AdminLayout>
           ) : <Navigate to="/login" />} />
           

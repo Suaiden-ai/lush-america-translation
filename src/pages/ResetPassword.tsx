@@ -3,6 +3,7 @@ import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../contexts/I18nContext';
+import { Logger } from '../lib/loggingHelpers';
 
 const ResetPassword: React.FC = () => {
   const navigate = useNavigate();
@@ -56,15 +57,49 @@ const ResetPassword: React.FC = () => {
     console.log('[ResetPassword] Updating password...');
     
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const { error } = await supabase.auth.updateUser({
         password: password
       });
       
       if (error) {
+        // Log de falha no reset de senha
+        if (user) {
+          await Logger.log(
+            'password_reset_completed_failed',
+            `Failed to complete password reset`,
+            {
+              metadata: {
+                user_id: user.id,
+                email: user.email,
+                error_type: error.name,
+                error_message: error.message,
+                timestamp: new Date().toISOString()
+              }
+            }
+          );
+        }
         throw error;
       }
       
       console.log('[ResetPassword] Password updated successfully');
+      
+      // Log de sucesso no reset de senha
+      if (user) {
+        await Logger.log(
+          'password_reset_completed',
+          `Password reset completed successfully`,
+          {
+            metadata: {
+              user_id: user.id,
+              email: user.email,
+              timestamp: new Date().toISOString()
+            }
+          }
+        );
+      }
+      
       setSuccess(true);
       
       // Fazer logout após 3 segundos e redirecionar para login

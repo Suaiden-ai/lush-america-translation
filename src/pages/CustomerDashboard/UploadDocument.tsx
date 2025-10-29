@@ -1,4 +1,4 @@
-                                              import React, { useState, useRef } from 'react';
+                                              import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileText, CheckCircle, AlertCircle, Info, Shield, DollarSign, Globe, Award } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
@@ -8,6 +8,8 @@ import { useI18n } from '../../contexts/I18nContext';
 import { PaymentMethodModal } from '../../components/PaymentMethodModal';
 import { ZellePaymentModal } from '../../components/ZellePaymentModal';
 import { useNavigate } from 'react-router-dom';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
 
 export default function UploadDocument() {
   const { user } = useAuth();
@@ -34,8 +36,74 @@ export default function UploadDocument() {
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
   const [currentFilename, setCurrentFilename] = useState<string | null>(null);
   
+  // Estados para rastrear abandono de checkout
+  const [checkoutStartTime, setCheckoutStartTime] = useState<Date | null>(null);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
+  
   // Detecta se é mobile (iOS/Android)
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  
+  // useEffect para capturar abandono por navegação (simplificado)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Se o usuário estava no checkout e está saindo da página, logar abandono
+      if (checkoutStartTime && currentDocumentId) {
+        const timeSpent = Math.round((new Date().getTime() - checkoutStartTime.getTime()) / 1000);
+        
+        // Log simples via console para debug
+        console.log('🚨 Checkout abandoned by navigation:', {
+          document_id: currentDocumentId,
+          filename: currentFilename,
+          time_spent_seconds: timeSpent,
+          checkout_session_id: checkoutSessionId,
+          abandonment_reason: 'page_navigation'
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [checkoutStartTime, currentDocumentId, currentFilename, checkoutSessionId]);
+  
+  // Função para lidar com fechamento do modal de pagamento
+  const handlePaymentModalClose = async () => {
+    // Se o usuário estava no checkout e fechou sem pagar, logar abandono
+    if (checkoutStartTime && currentDocumentId) {
+      const timeSpent = Math.round((new Date().getTime() - checkoutStartTime.getTime()) / 1000); // em segundos
+      
+      try {
+        await Logger.log(
+          ActionTypes.PAYMENT.CHECKOUT_ABANDONED,
+          `User abandoned checkout after ${timeSpent} seconds`,
+          {
+            entityType: 'checkout',
+            entityId: currentDocumentId,
+            metadata: {
+              document_id: currentDocumentId,
+              filename: currentFilename,
+              time_spent_seconds: timeSpent,
+              checkout_session_id: checkoutSessionId,
+              abandonment_reason: 'modal_closed',
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: user?.id,
+            performerType: 'user'
+          }
+        );
+        console.log('✅ Checkout abandoned logged successfully');
+      } catch (logError) {
+        console.error('Error logging checkout abandoned:', logError);
+      }
+    }
+    
+    // Limpar estados
+    setCheckoutStartTime(null);
+    setCheckoutSessionId(null);
+    setShowPaymentModal(false);
+  };
   
   const translationTypes = [
     { value: 'Certified', label: 'Certified' },
@@ -218,8 +286,14 @@ export default function UploadDocument() {
         throw new Error(errorData.error || 'Erro ao criar sessão de pagamento');
       }
 
-      const { url } = await response.json();
+      const { url, sessionId } = await response.json();
       console.log('DEBUG: URL do Stripe Checkout:', url);
+      console.log('DEBUG: Session ID:', sessionId);
+      
+      // Armazenar session ID para rastreamento de abandono
+      if (sessionId) {
+        setCheckoutSessionId(sessionId);
+      }
 
       // Redirecionar para o Stripe Checkout
       window.location.href = url;
@@ -283,6 +357,40 @@ export default function UploadDocument() {
       // Armazenar o ID do documento e filename para usar nos modais de pagamento
       setCurrentDocumentId(newDocument.id);
       setCurrentFilename(uniqueFileName);
+      
+      // Log de entrada no checkout
+      try {
+        await Logger.log(
+          ActionTypes.PAYMENT.CHECKOUT_STARTED,
+          `User entered checkout for document: ${uniqueFileName}`,
+          {
+            entityType: 'checkout',
+            entityId: newDocument.id,
+            metadata: {
+              document_id: newDocument.id,
+              filename: uniqueFileName,
+              pages: pages,
+              translation_type: tipoTrad,
+              is_bank_statement: isExtrato,
+              source_language: idiomaRaiz,
+              target_language: idiomaDestino,
+              source_currency: sourceCurrency,
+              target_currency: targetCurrency,
+              file_size: selectedFile.size,
+              file_type: selectedFile.type,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: user?.id,
+            performerType: 'user'
+          }
+        );
+        console.log('✅ Checkout started logged successfully');
+      } catch (logError) {
+        console.error('Error logging checkout started:', logError);
+      }
+      
+      // Registrar tempo de início do checkout
+      setCheckoutStartTime(new Date());
       
       // Mostrar modal de seleção de método de pagamento
       setShowPaymentModal(true);
@@ -877,13 +985,33 @@ export default function UploadDocument() {
       {/* Modal de Seleção de Método de Pagamento */}
       <PaymentMethodModal
         isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
+        onClose={handlePaymentModalClose}
         onSelectStripe={() => {
           setShowPaymentModal(false);
           handleDirectStripePayment();
         }}
-        onSelectZelle={() => {
+        onSelectZelle={async () => {
           setShowPaymentModal(false);
+          
+          // Log da seleção do método Zelle
+          await Logger.log(
+            ActionTypes.PAYMENT.ZELLE_SELECTED,
+            `User selected Zelle payment method`,
+            {
+              entityType: 'payment',
+              entityId: currentDocumentId,
+              metadata: {
+                amount: calcularValor(pages, isExtrato),
+                document_id: currentDocumentId,
+                filename: selectedFile?.name,
+                pages: pages,
+                timestamp: new Date().toISOString()
+              },
+              affectedUserId: user?.id,
+              performerType: 'user'
+            }
+          );
+          
           handleZelleRedirect(calcularValor(pages, isExtrato));
         }}
         amount={calcularValor(pages, isExtrato)}

@@ -123,6 +123,10 @@ Deno.serve(async (req: Request) => {
         await handleCheckoutSessionCompleted(event.data.object, supabase);
         break;
       
+      case 'checkout.session.async_payment_processing':
+        await handleAsyncPaymentProcessing(event.data.object, supabase);
+        break;
+      
       case 'checkout.session.expired':
         await handleCheckoutSessionExpired(event.data.object, supabase);
         break;
@@ -162,6 +166,47 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+async function handleAsyncPaymentProcessing(session: any, supabase: any) {
+  console.log('🔍 [WEBHOOK DEBUG] Processando async payment processing:', session.id);
+  
+  try {
+    // Log de tentativa de pagamento
+    if (session.metadata?.userId) {
+      const { error: processingLogError } = await supabase
+        .from('action_logs')
+        .insert({
+          performed_by: null,
+          performed_by_type: 'system',
+          performed_by_name: 'System',
+          performed_by_email: 'system@lushamerica.com',
+          action_type: 'PAYMENT_PROCESSING',
+          action_description: `Payment processing started for checkout session`,
+          entity_type: 'payment',
+          entity_id: session.metadata.userId,
+          metadata: {
+            session_id: session.id,
+            payment_intent: session.payment_intent,
+            amount_total: session.amount_total,
+            currency: session.currency,
+            customer_email: session.customer_email,
+            document_id: session.metadata.documentId,
+            filename: session.metadata.filename,
+            timestamp: new Date().toISOString()
+          },
+          affected_user_id: session.metadata.userId
+        });
+      
+      if (processingLogError) {
+        console.error('Error logging payment processing:', processingLogError);
+      } else {
+        console.log('✅ Payment processing logged successfully');
+      }
+    }
+  } catch (error) {
+    console.error('Error in handleAsyncPaymentProcessing:', error);
+  }
+}
+
 async function handleCheckoutSessionCompleted(session: any, supabase: any) {
   console.log('🔍 [WEBHOOK DEBUG] Processando checkout session completed:', session.id);
   console.log('🔍 [WEBHOOK DEBUG] Sessão completa:', JSON.stringify(session, null, 2));
@@ -174,10 +219,83 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       console.log('⚠️ status:', session.status);
       console.log('⚠️ Session ID:', session.id);
       console.log('⚠️ NÃO processando documento.');
+      
+      // Log de falha no pagamento
+      if (session.metadata?.userId) {
+        try {
+          const { error: insertError } = await supabase
+            .from('action_logs')
+            .insert({
+              performed_by: null,
+              performed_by_type: 'system',
+              performed_by_name: 'System',
+              performed_by_email: 'system@lushamerica.com',
+              action_type: 'payment_failed',
+              action_description: `Stripe payment not approved (status: ${session.payment_status})`,
+              entity_type: 'payment',
+              entity_id: session.metadata.userId, // Usar userId dinâmico do usuário
+              metadata: {
+                session_id: session.id,
+                payment_status: session.payment_status,
+                status: session.status,
+                amount_total: session.amount_total,
+                currency: session.currency,
+                timestamp: new Date().toISOString()
+              },
+              affected_user_id: session.metadata.userId
+            });
+          
+          if (insertError) {
+            console.error('Error inserting payment failure log:', insertError);
+          } else {
+            console.log('✅ Payment failure logged successfully');
+          }
+        } catch (logError) {
+          console.error('Error logging payment failure:', logError);
+        }
+      }
+      
       return;
     }
 
     console.log('✅ [WEBHOOK DEBUG] Pagamento confirmado. Processando documento...');
+    
+    // Log de pagamento bem-sucedido
+    if (session.metadata?.userId) {
+      try {
+        const { error: insertError } = await supabase
+          .from('action_logs')
+          .insert({
+            performed_by: null,
+            performed_by_type: 'system',
+            performed_by_name: 'System',
+            performed_by_email: 'system@lushamerica.com',
+            action_type: 'payment_received',
+            action_description: `Stripe payment completed successfully`,
+            entity_type: 'payment',
+            entity_id: session.metadata.userId, // Usar userId dinâmico do usuário que pagou
+            metadata: {
+              session_id: session.id,
+              payment_intent: session.payment_intent,
+              document_id: session.metadata.documentId,
+              amount_total: session.amount_total,
+              currency: session.currency,
+              customer_email: session.customer_email,
+              document_filename: session.metadata.filename,
+              timestamp: new Date().toISOString()
+            },
+            affected_user_id: session.metadata.userId
+          });
+        
+        if (insertError) {
+          console.error('Error inserting payment success log:', insertError);
+        } else {
+          console.log('✅ Payment success logged successfully');
+        }
+      } catch (logError) {
+        console.error('Error logging payment success:', logError);
+      }
+    }
 
     const {
       fileId,
@@ -257,6 +375,42 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
     }
 
     console.log('DEBUG: Documento atualizado com sucesso:', updatedDocument);
+
+    // Log de mudança de status do documento
+    try {
+      const { error: statusLogError } = await supabase
+        .from('action_logs')
+        .insert({
+          performed_by: null,
+          performed_by_type: 'system',
+          performed_by_name: 'System',
+          performed_by_email: 'system@lushamerica.com',
+          action_type: 'DOCUMENT_STATUS_CHANGED',
+          action_description: `Document status changed from draft to pending after payment`,
+          entity_type: 'document',
+          entity_id: documentId,
+          metadata: {
+            document_id: documentId,
+            filename: currentDocument?.filename,
+            previous_status: 'draft',
+            new_status: 'pending',
+            user_id: userId,
+            stripe_session_id: session.id,
+            payment_intent: session.payment_intent,
+            change_reason: 'payment_completed',
+            timestamp: new Date().toISOString()
+          },
+          affected_user_id: userId
+        });
+      
+      if (statusLogError) {
+        console.error('Error logging document status change:', statusLogError);
+      } else {
+        console.log('✅ Document status change logged successfully');
+      }
+    } catch (logError) {
+      console.error('Error logging document status change:', logError);
+    }
 
     // Atualizar o status da sessão na tabela stripe_sessions
     try {
@@ -459,6 +613,58 @@ async function handleCheckoutSessionExpired(session: any, supabase: any) {
       console.log('✅ Sessão marcada como expirada na stripe_sessions');
     }
 
+    // Log de sessão expirada - verificar se já existe log recente para evitar duplicação
+    if (session.metadata?.userId) {
+      try {
+        // Verificar se já existe um log de cancelamento recente (últimos 5 minutos)
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+        
+        const { data: existingLogs, error: checkError } = await supabase
+          .from('action_logs')
+          .select('id, created_at')
+          .eq('action_type', 'payment_cancelled')
+          .eq('affected_user_id', session.metadata.userId)
+          .gte('created_at', fiveMinutesAgo)
+          .limit(1);
+        
+        if (checkError) {
+          console.error('Error checking existing cancellation logs:', checkError);
+        } else if (existingLogs && existingLogs.length > 0) {
+          console.log('⚠️ Skipping duplicate cancellation log - recent log already exists:', existingLogs[0].id);
+          return; // Não inserir log duplicado
+        }
+        
+        const { error: insertError } = await supabase
+          .from('action_logs')
+          .insert({
+            performed_by: null,
+            performed_by_type: 'system',
+            performed_by_name: 'System',
+            performed_by_email: 'system@lushamerica.com',
+            action_type: 'payment_cancelled',
+            action_description: `Stripe checkout session expired`,
+            entity_type: 'payment',
+            entity_id: session.metadata.userId, // Usar userId dinâmico do usuário
+            metadata: {
+              session_id: session.id,
+              amount_total: session.amount_total,
+              currency: session.currency,
+              reason: 'session_expired',
+              timestamp: new Date().toISOString()
+            },
+            affected_user_id: session.metadata.userId
+          });
+        
+        if (insertError) {
+          console.error('Error inserting session expiration log:', insertError);
+        } else {
+          console.log('✅ Session expiration logged successfully');
+        }
+      } catch (logError) {
+        console.error('Error logging session expiration:', logError);
+      }
+    }
+
   } catch (error) {
     console.error('ERROR: Erro ao processar session expired:', error);
   }
@@ -471,7 +677,7 @@ async function handlePaymentFailed(paymentIntent: any, supabase: any) {
     // Buscar a sessão associada pelo payment_intent_id
     const { data: sessionData, error: sessionError } = await supabase
       .from('stripe_sessions')
-      .select('session_id')
+      .select('*')
       .eq('session_id', paymentIntent.id)
       .single();
 
@@ -499,6 +705,41 @@ async function handlePaymentFailed(paymentIntent: any, supabase: any) {
         console.error('WARNING: Erro ao atualizar stripe_sessions para failed:', updateError);
       } else {
         console.log('✅ Sessão marcada como failed na stripe_sessions');
+      }
+
+      // Log de falha no pagamento
+      if (sessionData.user_id) {
+        try {
+          const { error: insertError } = await supabase
+            .from('action_logs')
+            .insert({
+              performed_by: null,
+              performed_by_type: 'system',
+              performed_by_name: 'System',
+              performed_by_email: 'system@lushamerica.com',
+              action_type: 'payment_failed',
+              action_description: `Stripe payment failed: ${paymentIntent.last_payment_error?.message || 'Unknown error'}`,
+              entity_type: 'payment',
+              entity_id: sessionData.user_id, // Usar userId dinâmico do usuário
+              metadata: {
+                payment_intent_id: paymentIntent.id,
+                error_code: paymentIntent.last_payment_error?.code,
+                error_message: paymentIntent.last_payment_error?.message,
+                amount: paymentIntent.amount,
+                currency: paymentIntent.currency,
+                timestamp: new Date().toISOString()
+              },
+              affected_user_id: sessionData.user_id
+            });
+          
+          if (insertError) {
+            console.error('Error inserting payment failure log:', insertError);
+          } else {
+            console.log('✅ Payment failure logged successfully');
+          }
+        } catch (logError) {
+          console.error('Error logging payment failure:', logError);
+        }
       }
     }
 

@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { supabase } from '../lib/supabase';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { getResetPasswordUrl } from '../utils/urlUtils';
+import { Logger } from '../lib/loggingHelpers';
+import { ActionTypes } from '../types/actionTypes';
 
 export interface CustomUser extends SupabaseUser {
   role: 'user' | 'authenticator' | 'admin' | 'finance' | 'affiliate';
@@ -131,16 +133,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        // Log de falha no login
+        await Logger.log(
+          ActionTypes.USER_LOGIN,
+          `Failed login attempt for ${email}`,
+          {
+            metadata: {
+              email,
+              error_type: error.name,
+              error_message: error.message,
+              timestamp: new Date().toISOString()
+            }
+          }
+        );
+        throw error;
+      }
+      
+      // Log de sucesso no login
+      if (data.user) {
+        await Logger.log(
+          ActionTypes.USER_LOGIN,
+          `User logged in successfully`,
+          {
+            metadata: {
+              email,
+              user_id: data.user.id,
+              timestamp: new Date().toISOString()
+            }
+          }
+        );
+      }
+      
+      // O listener de onAuthStateChange vai processar o usuário
+      return data;
+    } catch (error) {
+      // Re-throw para não quebrar o fluxo existente
       throw error;
     }
-    // O listener de onAuthStateChange vai processar o usuário
-    return data;
   };
 
   const signOut = async () => {
     setLoading(true);
+    
+    // Log de logout antes de fazer signOut
+    if (user) {
+      await Logger.log(
+        ActionTypes.USER_LOGOUT,
+        `User logged out`,
+        {
+          metadata: {
+            user_id: user.id,
+            email: user.email,
+            timestamp: new Date().toISOString()
+          }
+        }
+      );
+    }
+    
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
@@ -148,32 +200,102 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signUp = async (email: string, password: string, name: string, phone: string, referralCode?: string, role: 'user' | 'authenticator' | 'admin' | 'finance' = 'user') => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name, role, phone } }
-    });
-    if (error) {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name, role, phone } }
+      });
+      
+      if (error) {
+        // Log de falha no registro
+        await Logger.log(
+          ActionTypes.USER_REGISTER,
+          `Failed registration attempt for ${email}`,
+          {
+            metadata: {
+              email,
+              name,
+              role,
+              error_type: error.name,
+              error_message: error.message,
+              timestamp: new Date().toISOString()
+            }
+          }
+        );
+        throw error;
+      }
+      
+      // Cria perfil imediatamente após registro
+      if (data.user) {
+        await fetchOrCreateProfile(data.user.id, email, name, role, phone, referralCode);
+        
+        // Log de sucesso no registro
+        await Logger.log(
+          ActionTypes.USER_REGISTER,
+          `New user registered: ${name}`,
+          {
+            metadata: {
+              email,
+              name,
+              role,
+              user_id: data.user.id,
+              has_referral: !!referralCode,
+              timestamp: new Date().toISOString()
+            }
+          }
+        );
+      }
+      
+      return data;
+    } catch (error) {
       throw error;
     }
-    // Cria perfil imediatamente após registro
-    if (data.user) {
-      await fetchOrCreateProfile(data.user.id, email, name, role, phone, referralCode);
-    }
-    return data;
   };
 
   const resetPassword = async (email: string) => {
     const resetUrl = getResetPasswordUrl();
     console.log('[resetPassword] Usando URL de reset:', resetUrl);
     
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: resetUrl
-    });
-    if (error) {
+    try {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: resetUrl
+      });
+      
+      if (error) {
+        // Log de falha no reset de senha
+        await Logger.log(
+          'password_reset_request_failed',
+          `Failed password reset request for ${email}`,
+          {
+            metadata: {
+              email,
+              error_type: error.name,
+              error_message: error.message,
+              timestamp: new Date().toISOString()
+            }
+          }
+        );
+        throw error;
+      }
+      
+      // Log de solicitação de reset bem-sucedida
+      await Logger.log(
+        'password_reset_request',
+        `Password reset requested for ${email}`,
+        {
+          metadata: {
+            email,
+            reset_url: resetUrl,
+            timestamp: new Date().toISOString()
+          }
+        }
+      );
+      
+      return data;
+    } catch (error) {
       throw error;
     }
-    return data;
   };
 
   return (

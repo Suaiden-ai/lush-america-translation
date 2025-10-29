@@ -350,6 +350,15 @@ export function useTranslatedDocuments(userId?: string) {
       console.log('[useTranslatedDocuments] DEBUG - Documentos processados:', processedDocuments.length);
       console.log('[useTranslatedDocuments] DEBUG - Status de pagamentos encontrados:', paymentStatusMap.size);
       
+      // Debug: verificar se original_filename está sendo definido corretamente
+      const docsWithOriginalFilename = processedDocuments.filter(doc => doc.original_filename);
+      console.log('[useTranslatedDocuments] DEBUG - Documentos com original_filename:', docsWithOriginalFilename.map(doc => ({
+        id: doc.id,
+        filename: doc.filename,
+        original_filename: doc.original_filename,
+        source: doc.source
+      })));
+      
       // Log dos documentos com status ajustado
       const documentsWithAdjustedStatus = processedDocuments.filter(doc => 
         doc.status === 'refunded' || doc.status === 'cancelled'
