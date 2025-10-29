@@ -21,6 +21,7 @@ interface ExtendedDocument extends Omit<Document, 'client_name' | 'payment_metho
   payment_method?: string | null;
   payment_status?: string | null;
   payment_amount?: number | null;
+  payment_amount_total?: number | null;
   translation_status?: string | null; // ✅ NOVO CAMPO para status da tradução
   client_name?: string | null;
   display_name?: string | null; // Nome formatado para exibição na coluna USER/CLIENT
@@ -124,6 +125,13 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         const paymentMethod = doc.payments?.[0]?.payment_method || doc.payment_method || null;
         const paymentStatus = doc.payments?.[0]?.status || 'pending';
         const paymentAmount = typeof doc.payments?.[0]?.amount === 'number' ? doc.payments?.[0]?.amount : null;
+        const paymentAmountTotal = Array.isArray((doc as any).payments)
+          ? (doc as any).payments.reduce((sum: number, p: any) => {
+              const st = (p?.status || '').toLowerCase();
+              if (['cancelled','refunded','pending'].includes(st)) return sum;
+              return sum + (typeof p?.amount === 'number' ? p.amount : 0);
+            }, 0)
+          : null;
         
         // ✅ CORREÇÃO: Usar translation_status da tabela documents_to_be_verified
         // Mas se o documento foi autenticado (tem authenticator), deve ser "completed"
@@ -143,6 +151,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           payment_method: paymentMethod,
           payment_status: paymentStatus,
           payment_amount: paymentAmount,
+          payment_amount_total: paymentAmountTotal,
           translation_status: translationStatus, // ✅ NOVO CAMPO
           display_name: doc.profiles?.name || null,
           document_type: 'regular' as const,
@@ -182,8 +191,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         doc.client_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doc.display_name?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      // Filtro de status
-      const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
+      // Filtro de status: por padrão (all), esconder drafts
+      const effectiveStatus = (doc.translation_status || doc.status || '').toLowerCase();
+      const matchesStatus = (
+        (statusFilter === 'all' && effectiveStatus !== 'draft') ||
+        (statusFilter !== 'all' && effectiveStatus === statusFilter)
+      );
 
       // Filtro de role - usar o role real do usuário
       let matchesRole = true;
@@ -218,22 +231,47 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
   // Total dinâmico baseado nos filtros atuais
   const totalAmountFiltered = useMemo(() => {
     // Regra solicitada: pagos de fato (users) + autenticador; excluir drafts
-    return filteredDocuments
+    let authSum = 0;
+    let userSum = 0;
+    const total = filteredDocuments
       .filter(doc => (doc.status || '') !== 'draft')
       .reduce((sum, doc) => {
         const isAuthenticator = (doc.user_role || 'user') === 'authenticator';
         if (isAuthenticator) {
-          return sum + (doc.total_cost || 0);
+          const v = (doc.total_cost || 0);
+          authSum += v;
+          return sum + v;
         }
         const payment = (doc.payment_status || '').toLowerCase();
-        const isPaid = !['pending', 'cancelled', 'refunded'].includes(payment);
+        const isPaid = !['pending', 'cancelled', 'refunded'].includes(payment) || (doc.payment_amount_total || 0) > 0;
         if (isPaid) {
-          // Preferir o amount do pagamento quando disponível; fallback para total_cost
-          const amount = typeof doc.payment_amount === 'number' ? doc.payment_amount : (doc.total_cost || 0);
+          // Somar todos os pagamentos confirmados quando disponível; fallback para total_cost
+          const amount = typeof doc.payment_amount_total === 'number' && (doc.payment_amount_total || 0) > 0
+            ? (doc.payment_amount_total as number)
+            : (typeof doc.payment_amount === 'number' ? doc.payment_amount : (doc.total_cost || 0));
+          userSum += amount;
           return sum + amount;
         }
         return sum;
       }, 0);
+    try {
+      console.log('[DocumentsTable] Filtered docs:', filteredDocuments.length);
+      console.log('[DocumentsTable] Authenticator sum (total_cost):', authSum.toFixed(2));
+      console.log('[DocumentsTable] Users paid sum (payments.amount total or fallback):', userSum.toFixed(2));
+      console.log('[DocumentsTable] Total (auth + users):', total.toFixed(2));
+      const samples = filteredDocuments.slice(0, 10).map(d => ({
+        id: d.id,
+        filename: d.filename,
+        role: d.user_role,
+        status: d.status,
+        payment_status: d.payment_status,
+        payment_amount_total: d.payment_amount_total,
+        payment_amount: d.payment_amount,
+        total_cost: d.total_cost
+      }));
+      console.log('[DocumentsTable] Sample rows:', samples);
+    } catch {}
+    return total;
   }, [filteredDocuments]);
 
   // Define a cor de fundo e texto com base no status de pagamento

@@ -14,6 +14,7 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
   const { t } = useI18n();
   const [extendedStats, setExtendedStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [overrideRevenue, setOverrideRevenue] = useState<number | null>(null);
   
   // 🔍 BUSCAR STATUS DE PAGAMENTOS PARA FILTRAR CORRETAMENTE
   const [paymentStatuses, setPaymentStatuses] = useState<Map<string, string>>(new Map());
@@ -47,6 +48,38 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     
     fetchPaymentStatuses();
   }, []);
+
+  // Buscar dados exatos para receita (payments.amount e receita de autenticador via documents)
+  useEffect(() => {
+    const fetchRevenueData = async () => {
+      try {
+        const [authDocsRes, paysRes] = await Promise.all([
+          supabase
+            .from('documents')
+            .select('total_cost, status, profiles!documents_user_id_fkey(role)'),
+          supabase.from('payments').select('amount, status')
+        ]);
+        let authRev = 0;
+        (authDocsRes.data || []).forEach((d: any) => {
+          if (d?.profiles?.role === 'authenticator' && (d?.status || '') !== 'draft') {
+            authRev += Number(d?.total_cost || 0);
+          }
+        });
+        let userRev = 0;
+        (paysRes.data || []).forEach((p: any) => {
+          const st = (p?.status || '').toLowerCase();
+          if (!['pending', 'cancelled', 'refunded'].includes(st)) {
+            userRev += Number(p?.amount || 0);
+          }
+        });
+        setOverrideRevenue(authRev + userRev);
+      } catch (e) {
+        console.warn('Revenue fetch failed, fallback to doc-based', e);
+        setOverrideRevenue(null);
+      }
+    };
+    fetchRevenueData();
+  }, []);
   
   // Filtrar documentos: excluir drafts e pagamentos cancelados/reembolsados
   const validDocuments = documents.filter(doc => {
@@ -77,7 +110,17 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     })));
   }
   
-  const totalRevenue = validDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
+  const totalRevenueDoc = validDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
+  const totalRevenue = overrideRevenue ?? totalRevenueDoc;
+
+  // Debug detalhado para reconciliar valores
+  try {
+    console.log('[StatsCards] Valid documents (no drafts/cancelled/refunded):', validDocuments.length);
+    console.log('[StatsCards] Doc-based revenue:', totalRevenueDoc.toFixed(2));
+    if (overrideRevenue !== null) {
+      console.log('[StatsCards] Override revenue (payments + authenticator dtbv):', overrideRevenue.toFixed(2));
+    }
+  } catch {}
   const completedDocuments = validDocuments.filter(doc => doc.status === 'completed').length;
   const pendingDocuments = validDocuments.filter(doc => doc.status === 'pending').length;
   const processingDocuments = validDocuments.filter(doc => doc.status === 'processing').length;
@@ -294,3 +337,5 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     </div>
   );
 }
+
+export default StatsCards;
