@@ -266,22 +266,24 @@ Deno.serve(async (req) => {
         }
 
         // 2. Apagar sessões Stripe relacionadas
-        if (doc.stripe_sessions && doc.stripe_sessions.length > 0) {
-          try {
-            const { error: sessionDeleteError } = await supabase
-              .from('stripe_sessions')
-              .delete()
-              .eq('document_id', doc.id);
+        // Sempre tentar deletar sessões (não verificar se existem, pois já verificamos antes)
+        try {
+          const { error: sessionDeleteError, data: deletedSessions } = await supabase
+            .from('stripe_sessions')
+            .delete()
+            .eq('document_id', doc.id)
+            .select(); // Usar select para saber se algo foi deletado
 
-            if (sessionDeleteError) {
-              console.error(`⚠️ [CLEANUP] Erro ao remover sessões Stripe para ${doc.id}:`, sessionDeleteError);
-            } else {
-              console.log(`🗑️ [CLEANUP] Sessões Stripe removidas para doc ${doc.id}`);
-              sessionsDeleted++;
-            }
-          } catch (sessionException) {
-            console.error(`❌ [CLEANUP] Exceção ao remover sessões Stripe para ${doc.id}:`, sessionException);
+          if (sessionDeleteError) {
+            console.error(`⚠️ [CLEANUP] Erro ao remover sessões Stripe para ${doc.id}:`, sessionDeleteError);
+            errors.push({ doc: doc.id, type: 'sessions', error: sessionDeleteError });
+          } else if (deletedSessions && deletedSessions.length > 0) {
+            console.log(`🗑️ [CLEANUP] ${deletedSessions.length} sessão(ões) Stripe removida(s) para doc ${doc.id}`);
+            sessionsDeleted += deletedSessions.length;
           }
+        } catch (sessionException) {
+          console.error(`❌ [CLEANUP] Exceção ao remover sessões Stripe para ${doc.id}:`, sessionException);
+          errors.push({ doc: doc.id, type: 'sessions_exception', error: sessionException });
         }
 
         // 3. Apagar documento do banco
