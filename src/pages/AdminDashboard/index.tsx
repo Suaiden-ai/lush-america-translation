@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StatsCards } from './StatsCards';
+import StatsCards from './StatsCards';
 import { DocumentsTable } from './DocumentsTable';
 import { DocumentDetailsModal } from './DocumentDetailsModal';
 import { ZelleReceiptsAdmin } from '../../components/ZelleReceiptsAdmin';
