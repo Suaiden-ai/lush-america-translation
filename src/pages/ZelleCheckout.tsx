@@ -606,10 +606,52 @@ export function ZelleCheckout() {
           payment_method: 'zelle'
         }).eq('id', documentId);
 
+        // Log da mudança de status do documento para processing
+        try {
+          await Logger.log(
+            ActionTypes.DOCUMENT.STATUS_CHANGED,
+            `Document status changed to processing after Zelle validation`,
+            {
+              entityType: 'document',
+              entityId: documentId || '',
+              metadata: {
+                document_id: documentId,
+                filename: documentData?.filename,
+                new_status: 'processing',
+                payment_method: 'zelle',
+                timestamp: new Date().toISOString()
+              },
+              affectedUserId: documentData?.user_id,
+              performerType: 'system'
+            }
+          );
+        } catch (logErr) {
+          console.warn('⚠️ Failed to log document status change:', logErr);
+        }
+
         // Enviar documento automaticamente para tradução
         try {
           await sendDocumentForTranslation(documentData, userProfile);
           console.log('✅ Documento enviado para tradução automaticamente');
+
+          // Log do envio do documento para tradução
+          await Logger.log(
+            ActionTypes.DOCUMENT.SEND_FOR_AUTHENTICATION,
+            `Document sent for translation automatically after Zelle validation`,
+            {
+              entityType: 'document',
+              entityId: documentId || '',
+              metadata: {
+                document_id: documentId,
+                filename: documentData?.filename,
+                pages: documentData?.pages,
+                amount: amount,
+                timestamp: new Date().toISOString()
+              },
+              affectedUserId: documentData?.user_id,
+              performerType: 'system'
+            }
+          );
         } catch (translationError) {
           console.error('❌ Erro ao enviar documento para tradução:', translationError);
           // Não falhar o pagamento se a tradução falhar - pode ser reenviad manualmente

@@ -432,6 +432,33 @@ export default function UploadDocument() {
 
       console.log('✅ Document uploaded successfully:', publicUrl);
 
+      // Log do upload do documento (arquivo no storage)
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.UPLOADED,
+          `Document uploaded to storage successfully`,
+          {
+            entityType: 'document',
+            entityId: currentDocumentId,
+            metadata: {
+              document_id: currentDocumentId,
+              filename: fileName,
+              original_filename: selectedFile.name,
+              file_url: publicUrl,
+              pages: pages,
+              is_bank_statement: isExtrato,
+              target_language: idiomaDestino,
+              original_language: idiomaRaiz,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: user.id,
+            performerType: 'user'
+          }
+        );
+      } catch (logErr) {
+        console.warn('⚠️ Failed to log document upload:', logErr);
+      }
+
       // Atualizar o documento no banco com file_url e filename correto
       const { error: updateError } = await supabase
         .from('documents')
@@ -448,6 +475,28 @@ export default function UploadDocument() {
       }
 
       console.log('✅ Document updated in database with file_url');
+
+      // Log da atualização do documento no banco com file_url
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.UPDATE,
+          `Document record updated with file_url after upload`,
+          {
+            entityType: 'document',
+            entityId: currentDocumentId,
+            metadata: {
+              document_id: currentDocumentId,
+              filename: fileName,
+              file_url: publicUrl,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: user.id,
+            performerType: 'user'
+          }
+        );
+      } catch (logErr) {
+        console.warn('⚠️ Failed to log document DB update:', logErr);
+      }
 
       // Agora redirecionar para Zelle checkout
       const params = new URLSearchParams({
