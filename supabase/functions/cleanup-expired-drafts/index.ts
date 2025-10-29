@@ -1,10 +1,111 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import Stripe from 'https://esm.sh/stripe@14.21.0';
+import { getStripeConfig } from '../shared/stripe-config.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+/**
+ * Sincroniza sessões Stripe pending com o status real da API do Stripe
+ * Atualiza sessões que expiraram ou foram completadas
+ */
+async function syncStripeSessions(supabase: any, stripe: Stripe): Promise<{ checked: number, updated: number }> {
+  console.log(`🔄 [CLEANUP] Sincronizando sessões Stripe pending...`);
+  
+  try {
+    // Buscar sessões pending que foram atualizadas há mais de 30 minutos
+    // (para evitar consultar sessões muito recentes)
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    
+    const { data: pendingSessions, error: queryError } = await supabase
+      .from('stripe_sessions')
+      .select('id, session_id, payment_status, updated_at')
+      .eq('payment_status', 'pending')
+      .lt('updated_at', thirtyMinutesAgo);
+
+    if (queryError) {
+      console.error('❌ [CLEANUP] Erro ao buscar sessões pending:', queryError);
+      return { checked: 0, updated: 0 };
+    }
+
+    if (!pendingSessions || pendingSessions.length === 0) {
+      console.log('✅ [CLEANUP] Nenhuma sessão pending para sincronizar');
+      return { checked: 0, updated: 0 };
+    }
+
+    console.log(`🔍 [CLEANUP] Verificando ${pendingSessions.length} sessões pending no Stripe...`);
+
+    let checkedCount = 0;
+    let updatedCount = 0;
+
+    // Verificar cada sessão no Stripe (com limite para não sobrecarregar)
+    const sessionsToCheck = pendingSessions.slice(0, 50); // Limite de 50 por execução
+    
+    for (const session of sessionsToCheck) {
+      try {
+        checkedCount++;
+
+        // Consultar a sessão no Stripe
+        const stripeSession = await stripe.checkout.sessions.retrieve(session.session_id);
+
+        // Verificar se o status mudou
+        let newStatus = session.payment_status;
+        let shouldUpdate = false;
+
+        if (stripeSession.status === 'expired') {
+          newStatus = 'expired';
+          shouldUpdate = true;
+          console.log(`✅ [CLEANUP] Sessão ${session.session_id} expirada no Stripe`);
+        } else if (stripeSession.status === 'complete' && stripeSession.payment_status === 'paid') {
+          newStatus = 'completed';
+          shouldUpdate = true;
+          console.log(`✅ [CLEANUP] Sessão ${session.session_id} completada no Stripe`);
+        } else if (stripeSession.status === 'open') {
+          // Verificar se expirou por tempo (Stripe expira após 24h)
+          const expiresAt = stripeSession.expires_at ? new Date(stripeSession.expires_at * 1000) : null;
+          if (expiresAt && expiresAt < new Date()) {
+            newStatus = 'expired';
+            shouldUpdate = true;
+            console.log(`✅ [CLEANUP] Sessão ${session.session_id} expirada por tempo`);
+          }
+        }
+
+        // Atualizar o banco se necessário
+        if (shouldUpdate) {
+          const { error: updateError } = await supabase
+            .from('stripe_sessions')
+            .update({
+              payment_status: newStatus,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', session.id);
+
+          if (updateError) {
+            console.error(`❌ [CLEANUP] Erro ao atualizar sessão ${session.session_id}:`, updateError);
+          } else {
+            updatedCount++;
+          }
+        }
+
+        // Pequeno delay para não sobrecarregar a API do Stripe
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+      } catch (sessionError: any) {
+        console.error(`❌ [CLEANUP] Erro ao verificar sessão ${session.session_id}:`, sessionError.message);
+      }
+    }
+
+    console.log(`✅ [CLEANUP] Sincronização concluída: ${checkedCount} verificadas, ${updatedCount} atualizadas`);
+    return { checked: checkedCount, updated: updatedCount };
+
+  } catch (error: any) {
+    console.error('❌ [CLEANUP] Erro na sincronização de sessões Stripe:', error.message);
+    return { checked: 0, updated: 0 };
+  }
+}
 
 Deno.serve(async (req) => {
   console.log(`🧹 [CLEANUP] Iniciando cleanup automático de drafts expirados - ${new Date().toISOString()}`);
@@ -18,6 +119,20 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // 🔄 NOVO: Sincronizar sessões Stripe antes de processar documentos
+    let syncResult = { checked: 0, updated: 0 };
+    try {
+      const stripeConfig = getStripeConfig(req);
+      const stripe = new Stripe(stripeConfig.secretKey, {
+        apiVersion: stripeConfig.apiVersion as any,
+        appInfo: stripeConfig.appInfo,
+      });
+      syncResult = await syncStripeSessions(supabase, stripe);
+    } catch (stripeError: any) {
+      console.warn(`⚠️ [CLEANUP] Erro ao configurar Stripe, continuando sem sincronização:`, stripeError.message);
+      // Continua mesmo se não conseguir sincronizar (não é crítico)
+    }
 
     // Calcular timestamps - MANTENDO A LÓGICA ORIGINAL SEGURA
     const now = Date.now();
@@ -190,14 +305,19 @@ Deno.serve(async (req) => {
 
     // Log final
     console.log(`🎯 [CLEANUP] Cleanup concluído:`);
-    console.log(`   - Verificados: ${draftsToDelete.length}`);
-    console.log(`   - Apagados: ${deletedCount}`);
+    console.log(`   - Sessões Stripe sincronizadas: ${syncResult.checked} verificadas, ${syncResult.updated} atualizadas`);
+    console.log(`   - Documentos verificados: ${draftsToDelete.length}`);
+    console.log(`   - Documentos apagados: ${deletedCount}`);
     console.log(`   - Storage removido: ${storageDeleted}`);
     console.log(`   - Sessões Stripe removidas: ${sessionsDeleted}`);
     console.log(`   - Erros: ${errors.length}`);
 
     return new Response(JSON.stringify({
       success: true,
+      stripeSync: {
+        checked: syncResult.checked,
+        updated: syncResult.updated
+      },
       checked: draftsToDelete.length,
       deleted: deletedCount,
       storageDeleted: storageDeleted,
