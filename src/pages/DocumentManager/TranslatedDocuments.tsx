@@ -48,6 +48,11 @@ export default function TranslatedDocuments() {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [userLoading, setUserLoading] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
+  // Modal de preview
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -219,6 +224,44 @@ export default function TranslatedDocuments() {
         </div>
       </div>
     );
+  }
+
+  async function openPreview(doc: TranslatedDocument) {
+    try {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      if (!doc.translated_file_url) {
+        setPreviewError('No PDF file available to view.');
+        setPreviewOpen(true);
+        return;
+      }
+      const validUrl = await getValidFileUrl(doc.translated_file_url);
+      setPreviewUrl(validUrl);
+      setPreviewOpen(true);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');
+      setPreviewOpen(true);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function downloadPreview(filename?: string) {
+    if (!previewUrl) return;
+    try {
+      const response = await fetch(previewUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || 'translated_document.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    }
   }
 
   return (
@@ -425,20 +468,7 @@ export default function TranslatedDocuments() {
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
                           <button
-                            onClick={async () => {
-                              try {
-                                if (!doc.translated_file_url) {
-                                  alert('No PDF file available to view.');
-                                  return;
-                                }
-                                
-                                const validUrl = await getValidFileUrl(doc.translated_file_url);
-                                window.open(validUrl, '_blank', 'noopener,noreferrer');
-                              } catch (error) {
-                                console.error('Error opening PDF:', error);
-                                alert((error as Error).message || 'Failed to open PDF. The file may be corrupted or inaccessible.');
-                              }
-                            }}
+                            onClick={() => openPreview(doc)}
                             className="flex items-center gap-1 bg-tfe-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-tfe-blue-700 transition-colors font-medium"
                             title="View PDF"
                           >
@@ -616,6 +646,46 @@ export default function TranslatedDocuments() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Visualização de Documento (tela cheia) */}
+      {previewOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[10000]">
+          <div className="absolute inset-0 bg-white flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-tfe-blue-600" />
+                <span className="font-semibold text-gray-900">Document preview</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  disabled={previewLoading || !previewUrl}
+                  onClick={() => downloadPreview('translated_document.pdf')}
+                >
+                  Download
+                </button>
+                <button
+                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  onClick={() => setPreviewOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-gray-50 overflow-hidden">
+              {previewLoading && (
+                <div className="flex items-center justify-center h-full text-gray-600">Loading...</div>
+              )}
+              {!previewLoading && previewError && (
+                <div className="p-6 text-center text-tfe-red-600">{previewError}</div>
+              )}
+              {!previewLoading && !previewError && previewUrl && (
+                <iframe src={previewUrl} className="w-full h-full border-0" title="Document" />
+              )}
+            </div>
           </div>
         </div>
       )}

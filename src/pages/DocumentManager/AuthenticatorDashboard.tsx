@@ -54,6 +54,63 @@ export default function AuthenticatorDashboard() {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [userLoading, setUserLoading] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
+
+  // Modal de Visualização de Documento
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<'pdf' | 'image' | 'unknown'>('unknown');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  function detectPreviewType(url: string, filename?: string | null): 'pdf' | 'image' | 'unknown' {
+    const name = (filename || url).toLowerCase();
+    if (name.endsWith('.pdf')) return 'pdf';
+    if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.gif') || name.endsWith('.webp')) return 'image';
+    // Heurística para URLs sem extensão
+    if (url.includes('content-type=application%2Fpdf')) return 'pdf';
+    return 'unknown';
+  }
+
+  async function openPreview(doc: Document) {
+    try {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      const urlToView = doc.translated_file_url || doc.file_url;
+      if (!urlToView) {
+        setPreviewError('No document available to view.');
+        setPreviewOpen(true);
+        return;
+      }
+      const validUrl = await getValidFileUrl(urlToView);
+      setPreviewUrl(validUrl);
+      setPreviewType(detectPreviewType(validUrl, doc.filename));
+      setPreviewOpen(true);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');
+      setPreviewOpen(true);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function downloadPreview(filename?: string | null) {
+    if (!previewUrl) return;
+    try {
+      const response = await fetch(previewUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || 'document';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      // Fallback para abrir em nova aba
+      window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    }
+  }
   
   // Estados para modais de confirmação
   const [showApprovalModal, setShowApprovalModal] = useState(false);
@@ -82,10 +139,9 @@ export default function AuthenticatorDashboard() {
       setLoading(true);
       setError(null);
       try {
-        
-        // Buscar documentos da tabela principal
-        const { data: mainDocs, error: mainError } = await supabase
-          .from('documents')
+        // Buscar documentos de verificação PENDENTES (fonte única de verdade para autenticação)
+        const { data: verifiedDocs, error: verifiedError } = await supabase
+          .from('documents_to_be_verified')
           .select(`
             *,
             profiles:user_id (
@@ -93,24 +149,8 @@ export default function AuthenticatorDashboard() {
               email
             )
           `)
-          .order('created_at', { ascending: false });
-        
-        if (mainError) {
-          console.error('[AuthenticatorDashboard] Error fetching main documents:', mainError);
-          if (mainError.code === '42501' || mainError.code === 'PGRST301') {
-            setError('You do not have permission to access this area.');
-          } else {
-            setError(mainError.message);
-          }
-          return;
-        }
-
-
-        // Buscar documentos de verificação
-        const { data: verifiedDocs, error: verifiedError } = await supabase
-          .from('documents_to_be_verified')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true });
         
         if (verifiedError) {
           console.error('[AuthenticatorDashboard] Error fetching verified documents:', verifiedError);
@@ -135,56 +175,21 @@ export default function AuthenticatorDashboard() {
             paymentStatusMap.set(payment.document_id, payment.status);
           }
         });
-        
-        
-        // Mapear documentos principais com informações de verificação
-        const mainDocuments = (mainDocs as any[] || []).map(doc => {
-          const verifiedDoc = verifiedDocs?.find(v => v.filename === doc.filename);
-          
-          // Determinar o status do documento para autenticação:
-          // - Se existe na tabela de verificação, usar o status de lá
-          // - Se não existe, só considerar 'pending' se NÃO for 'draft' E tiver pagamento confirmado
-          let authStatus;
-          if (verifiedDoc) {
-            authStatus = verifiedDoc.status;
-          } else {
-            // ✅ CORREÇÃO: Apenas documentos com status 'pending' devem aparecer
-            // Documentos 'draft' (sem pagamento) não devem aparecer aqui
-            if (doc.status === 'completed') {
-              authStatus = 'completed';
-            } else if (doc.status === 'pending') {
-              // Verificar se tem file_url válido antes de mostrar
-              authStatus = doc.file_url ? 'pending' : 'no-file';
-            } else {
-              // Documentos 'draft' (sem pagamento) não são para autenticação
-              authStatus = 'draft';
-            }
-          }
-          
-          const finalDoc = {
-            ...doc,
-            user_name: doc.profiles?.name || null,
-            user_email: doc.profiles?.email || null,
-            // Status para autenticação
-            status: authStatus,
-            // Manter ID da tabela de verificação se existir para operações
-            verification_id: verifiedDoc ? verifiedDoc.id : null,
-            // Dados da verificação se existir
-            translated_file_url: verifiedDoc ? verifiedDoc.translated_file_url : doc.translated_file_url,
-            authenticated_by: verifiedDoc?.authenticated_by,
-            authenticated_by_name: verifiedDoc?.authenticated_by_name,
-            authenticated_by_email: verifiedDoc?.authenticated_by_email,
-            authentication_date: verifiedDoc?.authentication_date,
-            // ✅ CORREÇÃO: Pegar idiomas da tabela correta
-            source_language: verifiedDoc?.source_language || doc.idioma_raiz,
-            target_language: verifiedDoc?.target_language || doc.idioma_destino
-          };
-          
-          return finalDoc;
-        }) as Document[];
-        
+
+        // Enriquecer documentos pendentes com dados do usuário e normalizar campos esperados na UI
+        const pendingDocuments = (verifiedDocs as any[] || []).map(vdoc => {
+          return {
+            ...vdoc,
+            user_name: vdoc.profiles?.name || null,
+            user_email: vdoc.profiles?.email || null,
+            verification_id: vdoc.id,
+            // A UI espera 'status' com o valor já normalizado
+            status: vdoc.status || 'pending',
+          } as Document;
+        });
+
         // Filtrar documentos que NÃO têm status refunded ou cancelled
-        const validDocuments = mainDocuments.filter(doc => {
+        const validDocuments = pendingDocuments.filter(doc => {
           const paymentStatus = paymentStatusMap.get(doc.id);
           const shouldExclude = paymentStatus === 'refunded' || paymentStatus === 'cancelled';
           
@@ -199,9 +204,9 @@ export default function AuthenticatorDashboard() {
         });
         
         console.log('📊 FILTRO RESULTADO:');
-        console.log(`- Total documentos: ${mainDocuments.length}`);
+        console.log(`- Total documentos pendentes: ${pendingDocuments.length}`);
         console.log(`- Documentos válidos: ${validDocuments.length}`);
-        console.log(`- Documentos filtrados: ${mainDocuments.length - validDocuments.length}`);
+        console.log(`- Documentos filtrados (pagamentos): ${pendingDocuments.length - validDocuments.length}`);
         
         // Debug: mostrar status dos documentos
         console.log('🔍 DEBUG - Status dos documentos:');
@@ -212,8 +217,14 @@ export default function AuthenticatorDashboard() {
         });
         
         // Calcular estatísticas
-        const pendingCount = validDocuments.filter(doc => doc.status === 'pending').length;
-        const approvedCount = validDocuments.filter(doc => doc.status === 'completed').length;
+        const pendingCount = validDocuments.length;
+
+        // Buscar contagem de aprovados (completed) separadamente para o overview
+        const { count: approvedCountRaw } = await supabase
+          .from('documents_to_be_verified')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'completed');
+        const approvedCount = approvedCountRaw || 0;
 
         console.log(`📈 Estatísticas: Pending: ${pendingCount}, Approved: ${approvedCount}`);
 
@@ -222,16 +233,9 @@ export default function AuthenticatorDashboard() {
           approved: approvedCount
         });
 
-        // Filtrar documentos pendentes E aprovados para a lista
-        // ✅ CORREÇÃO: Mostrar documentos 'pending' (para aprovar) e 'completed' (já aprovados)
-        const relevantDocs = validDocuments.filter(doc => 
-          (doc.status === 'pending' || doc.status === 'completed') && 
-          doc.status !== 'draft' && 
-          doc.status !== 'no-file'
-        );
-        
-        console.log(`🎯 Documentos relevantes (pending + completed): ${relevantDocs.length}`);
-        setDocuments(relevantDocs);
+        // A lista deve mostrar APENAS documentos pendentes para autenticação
+        console.log(`🎯 Documentos relevantes (apenas pending): ${validDocuments.length}`);
+        setDocuments(validDocuments);
         
       } catch (err) {
         console.error('[AuthenticatorDashboard] Unexpected error:', err);
@@ -1086,30 +1090,18 @@ export default function AuthenticatorDashboard() {
                       <td className="px-4 py-3">
                         <div className="space-y-2">
                           <div>
-                            <a href={doc.file_url || ''} target="_blank" rel="noopener noreferrer" className="text-tfe-blue-700 underline font-medium hover:text-tfe-blue-950 transition-colors text-sm">
+                            <a
+                              href="#"
+                              onClick={(e) => { e.preventDefault(); openPreview(doc); }}
+                              className="text-tfe-blue-700 underline font-medium hover:text-tfe-blue-950 transition-colors text-sm"
+                            >
                               {doc.filename}
                             </a>
                           </div>
                           <div className="flex gap-2">
                             {/* Botão View - sempre disponível */}
                             <button
-                              onClick={async () => {
-                                try {
-                                  // Preferir documento traduzido se existir, senão mostrar o original
-                                  const urlToView = doc.translated_file_url || doc.file_url;
-                                  if (!urlToView) {
-                                    alert('No document available to view.');
-                                    return;
-                                  }
-                                  
-                                  // Tentar obter uma URL válida
-                                  const validUrl = await getValidFileUrl(urlToView);
-                                  window.open(validUrl, '_blank', 'noopener,noreferrer');
-                                } catch (error) {
-                                  console.error('Error opening document:', error);
-                                  alert((error as Error).message || 'Failed to open document. The file may be corrupted or inaccessible.');
-                                }
-                              }}
+                              onClick={() => openPreview(doc)}
                               className="flex items-center gap-1 bg-tfe-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-tfe-blue-700 transition-colors font-medium"
                               title={doc.translated_file_url ? "View Translated PDF" : "View Original Document"}
                             >
@@ -1554,6 +1546,46 @@ export default function AuthenticatorDashboard() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Visualização de Documento (tela cheia) */}
+      {previewOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[10000]">
+          <div className="absolute inset-0 bg-white flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-tfe-blue-600" />
+                <span className="font-semibold text-gray-900">Document preview</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  disabled={previewLoading || !previewUrl}
+                  onClick={() => downloadPreview('document.pdf')}
+                >
+                  Download
+                </button>
+                <button
+                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  onClick={() => setPreviewOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-gray-50 overflow-hidden">
+              {previewLoading && (
+                <div className="flex items-center justify-center h-full text-gray-600">Loading...</div>
+              )}
+              {!previewLoading && previewError && (
+                <div className="p-6 text-center text-tfe-red-600">{previewError}</div>
+              )}
+              {!previewLoading && !previewError && previewUrl && (
+                <iframe src={previewUrl} className="w-full h-full border-0" title="Document" />
+              )}
+            </div>
           </div>
         </div>
       )}

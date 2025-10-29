@@ -20,6 +20,7 @@ interface ExtendedDocument extends Omit<Document, 'client_name' | 'payment_metho
   target_language?: string;
   payment_method?: string | null;
   payment_status?: string | null;
+  payment_amount?: number | null;
   translation_status?: string | null; // ✅ NOVO CAMPO para status da tradução
   client_name?: string | null;
   display_name?: string | null; // Nome formatado para exibição na coluna USER/CLIENT
@@ -122,6 +123,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         // Lógica original: usar payment_method do documento se não houver na tabela payments
         const paymentMethod = doc.payments?.[0]?.payment_method || doc.payment_method || null;
         const paymentStatus = doc.payments?.[0]?.status || 'pending';
+        const paymentAmount = typeof doc.payments?.[0]?.amount === 'number' ? doc.payments?.[0]?.amount : null;
         
         // ✅ CORREÇÃO: Usar translation_status da tabela documents_to_be_verified
         // Mas se o documento foi autenticado (tem authenticator), deve ser "completed"
@@ -140,6 +142,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           user_role: doc.profiles?.role || 'user',
           payment_method: paymentMethod,
           payment_status: paymentStatus,
+          payment_amount: paymentAmount,
           translation_status: translationStatus, // ✅ NOVO CAMPO
           display_name: doc.profiles?.name || null,
           document_type: 'regular' as const,
@@ -214,7 +217,23 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
   // Total dinâmico baseado nos filtros atuais
   const totalAmountFiltered = useMemo(() => {
-    return filteredDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
+    // Regra solicitada: pagos de fato (users) + autenticador; excluir drafts
+    return filteredDocuments
+      .filter(doc => (doc.status || '') !== 'draft')
+      .reduce((sum, doc) => {
+        const isAuthenticator = (doc.user_role || 'user') === 'authenticator';
+        if (isAuthenticator) {
+          return sum + (doc.total_cost || 0);
+        }
+        const payment = (doc.payment_status || '').toLowerCase();
+        const isPaid = !['pending', 'cancelled', 'refunded'].includes(payment);
+        if (isPaid) {
+          // Preferir o amount do pagamento quando disponível; fallback para total_cost
+          const amount = typeof doc.payment_amount === 'number' ? doc.payment_amount : (doc.total_cost || 0);
+          return sum + amount;
+        }
+        return sum;
+      }, 0);
   }, [filteredDocuments]);
 
   // Define a cor de fundo e texto com base no status de pagamento
@@ -307,6 +326,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
               {t('admin.documents.table.showing', { filtered: filteredDocuments.length, total: extendedDocuments.length })}
               <span className="mx-2">•</span>
               <span className="font-medium text-green-600">{t('admin.documents.table.total')}: ${totalAmountFiltered.toFixed(2)}</span>
+              <span className="mx-2">•</span>
+              <span className="text-xs text-gray-500">Total excludes drafts</span>
             </p>
           </div>
           <button

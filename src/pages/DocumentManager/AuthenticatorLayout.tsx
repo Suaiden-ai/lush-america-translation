@@ -4,6 +4,7 @@ import AuthenticatorDashboard from './AuthenticatorDashboard';
 import TranslatedDocuments from './TranslatedDocuments';
 import AuthenticatorOverview from './AuthenticatorOverview';
 import AuthenticatorUpload from './AuthenticatorUpload';
+import DocumentPreview from './DocumentPreview';
 import { FileText, CheckCircle, LogOut, Menu, X, User, Upload, Home as HomeIcon } from 'lucide-react';
 import { useNavigate, Routes, Route, useLocation } from 'react-router-dom';
 import { NotificationBell } from '../../components/NotificationBell';
@@ -343,6 +344,7 @@ export default function AuthenticatorLayout() {
               <Route path="/authenticate" element={<AuthenticatorDashboard />} />
               <Route path="/translated" element={<TranslatedDocuments />} />
               <Route path="/upload" element={<AuthenticatorUpload />} />
+              <Route path="/preview/:id" element={<DocumentPreview />} />
             </Routes>
           </OverviewProvider>
         </div>

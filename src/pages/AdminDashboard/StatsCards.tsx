@@ -48,8 +48,9 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     fetchPaymentStatuses();
   }, []);
   
-  // Filtrar documentos com pagamentos cancelados ou reembolsados
+  // Filtrar documentos: excluir drafts e pagamentos cancelados/reembolsados
   const validDocuments = documents.filter(doc => {
+    if ((doc.status || '') === 'draft') return false; // excluir drafts
     const paymentStatus = paymentStatuses.get(doc.id);
     // Se não há payment_status, incluir o documento (pode ser de autenticador)
     if (!paymentStatus) return true;

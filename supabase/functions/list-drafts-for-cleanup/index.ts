@@ -181,17 +181,16 @@ Deno.serve(async (req) => {
     // Calcular timestamps - MANTENDO A LÓGICA SEGURA
     const now = Date.now();
     const thirtyMinutesAgo = new Date(now - 30 * 60 * 1000).toISOString();
-    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+    // Removido limite superior de 7 dias – queremos listar também drafts antigos
 
-    console.log(`🔍 [LIST-CLEANUP] Buscando documentos entre ${sevenDaysAgo} e ${thirtyMinutesAgo}`);
+    console.log(`🔍 [LIST-CLEANUP] Buscando documentos criados antes de ${thirtyMinutesAgo} (sem limite superior de idade)`);
 
     // Query SEGURA - buscar documentos básicos
     const { data: draftsToReview, error: queryError } = await supabase
       .from('documents')
       .select('id, filename, file_url, user_id, created_at')
       .eq('status', 'draft')
-      .lt('created_at', thirtyMinutesAgo) // Criado há mais de 30 minutos
-      .gt('created_at', sevenDaysAgo); // Criado há menos de 7 dias
+      .lt('created_at', thirtyMinutesAgo); // Criado há mais de 30 minutos (sem limite superior)
 
     if (queryError) {
       console.error('❌ [LIST-CLEANUP] Erro na query:', queryError);
@@ -266,7 +265,8 @@ Deno.serve(async (req) => {
         // Se tem sessão, verificar se expirou
         const session = sessions[0];
         const sessionUpdatedAt = new Date(session.updated_at).getTime();
-        const oneHourAgo = now - 60 * 60 * 1000;
+        // Cutoff de inatividade para considerar sessão como expirada: 24 horas
+        const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
 
         // Sessões marcadas como expired ou failed são seguras para apagar
         if (session.payment_status === 'expired' || session.payment_status === 'failed') {
@@ -279,29 +279,51 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Sessões pending ou completed - NÃO apagar
-        if (session.payment_status === 'pending' || session.payment_status === 'completed') {
+        // Sessão completed = sempre protegido
+        if (session.payment_status === 'completed') {
           documentsToKeep.push({
             ...doc,
-            reason: `Sessão Stripe ${session.payment_status}`,
+            reason: 'Sessão Stripe completed',
             sessions: sessions,
             payments: []
           });
           continue;
         }
 
-        // Sessões muito antigas (mais de 1 hora) podem ser seguras
-        if (sessionUpdatedAt < oneHourAgo) {
+        // Sessões pending: verificar se são antigas ou recentes
+        if (session.payment_status === 'pending') {
+          // Se foi atualizada há mais de 24 horas, considerar expirada
+          if (sessionUpdatedAt < twentyFourHoursAgo) {
+            documentsToCleanup.push({
+              ...doc,
+              reason: 'Sessão Stripe pending antiga (mais de 24 horas)',
+              sessions: sessions,
+              payments: []
+            });
+          } else {
+            // Sessão pending recente = proteger
+            documentsToKeep.push({
+              ...doc,
+              reason: 'Sessão Stripe pending',
+              sessions: sessions,
+              payments: []
+            });
+          }
+          continue;
+        }
+
+        // Outros casos: considerar antigo se mais de 24 horas
+        if (sessionUpdatedAt < twentyFourHoursAgo) {
           documentsToCleanup.push({
             ...doc,
-            reason: 'Sessão Stripe antiga (mais de 1 hora)',
+            reason: 'Sessão Stripe antiga (mais de 24 horas)',
             sessions: sessions,
             payments: []
           });
         } else {
           documentsToKeep.push({
             ...doc,
-            reason: 'Sessão Stripe recente (menos de 1 hora)',
+            reason: 'Sessão Stripe recente (menos de 24 horas)',
             sessions: sessions,
             payments: []
           });
