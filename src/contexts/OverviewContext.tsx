@@ -70,8 +70,11 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      // Fetch documents based on user role
-      let allDocumentsQuery = supabase.from('documents_to_be_verified').select('*');
+      // Fetch documents based on user role, incluindo role do uploader
+      let allDocumentsQuery = supabase.from('documents_to_be_verified').select(`
+        *,
+        profiles:user_id ( role )
+      `);
       let translatedDocsQuery = supabase.from('translated_documents').select('*');
       let myUploadedDocsQuery = supabase.from('documents_to_be_verified').select('*');
 
@@ -91,6 +94,16 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
       const { data: myUploadedDocs, error: uploadError } = await myUploadedDocsQuery;
       if (uploadError) throw uploadError;
 
+      // Buscar status de pagamentos para filtrar revenue corretamente
+      const { data: payments, error: paymentsError } = await supabase
+        .from('payments')
+        .select('document_id, status, amount');
+      if (paymentsError) {
+        console.warn('[OverviewProvider] Erro ao buscar pagamentos:', paymentsError);
+      }
+      const paymentStatus = new Map<string, string>();
+      payments?.forEach(p => { if (p.document_id) paymentStatus.set(p.document_id, p.status); });
+
       // Calculate statistics based on user role
       let totalDocs, pendingDocs, approvedDocs, rejectedDocs, totalValue, totalPages;
 
@@ -100,19 +113,18 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
         pendingDocs = allDocuments?.filter(doc => doc.status === 'pending').length || 0;
         approvedDocs = allDocuments?.filter(doc => doc.status === 'completed').length || 0;
         rejectedDocs = allDocuments?.filter(doc => doc.status === 'rejected').length || 0;
-        // Filtrar documentos com pagamentos cancelados ou reembolsados
-        const validAllDocuments = allDocuments?.filter(doc => {
-          if (!doc.payment_status) return true; // Incluir se não há payment_status
-          return doc.payment_status !== 'cancelled' && doc.payment_status !== 'refunded';
-        }) || [];
-        
-        const validTranslatedDocs = translatedDocs?.filter(doc => {
-          if (!doc.payment_status) return true; // Incluir se não há payment_status
-          return doc.payment_status !== 'cancelled' && doc.payment_status !== 'refunded';
-        }) || [];
-        
-        totalValue = (validAllDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0)) +
-                    (validTranslatedDocs.reduce((sum, doc) => sum + (doc.total_cost || 0), 0));
+        // Receita de uploads de autenticador (gratuitos): somar mesmo com payment pending (excluir apenas drafts)
+        const authenticatorDocs = (allDocuments || []).filter((doc: any) => doc.profiles?.role === 'authenticator' && doc.status !== 'draft');
+        const authenticatorRevenue = authenticatorDocs.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
+
+        // Receita de usuários regulares: somar apenas pagamentos não pending/cancelled/refunded
+        const regularPaymentsRevenue = (payments || []).reduce((sum, p) => {
+          if (!p) return sum;
+          if (p.status === 'pending' || p.status === 'cancelled' || p.status === 'refunded') return sum;
+          return sum + (p.amount || 0);
+        }, 0);
+
+        totalValue = authenticatorRevenue + regularPaymentsRevenue;
         totalPages = (allDocuments?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0) +
                     (translatedDocs?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0);
       } else {
@@ -121,12 +133,8 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
         pendingDocs = allDocuments?.filter(doc => doc.status === 'pending').length || 0; // All pending docs
         approvedDocs = translatedDocs?.length || 0; // All translated docs are approved
         rejectedDocs = 0; // Rejected docs are not in translated_documents
-        // Filtrar documentos com pagamentos cancelados ou reembolsados para autenticadores
-        const validTranslatedDocsForAuth = translatedDocs?.filter(doc => {
-          if (!doc.payment_status) return true; // Incluir se não há payment_status
-          return doc.payment_status !== 'cancelled' && doc.payment_status !== 'refunded';
-        }) || [];
-        
+        // Para autenticador: receita = soma direta dos documentos (sem drafts)
+        const validTranslatedDocsForAuth = (translatedDocs || []).filter((doc: any) => doc.status !== 'draft');
         totalValue = validTranslatedDocsForAuth.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
         totalPages = translatedDocs?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0;
       }
