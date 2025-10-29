@@ -49,8 +49,8 @@ export default function DraftCleanupApproval() {
       const data: CleanupResponse = await response.json();
 
       if (data.success) {
-        setDocuments(data.documentsToCleanup);
-        setDocumentsToKeep(data.documentsToKeep);
+        setDocuments(Array.isArray(data.documentsToCleanup) ? data.documentsToCleanup : []);
+        setDocumentsToKeep(Array.isArray(data.documentsToKeep) ? data.documentsToKeep : []);
         setLastChecked(new Date().toLocaleString());
         setSelectedDocuments([]);
         
@@ -61,13 +61,16 @@ export default function DraftCleanupApproval() {
     } catch (error) {
       console.error('Error fetching documents:', error);
       showNotification('error', 'Failed to connect to server');
+      // Garantir que os arrays estão sempre definidos mesmo em caso de erro
+      setDocuments([]);
+      setDocumentsToKeep([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSelectAll = (checked: boolean) => {
-    if (checked) {
+    if (checked && documents && documents.length > 0) {
       setSelectedDocuments(documents.map(doc => doc.id));
     } else {
       setSelectedDocuments([]);
@@ -209,10 +212,10 @@ export default function DraftCleanupApproval() {
           <div className="px-4 py-5 sm:p-6">
             <h3 className="text-lg leading-6 font-medium text-gray-900 flex items-center gap-2">
               <Trash2 className="h-5 w-5 text-red-500" />
-              Documents Safe for Removal ({documents.length})
+              Documents Safe for Removal ({(documents || []).length})
             </h3>
             <div className="mt-4 space-y-4">
-              {documents.length === 0 ? (
+              {(!documents || documents.length === 0) ? (
                 <p className="text-gray-500 text-center py-8">
                   No documents found for cleanup
                 </p>
@@ -222,17 +225,17 @@ export default function DraftCleanupApproval() {
                     <input
                       type="checkbox"
                       id="select-all"
-                      checked={selectedDocuments.length === documents.length}
+                      checked={documents && selectedDocuments.length === documents.length}
                       onChange={(e) => handleSelectAll(e.target.checked)}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                     <label htmlFor="select-all" className="text-sm font-medium text-gray-700">
-                      Select all ({selectedDocuments.length}/{documents.length})
+                      Select all ({selectedDocuments.length}/{documents?.length || 0})
                     </label>
                   </div>
 
                   <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {documents.map((doc) => (
+                    {(documents || []).map((doc) => (
                       <div key={doc.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
                         <div className="flex items-start space-x-2">
                           <input
@@ -299,16 +302,16 @@ export default function DraftCleanupApproval() {
           <div className="px-4 py-5 sm:p-6">
             <h3 className="text-lg leading-6 font-medium text-gray-900 flex items-center gap-2">
               <CheckCircle className="h-5 w-5 text-green-500" />
-              Protected Documents ({documentsToKeep.length})
+              Protected Documents ({documentsToKeep?.length || 0})
             </h3>
             <div className="mt-4">
-              {documentsToKeep.length === 0 ? (
+              {(!documentsToKeep || documentsToKeep.length === 0) ? (
                 <p className="text-gray-500 text-center py-8">
                   No protected documents found
                 </p>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {documentsToKeep.map((doc) => (
+                  {(documentsToKeep || []).map((doc) => (
                     <div key={doc.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">{doc.filename}</p>
