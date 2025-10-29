@@ -19,33 +19,20 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Calcular timestamps
+    // Calcular timestamps - MANTENDO A LÓGICA ORIGINAL SEGURA
     const now = Date.now();
     const thirtyMinutesAgo = new Date(now - 30 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     console.log(`🔍 [CLEANUP] Buscando drafts entre ${sevenDaysAgo} e ${thirtyMinutesAgo}`);
 
-    // Query com TODAS as validações de segurança
+    // Query SEGURA - primeiro buscar documentos básicos
     const { data: draftsToDelete, error: queryError } = await supabase
       .from('documents')
-      .select(`
-        id, 
-        filename, 
-        file_url, 
-        user_id, 
-        created_at,
-        stripe_sessions!left (
-          session_id, 
-          payment_status, 
-          updated_at
-        ),
-        payments!left (id)
-      `)
+      .select('id, filename, file_url, user_id, created_at')
       .eq('status', 'draft')
       .lt('created_at', thirtyMinutesAgo) // Criado há mais de 30 minutos
-      .gt('created_at', sevenDaysAgo) // Criado há menos de 7 dias
-      .is('payments.id', null); // Sem pagamento confirmado
+      .gt('created_at', sevenDaysAgo); // Criado há menos de 7 dias
 
     if (queryError) {
       console.error('❌ [CLEANUP] Erro ao buscar drafts:', queryError);
@@ -65,55 +52,62 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Filtrar manualmente sessões Stripe ativas
-    const safeToDelete = draftsToDelete.filter(doc => {
+    // Filtrar manualmente sessões Stripe ativas - BUSCAR SEPARADAMENTE
+    const safeToDelete = [];
+    
+    for (const doc of draftsToDelete) {
+      // Buscar sessões Stripe para este documento
+      const { data: sessions, error: sessionError } = await supabase
+        .from('stripe_sessions')
+        .select('session_id, payment_status, updated_at')
+        .eq('document_id', doc.id);
+
+      if (sessionError) {
+        console.error(`⚠️ [CLEANUP] Erro ao buscar sessões para ${doc.id}:`, sessionError);
+        continue; // Pular este documento se houver erro
+      }
+
       // Sem sessão Stripe = seguro
-      if (!doc.stripe_sessions || doc.stripe_sessions.length === 0) {
+      if (!sessions || sessions.length === 0) {
         console.log(`✅ [CLEANUP] Documento ${doc.id} seguro - sem sessão Stripe`);
-        return true;
+        safeToDelete.push(doc);
+        continue;
       }
 
       // Se tem sessão, verificar se expirou
-      const session = doc.stripe_sessions[0];
+      const session = sessions[0];
       const sessionUpdatedAt = new Date(session.updated_at).getTime();
-      // 🛡️ SEGURANÇA: Buffer de 1 hora para garantir que checkout está realmente expirado
       const oneHourAgo = now - 60 * 60 * 1000;
-      // Sessões realmente antigas que já foram verificadas
-      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
-      // ✅ NOVA LÓGICA: Sessões marcadas como expired ou failed são seguras para apagar
+      // ✅ Sessões marcadas como expired ou failed são seguras para apagar
       if (session.payment_status === 'expired' || session.payment_status === 'failed') {
         console.log(`✅ [CLEANUP] Documento ${doc.id} seguro - sessão ${session.payment_status}`);
-        return true;
+        safeToDelete.push(doc);
+        continue;
       }
 
       // Sessão completed = NÃO apagar (já foi pago)
       if (session.payment_status === 'completed') {
         console.log(`⚠️ [CLEANUP] Documento ${doc.id} NÃO seguro - sessão completed`);
-        return false;
+        continue;
       }
 
-      // Sessão pending foi atualizada há menos de 1 hora = NÃO APAGAR (ainda pode estar em checkout)
+      // Sessão pending foi atualizada há menos de 1 hora = NÃO APAGAR
       if (sessionUpdatedAt > oneHourAgo) {
         console.log(`⚠️ [CLEANUP] Documento ${doc.id} NÃO seguro - sessão atualizada há menos de 1 hora`);
-        return false;
+        continue;
       }
 
-      // Sessão pending com mais de 1 hora mas menos de 7 dias = considerar expirada
-      if (session.payment_status === 'pending' && sessionUpdatedAt < oneHourAgo && sessionUpdatedAt > sevenDaysAgo) {
+      // Sessão pending com mais de 1 hora = considerar expirada
+      if (session.payment_status === 'pending' && sessionUpdatedAt < oneHourAgo) {
         console.log(`✅ [CLEANUP] Documento ${doc.id} seguro - sessão pending inativa há mais de 1 hora`);
-        return true;
-      }
-
-      // Sessão antiga (mais de 7 dias) = definitivamente expirada
-      if (sessionUpdatedAt < sevenDaysAgo) {
-        console.log(`✅ [CLEANUP] Documento ${doc.id} seguro - sessão antiga (>7 dias)`);
-        return true;
+        safeToDelete.push(doc);
+        continue;
       }
 
       console.log(`✅ [CLEANUP] Documento ${doc.id} seguro - sessão expirada por tempo`);
-      return true;
-    });
+      safeToDelete.push(doc);
+    }
 
     console.log(`✅ [CLEANUP] ${safeToDelete.length} documentos seguros para exclusão de ${draftsToDelete.length} candidatos`);
 

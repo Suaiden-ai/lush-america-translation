@@ -4,6 +4,9 @@ import { Document } from '../../App';
 import { db } from '../../lib/supabase'; // Supondo que 'db' seja um wrapper com helpers
 import { supabase } from '../../lib/supabase';
 import { useI18n } from '../../contexts/I18nContext';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
+import { useAuth } from '../../hooks/useAuth';
 
 interface RecentActivityProps {
   documents: Document[];
@@ -16,6 +19,7 @@ interface DocumentStatus {
 
 export function RecentActivity({ documents, onViewDocument }: RecentActivityProps) {
   const { t } = useI18n();
+  const { user } = useAuth();
   const [documentStatuses, setDocumentStatuses] = useState<DocumentStatus>({});
   const [loading, setLoading] = useState(true);
 
@@ -62,8 +66,36 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
   }, [recentDocuments]); // A dependência agora é estável graças ao useMemo
 
   // Função para download automático (lógica mantida, pois estava correta)
-  const handleDownload = async (url: string, filename: string) => {
+  const handleDownload = async (url: string, filename: string, documentId?: string) => {
     try {
+      // Log de download do documento
+      if (documentId) {
+        try {
+          await Logger.log(
+            ActionTypes.DOCUMENT.DOWNLOADED,
+            `Document downloaded: ${filename}`,
+            {
+              entityType: 'document',
+              entityId: documentId,
+              metadata: {
+                document_id: documentId,
+                filename: filename,
+                file_url: url,
+                file_type: filename?.split('.').pop()?.toLowerCase(),
+                user_id: user?.id,
+                timestamp: new Date().toISOString(),
+                download_type: 'recent_activity_download'
+              },
+              affectedUserId: user?.id,
+              performerType: 'user'
+            }
+          );
+          console.log('✅ Document download logged successfully');
+        } catch (logError) {
+          console.error('Error logging document download:', logError);
+        }
+      }
+
       const response = await fetch(url);
       
       if (!response.ok && response.status === 403) {
@@ -143,6 +175,33 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
     
     console.log(`🎯 View clicked - Doc: ${doc.original_filename || doc.filename}, Status: ${currentStatus}`);
     console.log(`🔍 Documento completo:`, doc);
+
+    // Log de visualização do documento
+    try {
+      await Logger.log(
+        ActionTypes.DOCUMENT.VIEWED,
+        `Document viewed: ${doc.original_filename || doc.filename}`,
+        {
+          entityType: 'document',
+          entityId: doc.id,
+          metadata: {
+            document_id: doc.id,
+            filename: doc.original_filename || doc.filename,
+            file_url: doc.translated_file_url || doc.file_url,
+            file_type: (doc.original_filename || doc.filename)?.split('.').pop()?.toLowerCase(),
+            user_id: user?.id,
+            timestamp: new Date().toISOString(),
+            view_type: 'recent_activity_view',
+            document_status: currentStatus
+          },
+          affectedUserId: user?.id,
+          performerType: 'user'
+        }
+      );
+      console.log('✅ Document view logged successfully');
+    } catch (logError) {
+      console.error('Error logging document view:', logError);
+    }
     
     // Se o documento já tem translated_file_url (vem de translated_documents), usar diretamente
     if (doc.translated_file_url) {
@@ -289,7 +348,7 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
                 {doc.source === 'translated_documents' && !!doc.translated_file_url && (
                   <>
                     <button
-                      onClick={() => handleDownload(doc.translated_file_url, doc.original_filename || doc.filename)}
+                      onClick={() => handleDownload(doc.translated_file_url, doc.original_filename || doc.filename, doc.id)}
                       className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-xs"
                     >
                       <Download className="w-4 h-4" /> {t('dashboard.recentActivity.actions.download')}

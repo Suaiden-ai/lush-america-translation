@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Copy, CheckCircle, DollarSign, Mail, Phone, AlertCircle, Clock, ArrowLeft, Upload, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { Logger } from '../lib/loggingHelpers';
+import { ActionTypes } from '../types/actionTypes';
 
 export function ZelleCheckout() {
   const [searchParams] = useSearchParams();
@@ -18,6 +20,7 @@ export function ZelleCheckout() {
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const shouldCleanupRef = useRef(true); // Controla se deve limpar documento
+  const hasLoggedPageOpen = useRef(false); // Controla se já logou a abertura da página
 
   // Zelle company data
   const ZELLE_INFO = {
@@ -87,6 +90,28 @@ export function ZelleCheckout() {
     if (!documentId || !amount) {
       navigate('/dashboard');
       return;
+    }
+    
+    // Log da abertura da página Zelle checkout
+    if (!hasLoggedPageOpen.current && documentId) {
+      hasLoggedPageOpen.current = true;
+      Logger.log(
+        ActionTypes.PAYMENT.ZELLE_CHECKOUT_OPENED,
+        `Zelle checkout page opened`,
+        {
+          entityType: 'checkout',
+          entityId: documentId,
+          metadata: {
+            document_id: documentId,
+            amount: amount,
+            pages: pages,
+            filename: filename,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: documentData?.user_id,
+          performerType: 'user'
+        }
+      );
     }
     
     const fetchDocumentData = async () => {
@@ -159,7 +184,7 @@ export function ZelleCheckout() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const handleReceiptUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReceiptUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -176,6 +201,29 @@ export function ZelleCheckout() {
 
     setPaymentReceipt(file);
     setError(null);
+    
+    // Log do anexo do comprovante
+    try {
+      await Logger.log(
+        ActionTypes.PAYMENT.ZELLE_RECEIPT_ATTACHED,
+        `Receipt attached: ${file.name}`,
+        {
+          entityType: 'payment',
+          entityId: documentId,
+          metadata: {
+            filename: file.name,
+            file_size: file.size,
+            file_type: file.type,
+            document_id: documentId,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: documentData?.user_id,
+          performerType: 'user'
+        }
+      );
+    } catch (logError) {
+      console.error('Error logging receipt attachment:', logError);
+    }
     
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -429,11 +477,50 @@ export function ZelleCheckout() {
       const receiptUrl = await uploadReceiptToSupabase(paymentReceipt);
       setUploadingReceipt(false);
 
+      // Log do upload bem-sucedido do comprovante
+      await Logger.log(
+        ActionTypes.PAYMENT.ZELLE_RECEIPT_UPLOADED,
+        `Receipt uploaded successfully`,
+        {
+          entityType: 'payment',
+          entityId: documentId,
+          metadata: {
+            receipt_url: receiptUrl,
+            document_id: documentId,
+            amount: amount,
+            filename: paymentReceipt.name,
+            file_size: paymentReceipt.size,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: session.user.id,
+          performerType: 'user'
+        }
+      );
+
       // Documento já deve ter file_url neste ponto
       console.log('📄 Using document with existing file_url:', documentData?.file_url);
 
       // Enviar webhook primeiro para validação
       console.log('🔄 Enviando comprovante para validação...');
+      
+      // Log da tentativa de validação
+      await Logger.log(
+        ActionTypes.PAYMENT.ZELLE_VALIDATION_ATTEMPTED,
+        `Attempting automatic validation of receipt`,
+        {
+          entityType: 'payment',
+          entityId: documentId,
+          metadata: {
+            receipt_url: receiptUrl,
+            document_id: documentId,
+            webhook_endpoint: 'zelle-global',
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: session.user.id,
+          performerType: 'user'
+        }
+      );
+      
       let isValid = false;
 
       try {
@@ -442,6 +529,43 @@ export function ZelleCheckout() {
         
         console.log('✅ Resposta do webhook:', webhookResponse);
         console.log('🎯 Comprovante válido:', isValid);
+        
+        // Log do resultado da validação
+        if (isValid) {
+          await Logger.log(
+            ActionTypes.PAYMENT.ZELLE_VALIDATION_SUCCESS,
+            `Receipt validated automatically as valid`,
+            {
+              entityType: 'payment',
+              entityId: documentId,
+              metadata: {
+                receipt_url: receiptUrl,
+                document_id: documentId,
+                validation_result: webhookResponse,
+                timestamp: new Date().toISOString()
+              },
+              affectedUserId: session.user.id,
+              performerType: 'system'
+            }
+          );
+        } else {
+          await Logger.log(
+            ActionTypes.PAYMENT.ZELLE_VALIDATION_FAILED,
+            `Receipt validation failed - manual review required`,
+            {
+              entityType: 'payment',
+              entityId: documentId,
+              metadata: {
+                receipt_url: receiptUrl,
+                document_id: documentId,
+                validation_result: webhookResponse,
+                timestamp: new Date().toISOString()
+              },
+              affectedUserId: session.user.id,
+              performerType: 'system'
+            }
+          );
+        }
         
       } catch (webhookError) {
         console.error('❌ Erro no webhook de validação:', webhookError);
@@ -517,6 +641,25 @@ export function ZelleCheckout() {
         // Enviar notificação para revisão manual
         await sendNotificationToAdmin(userProfile, true);
         
+        // Log de marcação para revisão manual
+        await Logger.log(
+          ActionTypes.PAYMENT.ZELLE_PENDING_MANUAL_REVIEW,
+          `Payment marked for manual review`,
+          {
+            entityType: 'payment',
+            entityId: documentId,
+            metadata: {
+              document_id: documentId,
+              amount: amount,
+              receipt_url: receiptUrl,
+              reason: 'automatic_validation_failed',
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: session.user.id,
+            performerType: 'system'
+          }
+        );
+        
         console.log('⚠️ Comprovante precisa de revisão manual');
       }
       
@@ -526,6 +669,28 @@ export function ZelleCheckout() {
       setStep('completed');
     } catch (err: any) {
       console.error('Error confirming Zelle payment:', err);
+      
+      // Log do erro no upload/confirmação
+      try {
+        await Logger.log(
+          ActionTypes.PAYMENT.ZELLE_RECEIPT_UPLOAD_FAILED,
+          `Receipt upload/confirmation failed: ${err.message}`,
+          {
+            entityType: 'payment',
+            entityId: documentId,
+            metadata: {
+              error_message: err.message,
+              document_id: documentId,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: documentData?.user_id,
+            performerType: 'user'
+          }
+        );
+      } catch (logError) {
+        console.error('Error logging upload failure:', logError);
+      }
+      
       setError(err.message || 'Failed to confirm payment. Please try again.');
     } finally {
       setIsSubmitting(false);

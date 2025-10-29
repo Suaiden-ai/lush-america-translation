@@ -20,6 +20,7 @@ interface ExtendedDocument extends Omit<Document, 'client_name' | 'payment_metho
   target_language?: string;
   payment_method?: string | null;
   payment_status?: string | null;
+  translation_status?: string | null; // ✅ NOVO CAMPO para status da tradução
   client_name?: string | null;
   display_name?: string | null; // Nome formatado para exibição na coluna USER/CLIENT
   user_role?: string | null; // Role do usuário para filtros
@@ -66,7 +67,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         endDateParam = endDate.toISOString();
       }
 
-      // ✅ QUERY SIMPLIFICADA COM LÓGICA ORIGINAL DE PAGAMENTO
+      // ✅ QUERY CORRIGIDA PARA INCLUIR DADOS DE DOCUMENTS_TO_BE_VERIFIED
       let query = supabase
         .from('documents')
         .select(`
@@ -94,11 +95,42 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       console.log('🔍 DEBUG - Documents loaded:', documents?.length || 0);
       console.log('🔍 DEBUG - Sample documents:', documents?.slice(0, 3));
 
-      // Processar dados com lógica original de pagamento
+      // ✅ BUSCAR DADOS DE DOCUMENTS_TO_BE_VERIFIED SEPARADAMENTE
+      const documentIds = documents?.map(doc => doc.id) || [];
+      let documentsToBeVerified: any[] = [];
+      
+      if (documentIds.length > 0) {
+        const { data: dtbvData, error: dtbvError } = await supabase
+          .from('documents_to_be_verified')
+          .select('original_document_id, translation_status')
+          .in('original_document_id', documentIds);
+          
+        if (dtbvError) {
+          console.error('Error loading documents_to_be_verified:', dtbvError);
+        } else {
+          documentsToBeVerified = dtbvData || [];
+        }
+      }
+
+      // Criar um mapa para acesso rápido aos dados de translation_status
+      const translationStatusMap = new Map(
+        documentsToBeVerified.map(dtbv => [dtbv.original_document_id, dtbv.translation_status])
+      );
+
+      // Processar dados com lógica corrigida para translation_status
       const processedDocuments = documents?.map(doc => {
         // Lógica original: usar payment_method do documento se não houver na tabela payments
         const paymentMethod = doc.payments?.[0]?.payment_method || doc.payment_method || null;
         const paymentStatus = doc.payments?.[0]?.status || 'pending';
+        
+        // ✅ CORREÇÃO: Usar translation_status da tabela documents_to_be_verified
+        // Mas se o documento foi autenticado (tem authenticator), deve ser "completed"
+        let translationStatus = translationStatusMap.get(doc.id) || doc.status || 'pending';
+        
+        // Se o documento foi autenticado, deve mostrar "completed" independentemente do translation_status
+        if (doc.authenticated_by_name && doc.authenticated_by_name !== 'N/A' && doc.is_authenticated) {
+          translationStatus = 'completed';
+        }
         
         return {
           ...doc,
@@ -108,6 +140,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           user_role: doc.profiles?.role || 'user',
           payment_method: paymentMethod,
           payment_status: paymentStatus,
+          translation_status: translationStatus, // ✅ NOVO CAMPO
           display_name: doc.profiles?.name || null,
           document_type: 'regular' as const,
           client_name: doc.client_name || null,
@@ -394,7 +427,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                   <div>
                     <span className="text-gray-500">Translation:</span>
                     <p className="font-medium text-gray-900">
-                      {doc.status || 'N/A'}
+                      {doc.translation_status || 'N/A'}
                     </p>
                   </div>
                   <div>
@@ -509,8 +542,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                     
                     {/* TRANSLATIONS */}
                     <td className="px-3 py-3 text-xs">
-                      <span className={`inline-flex px-2 py-1 font-semibold rounded-full ${getStatusColor(doc.status || 'pending')}`}>
-                        {doc.status || 'N/A'}
+                      <span className={`inline-flex px-2 py-1 font-semibold rounded-full ${getStatusColor(doc.translation_status || 'pending')}`}>
+                        {doc.translation_status || 'N/A'}
                       </span>
                     </td>
                     

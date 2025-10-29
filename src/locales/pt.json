@@ -345,10 +345,10 @@
     "totalClientsCount": "Total de clientes",
     "byYourClients": "Pelos seus clientes",
     "pagesToReachLevel2": "páginas para atingir o Nível 2",
-    "earnXPerPage": "Ganhe {rate} por página",
+    "earnXPerPage": "Ganhe {{rate}} por página",
     "insteadOf": "em vez de",
     "level2Achieved": "Nível 2 Atingido!",
-    "earningXPerPage": "Ganando {rate} por página",
+    "earningXPerPage": "Ganando {{rate}} por página",
     "withdrawalAvailable": "Saque Disponível",
     "youCanRequestWithdrawal": "Você pode solicitar um saque de",
     "noClientsYet": "Nenhum Cliente Ainda",
@@ -356,7 +356,7 @@
     "commissionsPendingMaturation": "Comissões aguardando maturação de 30 dias",
     "withdrawalNotAvailable": "Saque Não Disponível",
     "oneDayRemaining": "1 dia restante até o saque estar disponível",
-    "daysRemaining": "{days} dias restantes até o saque estar disponível",
+    "daysRemaining": "{{days}} dias restantes até o saque estar disponível",
     "howToEarnCommissions": "Como Ganhar Comissões",
     "shareYourReferralCode": "Compartilhe seu código de indicação",
     "clientsRegisterUsingCode": "Clientes se registram usando seu código",
@@ -391,9 +391,9 @@
     "withdrawalAvailable": "Saque Disponível",
     "withdrawalNotAvailable": "Saque Ainda Não Disponível",
     "withdrawalAvailableNow": "Disponível agora!",
-    "withdrawalAvailableFor": "Disponível por {days} dias",
-    "withdrawalAvailableIn": "{days} dias, {hours}h {minutes}m restantes",
-    "withdrawalAvailableInHours": "{hours}h {minutes}m restantes",
+    "withdrawalAvailableFor": "Disponível por {{days}} dias",
+    "withdrawalAvailableIn": "{{days}} dias, {{hours}}h {{minutes}}m restantes",
+    "withdrawalAvailableInHours": "{{hours}}h {{minutes}}m restantes",
     "startEarningToUnlockWithdrawals": "Comece a ganhar para desbloquear saques",
     "ready": "Pronto",
     "commissionsAndWithdrawals": "Comissões e Saques",
@@ -419,7 +419,7 @@
     "rejected": "Rejeitado",
     "amountToRequest": "Valor a Solicitar",
     "paymentMethodDetails": "Detalhes do Método de Pagamento",
-    "availableInDays": "Disponível em {days} dias",
+    "availableInDays": "Disponível em {{days}} dias",
     "noTranslatedPagesYet": "Nenhuma página traduzida ainda",
     "withdrawalDetails": "Detalhes da Solicitação de Saque",
     "requestId": "ID da Solicitação",
@@ -446,7 +446,7 @@
       "cannotRequestWithdrawal": "Ainda não pode solicitar saque",
     "clientsTab": "Clientes",
     "overviewTab": "Visão Geral",
-    "totalClientsInList": "Total de Clientes: {count}",
+    "totalClientsInList": "Total de Clientes: {{count}}",
     "clientName": "Nome do Cliente",
     "lastDocumentDate": "Último Documento",
     "activeDocuments": "Documentos Ativos",
@@ -840,7 +840,8 @@
       "subtitle": "Manage translation projects and monitor business metrics",
       "tabs": {
         "overview": "Overview",
-        "zelleReceipts": "Zelle Receipts"
+        "zelleReceipts": "Zelle Receipts",
+        "activityLogs": "Logs de Atividade"
       }
     },
     "stats": {
@@ -899,7 +900,7 @@
         "noDocuments": "No documents found",
         "noDocumentsDescription": "Try adjusting your search or filter criteria.",
         "loading": "Loading documents...",
-        "showing": "Showing {filtered} of {total} documents",
+        "showing": "Mostrando {{filtered}} de {{total}} documentos",
         "total": "Total",
         "exportCsv": "Export CSV",
         "searchPlaceholder": "Search by name, email, filename, client...",
@@ -1021,6 +1022,49 @@
     "zelleReceipts": {
       "title": "Zelle Receipts",
       "subtitle": "Manage Zelle payment receipts"
+    },
+    "activityLogs": {
+      "title": "Logs de Atividade",
+      "subtitle": "Rastreamento completo de todas as ações dos usuários",
+      "stats": {
+        "totalLogs": "Total de Logs",
+        "today": "Logs de Hoje",
+        "uniqueUsers": "Usuários Únicos"
+      },
+      "filters": {
+        "title": "Filtros",
+        "actionType": "Tipo de Ação",
+        "performerType": "Tipo de Usuário",
+        "entityType": "Tipo de Entidade",
+        "fromDate": "Data Inicial",
+        "toDate": "Data Final",
+        "allActions": "Todas as Ações",
+        "allTypes": "Todos os Tipos",
+        "allEntities": "Todas as Entidades",
+        "clearAll": "Limpar Filtros"
+      },
+      "searchPlaceholder": "Buscar por usuário, ação ou descrição...",
+      "loading": "Carregando...",
+      "loadMore": "Carregar Mais",
+      "empty": {
+        "title": "Nenhum log encontrado",
+        "description": "Não há logs de atividade para exibir com os filtros selecionados."
+      },
+      "error": {
+        "title": "Erro ao carregar logs"
+      },
+      "types": {
+        "zelle_selected": "Método Zelle Selecionado",
+        "zelle_checkout_opened": "Checkout Zelle Aberto",
+        "zelle_receipt_attached": "Comprovante Anexado",
+        "zelle_receipt_uploaded": "Comprovante Enviado",
+        "zelle_receipt_upload_failed": "Falha no Envio do Comprovante",
+        "zelle_validation_attempted": "Validação Tentada",
+        "zelle_validation_success": "Validação Bem-Sucedida",
+        "zelle_validation_failed": "Validação Falhou",
+        "zelle_pending_manual_review": "Pendente Revisão Manual",
+        "zelle_confirmation_code_saved": "Código de Confirmação Salvo"
+      }
     }
   },
   "finance": {

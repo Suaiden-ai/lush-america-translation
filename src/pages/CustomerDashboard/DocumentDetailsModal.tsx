@@ -5,6 +5,8 @@ import { Document } from '../../App';
 import { db } from '../../lib/supabase';
 import { ImageViewerModal } from '../../components/ImageViewerModal';
 import { getValidFileUrl } from '../../utils/fileUtils';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
 
 interface DocumentDetailsModalProps {
   document: Document | null;
@@ -76,6 +78,33 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
   const handleViewFile = async (url: string, filename: string) => {
     try {
       const validUrl = await getValidFileUrl(url);
+      
+      // Log de visualização do documento
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.VIEWED,
+          `Document viewed: ${filename}`,
+          {
+            entityType: 'document',
+            entityId: document?.id,
+            metadata: {
+              document_id: document?.id,
+              filename: filename,
+              file_url: validUrl,
+              file_type: filename.split('.').pop()?.toLowerCase(),
+              user_id: document?.user_id,
+              timestamp: new Date().toISOString(),
+              view_type: isImageFile(filename) ? 'image_viewer' : 'new_tab'
+            },
+            affectedUserId: document?.user_id,
+            performerType: 'user'
+          }
+        );
+        console.log('✅ Document view logged successfully');
+      } catch (logError) {
+        console.error('Error logging document view:', logError);
+      }
+      
       if (isImageFile(filename)) {
         setImageToView({ url: validUrl, filename });
         setShowImageViewer(true);
@@ -94,6 +123,32 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
     try {
       // Obter uma URL válida
       const validUrl = await getValidFileUrl(url);
+      
+      // Log de download do documento
+      try {
+        await Logger.log(
+          ActionTypes.DOCUMENT.DOWNLOADED,
+          `Document downloaded: ${filename}`,
+          {
+            entityType: 'document',
+            entityId: document?.id,
+            metadata: {
+              document_id: document?.id,
+              filename: filename,
+              file_url: validUrl,
+              file_type: filename.split('.').pop()?.toLowerCase(),
+              user_id: document?.user_id,
+              timestamp: new Date().toISOString(),
+              download_type: 'direct_download'
+            },
+            affectedUserId: document?.user_id,
+            performerType: 'user'
+          }
+        );
+        console.log('✅ Document download logged successfully');
+      } catch (logError) {
+        console.error('Error logging document download:', logError);
+      }
       
       // Fazer o download
       const response = await fetch(validUrl);

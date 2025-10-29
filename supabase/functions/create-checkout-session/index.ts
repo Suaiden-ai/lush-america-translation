@@ -184,6 +184,51 @@ Deno.serve(async (req: Request) => {
 
     console.log('DEBUG: Sessão do Stripe criada:', session.id);
 
+    // Log de criação de checkout
+    if (supabaseUrl && supabaseServiceKey) {
+      try {
+        const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+        
+        const { error: checkoutLogError } = await supabaseClient
+          .from('action_logs')
+          .insert({
+            performed_by: userId,
+            performed_by_type: 'user',
+            performed_by_name: clientName || userEmail,
+            performed_by_email: userEmail,
+            action_type: 'CHECKOUT_CREATED',
+            action_description: `Stripe checkout session created for document translation`,
+            entity_type: 'checkout',
+            entity_id: session.id,
+            metadata: {
+              session_id: session.id,
+              document_id: documentId,
+              amount: totalPrice,
+              currency: 'usd',
+              pages: pages,
+              is_certified: isCertified,
+              is_notarized: isNotarized,
+              is_bank_statement: isBankStatement,
+              original_language: originalLanguage,
+              target_language: targetLanguage,
+              filename: filename,
+              file_size: fileSize,
+              file_type: fileType,
+              timestamp: new Date().toISOString()
+            },
+            affected_user_id: userId
+          });
+        
+        if (checkoutLogError) {
+          console.error('Error logging checkout creation:', checkoutLogError);
+        } else {
+          console.log('✅ Checkout creation logged successfully');
+        }
+      } catch (logError) {
+        console.error('Error logging checkout creation:', logError);
+      }
+    }
+
     // Inserir dados da sessão na tabela do Supabase se as chaves estiverem disponíveis
     if (supabaseUrl && supabaseServiceKey) {
       try {

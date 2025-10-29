@@ -22,6 +22,8 @@ import {
 import { supabase } from '../lib/supabase';
 import PostgreSQLService from '../lib/postgresql-edge';
 import { notifyAuthenticatorsPendingDocuments } from '../utils/webhookNotifications';
+import { Logger } from '../lib/loggingHelpers';
+import { ActionTypes } from '../types/actionTypes';
 
 interface ZellePayment {
   id: string;
@@ -331,11 +333,73 @@ export function ZelleReceiptsAdmin() {
 
       if (verifyError) throw verifyError;
 
+      // Log combinado de código de confirmação + aprovação
+      await Logger.log(
+        ActionTypes.PAYMENT.ZELLE_CONFIRMATION_CODE_SAVED,
+        `Zelle payment approved with confirmation code: ${confirmationCode}`,
+        {
+          entityType: 'payment',
+          entityId: confirmationModal.payment.id,
+          metadata: {
+            amount: confirmationModal.payment.amount,
+            confirmation_code: confirmationCode,
+            document_id: confirmationModal.payment.document_id,
+            document_filename: confirmationModal.payment.documents?.filename,
+            previous_status: confirmationModal.payment.status,
+            new_status: 'completed',
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: confirmationModal.payment.user_id,
+          performerType: 'finance'
+        }
+      );
+
+      // Log do pagamento Zelle verificado (equivalente ao payment_received do Stripe)
+      await Logger.log(
+        ActionTypes.PAYMENT.ZELLE_VERIFIED,
+        `Zelle payment verified successfully`,
+        {
+          entityType: 'payment',
+          entityId: confirmationModal.payment.id,
+          metadata: {
+            amount: confirmationModal.payment.amount,
+            confirmation_code: confirmationCode,
+            document_id: confirmationModal.payment.document_id,
+            document_filename: confirmationModal.payment.documents?.filename,
+            payment_method: 'zelle',
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: confirmationModal.payment.user_id,
+          performerType: 'system'
+        }
+      );
+
       // 4. Após aprovar o pagamento, enviar documento para processo de tradução
       setSendingToTranslation(confirmationModal.payment.id);
       try {
         await sendDocumentForTranslation(confirmationModal.payment);
         console.log('✅ Document successfully sent for translation');
+        
+        // Log do documento enviado para tradução
+        await Logger.log(
+          ActionTypes.DOCUMENT.SEND_FOR_AUTHENTICATION,
+          `Document sent for translation after Zelle payment approval with confirmation code`,
+          {
+            entityType: 'document',
+            entityId: confirmationModal.payment.document_id,
+            metadata: {
+              document_id: confirmationModal.payment.document_id,
+              filename: confirmationModal.payment.documents?.filename,
+              payment_id: confirmationModal.payment.id,
+              payment_method: 'zelle',
+              confirmation_code: confirmationCode,
+              amount: confirmationModal.payment.amount,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: confirmationModal.payment.user_id,
+            performerType: 'finance'
+          }
+        );
       } catch (translationError) {
         console.error('❌ Failed to send document for translation:', translationError);
       } finally {
@@ -468,6 +532,25 @@ export function ZelleReceiptsAdmin() {
         })
         .eq('id', rejectionModal.payment.id);
 
+      // Log de rejeição de pagamento Zelle
+      await Logger.log(
+        ActionTypes.ZELLE_PAYMENT_REJECTED,
+        `Zelle payment rejected: ${rejectionModal.payment.zelle_confirmation_code || rejectionModal.payment.id}`,
+        {
+          entityType: 'payment',
+          entityId: rejectionModal.payment.id,
+          metadata: {
+            amount: rejectionModal.payment.amount,
+            confirmation_code: rejectionModal.payment.zelle_confirmation_code,
+            rejection_reason: finalReason,
+            document_id: rejectionModal.payment.document_id,
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: rejectionModal.payment.user_id,
+          performerType: 'finance'
+        }
+      );
+
       // Enviar notificação de rejeição para o usuário
       await sendRejectionNotification(rejectionModal.payment, finalReason);
 
@@ -512,11 +595,72 @@ export function ZelleReceiptsAdmin() {
 
       if (error) throw error;
 
+      // Log combinado de código de confirmação + aprovação
+      await Logger.log(
+        ActionTypes.PAYMENT.ZELLE_CONFIRMATION_CODE_SAVED,
+        `Zelle payment approved with confirmation code: ${payment.zelle_confirmation_code}`,
+        {
+          entityType: 'payment',
+          entityId: paymentId,
+          metadata: {
+            amount: payment.amount,
+            confirmation_code: payment.zelle_confirmation_code,
+            document_id: payment.document_id,
+            document_filename: payment.documents?.filename,
+            previous_status: payment.status,
+            new_status: 'completed',
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: payment.user_id,
+          performerType: 'finance'
+        }
+      );
+
+      // Log do pagamento Zelle verificado (equivalente ao payment_received do Stripe)
+      await Logger.log(
+        ActionTypes.PAYMENT.ZELLE_VERIFIED,
+        `Zelle payment verified successfully`,
+        {
+          entityType: 'payment',
+          entityId: paymentId,
+          metadata: {
+            amount: payment.amount,
+            confirmation_code: payment.zelle_confirmation_code,
+            document_id: payment.document_id,
+            document_filename: payment.documents?.filename,
+            payment_method: 'zelle',
+            timestamp: new Date().toISOString()
+          },
+          affectedUserId: payment.user_id,
+          performerType: 'system'
+        }
+      );
+
       // Após aprovar o pagamento, enviar documento para processo de tradução
         setSendingToTranslation(paymentId);
         try {
           await sendDocumentForTranslation(payment);
           console.log('✅ Document successfully sent for translation');
+          
+          // Log do documento enviado para tradução
+          await Logger.log(
+            ActionTypes.DOCUMENT.SEND_FOR_AUTHENTICATION,
+            `Document sent for translation after Zelle payment approval`,
+            {
+              entityType: 'document',
+              entityId: payment.document_id,
+              metadata: {
+                document_id: payment.document_id,
+                filename: payment.documents?.filename,
+                payment_id: paymentId,
+                payment_method: 'zelle',
+                amount: payment.amount,
+                timestamp: new Date().toISOString()
+              },
+              affectedUserId: payment.user_id,
+              performerType: 'finance'
+            }
+          );
         } catch (translationError) {
           console.error('❌ Failed to send document for translation:', translationError);
         // Nota: A aprovação do pagamento não falha se a tradução falhar.
@@ -723,6 +867,9 @@ export function ZelleReceiptsAdmin() {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const { data: { session } } = await supabase.auth.getSession();
 
+      console.log('🚀 Enviando webhook para n8n...');
+      console.log('📤 Payload sendo enviado:', JSON.stringify(translationPayload, null, 2));
+      
       const response = await fetch(`${supabaseUrl}/functions/v1/send-translation-webhook`, {
         method: 'POST',
         headers: {
@@ -733,9 +880,16 @@ export function ZelleReceiptsAdmin() {
       });
 
       const result = await response.json();
+      
+      console.log('📥 Resposta do webhook:', {
+        status: response.status,
+        ok: response.ok,
+        result: result
+      });
 
       if (response.ok) {
         console.log('✅ Documento enviado para tradução com sucesso:', result);
+        console.log('📋 O n8n deve processar e inserir em documents_to_be_verified');
       } else {
         console.error('❌ Erro ao enviar documento para tradução:', result);
         throw new Error(result.error || 'Failed to send document for translation');

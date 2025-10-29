@@ -4,6 +4,8 @@ import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
 import { Document } from '../../App';
 import { supabase } from '../../lib/supabase';
 import { useI18n } from '../../contexts/I18nContext';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
 
 // A interface para as propriedades do componente permanece a mesma.
 
@@ -413,6 +415,31 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
         phone: userEditData.phone.trim() || null
       });
 
+      // Log de edição de usuário
+      const changedFields = [];
+      if (userProfile.name !== userEditData.name.trim()) changedFields.push('name');
+      if (userProfile.email !== userEditData.email.trim()) changedFields.push('email');
+      if (userProfile.phone !== (userEditData.phone.trim() || null)) changedFields.push('phone');
+
+      if (changedFields.length > 0) {
+        await Logger.log(
+          ActionTypes.USER_ROLE_UPDATED,
+          `User profile updated for ${userEditData.name}`,
+          {
+            entityType: 'user',
+            entityId: document.user_id,
+            metadata: {
+              changed_fields: changedFields,
+              user_name: userEditData.name.trim(),
+              user_email: userEditData.email.trim(),
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: document.user_id,
+            performerType: 'admin'
+          }
+        );
+      }
+
       setEditingUser(false);
     } catch (err: any) {
       console.error('Error updating user profile:', err);
@@ -491,6 +518,37 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
         throw error;
       }
 
+      // Log de edição de documento
+      const changedFields = [];
+      const doc = document as any;
+      if (doc.filename !== fileEditData.filename.trim()) changedFields.push('filename');
+      if (doc.pages !== fileEditData.pages) changedFields.push('pages');
+      if (doc.total_cost !== fileEditData.total_cost) changedFields.push('total_cost');
+      if (doc.source_language !== fileEditData.source_language.trim()) changedFields.push('source_language');
+      if (doc.target_language !== fileEditData.target_language.trim()) changedFields.push('target_language');
+      if (doc.is_bank_statement !== fileEditData.is_bank_statement) changedFields.push('is_bank_statement');
+      if (doc.is_authenticated !== fileEditData.is_authenticated) changedFields.push('is_authenticated');
+
+      if (changedFields.length > 0) {
+        await Logger.log(
+          ActionTypes.DOCUMENT_EDITED,
+          `Document edited: ${fileEditData.filename}`,
+          {
+            entityType: 'document',
+            entityId: document.id,
+            metadata: {
+              changed_fields: changedFields,
+              filename: fileEditData.filename.trim(),
+              pages: fileEditData.pages,
+              total_cost: fileEditData.total_cost,
+              timestamp: new Date().toISOString()
+            },
+            affectedUserId: document.user_id,
+            performerType: 'admin'
+          }
+        );
+      }
+
       // Update local state - we need to trigger a re-render
       // The parent component should handle refreshing the document data
       setEditingFile(false);
@@ -514,7 +572,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-gray-900">{t('admin.documents.modal.title')}</h3>
+          <h3 className="text-xl font-semibold text-gray-900">{t('admin.documents.table.modal.title')}</h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 p-1"
@@ -530,7 +588,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
                 <FileText className="w-6 h-6 text-blue-600" />
-                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.modal.fileInformation')}</h4>
+                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.table.modal.fileInformation')}</h4>
               </div>
               {!editingFile && (
                 <button
@@ -538,7 +596,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                   className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                 >
                   <Edit className="w-4 h-4" />
-                  {t('admin.documents.modal.edit')}
+                  {t('admin.documents.table.modal.edit')}
                 </button>
               )}
             </div>
@@ -553,28 +611,28 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.filename')} *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.filename')} *</label>
                     <input
                       type="text"
                       value={fileEditData.filename}
                       onChange={(e) => setFileEditData(prev => ({ ...prev, filename: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={t('admin.documents.modal.enterFilename')}
+                      placeholder={t('admin.documents.table.modal.enterFilename')}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.pages')} *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.pages')} *</label>
                     <input
                       type="number"
                       min="1"
                       value={fileEditData.pages}
                       onChange={(e) => setFileEditData(prev => ({ ...prev, pages: parseInt(e.target.value) || 0 }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={t('admin.documents.modal.enterPages')}
+                      placeholder={t('admin.documents.table.modal.enterPages')}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.totalCost')} *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.totalCost')} *</label>
                     <div className="relative">
                       <span className="absolute left-3 top-2 text-gray-500">$</span>
                       <input
@@ -589,7 +647,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.status')}</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.status')}</label>
                     <div className="mt-1">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(document as any)}`}>
                         {getStatusIcon(document as any)}
@@ -600,23 +658,23 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.sourceLanguage')}</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.sourceLanguage')}</label>
                     <input
                       type="text"
                       value={fileEditData.source_language}
                       onChange={(e) => setFileEditData(prev => ({ ...prev, source_language: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={t('admin.documents.modal.enterSourceLanguage')}
+                      placeholder={t('admin.documents.table.modal.enterSourceLanguage')}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.targetLanguage')}</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.targetLanguage')}</label>
                     <input
                       type="text"
                       value={fileEditData.target_language}
                       onChange={(e) => setFileEditData(prev => ({ ...prev, target_language: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={t('admin.documents.modal.enterTargetLanguage')}
+                      placeholder={t('admin.documents.table.modal.enterTargetLanguage')}
                     />
                   </div>
                 </div>
@@ -631,7 +689,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                     <label htmlFor="is_bank_statement" className="text-sm font-medium text-gray-700">
-{t('admin.documents.modal.bankStatement')}
+{t('admin.documents.table.modal.bankStatement')}
                     </label>
                   </div>
                   <div className="flex items-center space-x-3">
@@ -643,7 +701,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                     <label htmlFor="is_authenticated" className="text-sm font-medium text-gray-700">
-{t('admin.documents.modal.authenticated')}
+{t('admin.documents.table.modal.authenticated')}
                     </label>
                   </div>
                 </div>
@@ -654,7 +712,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                     className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                   >
                     <X className="w-4 h-4" />
-                    {t('admin.documents.modal.cancel')}
+                    {t('admin.documents.table.modal.cancel')}
                   </button>
                   <button
                     onClick={saveFileChanges}
@@ -662,26 +720,26 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                     className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors"
                   >
                     <Save className="w-4 h-4" />
-{savingFile ? t('admin.documents.modal.saving') : t('admin.documents.modal.saveChanges')}
+{savingFile ? t('admin.documents.table.modal.saving') : t('admin.documents.table.modal.saveChanges')}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.filename')}</label>
+                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.filename')}</label>
                   <p className="text-gray-900 break-all">{(document as any).filename}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.pages')}</label>
+                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.pages')}</label>
                   <p className="text-gray-900">{(document as any).pages}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.totalCost')}</label>
+                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.totalCost')}</label>
                   <p className="text-gray-900 font-semibold">${(document as any).total_cost}.00</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.status')}</label>
+                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.status')}</label>
                   <div className="mt-1">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(document as any)}`}>
                       {getStatusIcon(document as any)}
@@ -700,7 +758,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
                 <User className="w-6 h-6 text-green-600" />
-                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.modal.userInformation')}</h4>
+                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.table.modal.userInformation')}</h4>
               </div>
               {userProfile && !editingUser && (
                 <button
@@ -708,13 +766,13 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                   className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                 >
                   <Edit className="w-4 h-4" />
-{t('admin.documents.modal.edit')}
+{t('admin.documents.table.modal.edit')}
                 </button>
               )}
             </div>
             
             {loadingProfile ? (
-              <div className="text-gray-500">{t('admin.documents.modal.loadingUserInfo')}</div>
+              <div className="text-gray-500">{t('admin.documents.table.modal.loadingUserInfo')}</div>
             ) : userProfile ? (
               <>
                 {editingUser ? (
@@ -727,40 +785,40 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.name')} *</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.name')} *</label>
                       <input
                         type="text"
                         value={userEditData.name}
                         onChange={(e) => setUserEditData(prev => ({ ...prev, name: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder={t('admin.documents.modal.enterFullName')}
+                        placeholder={t('admin.documents.table.modal.enterFullName')}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.email')} *</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.email')} *</label>
                       <input
                         type="email"
                         value={userEditData.email}
                         onChange={(e) => setUserEditData(prev => ({ ...prev, email: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder={t('admin.documents.modal.enterEmail')}
+                        placeholder={t('admin.documents.table.modal.enterEmail')}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                         <Phone className="w-4 h-4" />
-{t('admin.documents.modal.phoneNumber')}
+{t('admin.documents.table.modal.phoneNumber')}
                       </label>
                       <input
                         type="tel"
                         value={userEditData.phone}
                         onChange={(e) => setUserEditData(prev => ({ ...prev, phone: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder={t('admin.documents.modal.enterPhoneOptional')}
+                        placeholder={t('admin.documents.table.modal.enterPhoneOptional')}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.modal.userId')}</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('admin.documents.table.modal.userId')}</label>
                       <p className="text-gray-900 font-mono text-sm break-all bg-gray-100 px-3 py-2 rounded-md">{document.user_id}</p>
                     </div>
                   </div>
@@ -771,7 +829,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                       className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                     >
                       <X className="w-4 h-4" />
-                      {t('admin.documents.modal.cancel')}
+                      {t('admin.documents.table.modal.cancel')}
                     </button>
                     <button
                       onClick={saveUserChanges}
@@ -779,36 +837,36 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                       className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors"
                     >
                       <Save className="w-4 h-4" />
-{savingUser ? t('admin.documents.modal.saving') : t('admin.documents.modal.saveChanges')}
+{savingUser ? t('admin.documents.table.modal.saving') : t('admin.documents.table.modal.saveChanges')}
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.name')}</label>
+                    <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.name')}</label>
                     <p className="text-gray-900">{userProfile.name || 'Not provided'}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.email')}</label>
+                    <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.email')}</label>
                     <p className="text-gray-900 break-all">{userProfile.email}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
                       <Phone className="w-4 h-4" />
-{t('admin.documents.modal.phoneNumber')}
+{t('admin.documents.table.modal.phoneNumber')}
                     </label>
-                    <p className="text-gray-900">{userProfile.phone || t('admin.documents.modal.notProvided')}</p>
+                    <p className="text-gray-900">{userProfile.phone || t('admin.documents.table.modal.notProvided')}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.userId')}</label>
+                    <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.userId')}</label>
                     <p className="text-gray-900 font-mono text-sm break-all">{document.user_id}</p>
                   </div>
                 </div>
               )}
             </>
             ) : (
-              <div className="text-gray-500">{t('admin.documents.modal.userInfoNotAvailable')}</div>
+              <div className="text-gray-500">{t('admin.documents.table.modal.userInfoNotAvailable')}</div>
             )}
           </div>
           
@@ -816,28 +874,28 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="flex items-center gap-3 mb-3">
               <Hash className="w-6 h-6 text-purple-600" />
-              <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.modal.documentDetails')}</h4>
+              <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.table.modal.documentDetails')}</h4>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.translationType')}</label>
-                <p className="text-gray-900">{'tipo_trad' in (document || {}) ? (document as any).tipo_trad : t('admin.documents.modal.notSpecified')}</p>
+                <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.translationType')}</label>
+                <p className="text-gray-900">{'tipo_trad' in (document || {}) ? (document as any).tipo_trad : t('admin.documents.table.modal.notSpecified')}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.sourceLanguage')}</label>
+                <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.sourceLanguage')}</label>
                 <p className="text-gray-900">{
                   (document as any).source_language || 
                   (document as any).idioma_raiz || 
-                  t('admin.documents.modal.notSpecified')
+                  t('admin.documents.table.modal.notSpecified')
                 }</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.bankStatement')}</label>
-                <p className="text-gray-900">{(document as any).is_bank_statement ? t('admin.documents.modal.yes') : t('admin.documents.modal.no')}</p>
+                <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.bankStatement')}</label>
+                <p className="text-gray-900">{(document as any).is_bank_statement ? t('admin.documents.table.modal.yes') : t('admin.documents.table.modal.no')}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.authenticated')}</label>
-                <p className="text-gray-900">{(document as any).is_authenticated ? t('admin.documents.modal.yes') : t('admin.documents.modal.no')}</p>
+                <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.authenticated')}</label>
+                <p className="text-gray-900">{(document as any).is_authenticated ? t('admin.documents.table.modal.yes') : t('admin.documents.table.modal.no')}</p>
               </div>
             </div>
           </div>
@@ -846,15 +904,15 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="flex items-center gap-3 mb-3">
               <Calendar className="w-6 h-6 text-orange-600" />
-              <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.modal.timeline')}</h4>
+              <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.table.modal.timeline')}</h4>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.created')}</label>
+                <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.created')}</label>
                 <p className="text-gray-900">{(document as any).created_at ? new Date((document as any).created_at).toLocaleString() : 'Not available'}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.lastUpdated')}</label>
+                <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.lastUpdated')}</label>
                 <p className="text-gray-900">{(document as any).updated_at ? new Date((document as any).updated_at).toLocaleString() : 'Not available'}</p>
               </div>
             </div>
@@ -864,36 +922,36 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="flex items-center gap-3 mb-3">
               <Hash className="w-6 h-6 text-red-600" />
-              <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.modal.verification')}</h4>
+              <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.table.modal.verification')}</h4>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.verificationCode')}</label>
+              <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.verificationCode')}</label>
               <p className="text-gray-900 font-mono text-sm break-all">{document.verification_code}</p>
             </div>
           </div>
 
-          {/* {t('admin.documents.modal.paymentInformation')} */}
+          {/* {t('admin.documents.table.modal.paymentInformation')} */}
           {loadingPayment ? (
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="flex items-center gap-3 mb-3">
                 <CreditCard className="w-6 h-6 text-blue-600" />
-                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.modal.paymentInformation')}</h4>
+                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.table.modal.paymentInformation')}</h4>
               </div>
-              <div className="text-gray-500">{t('admin.documents.modal.loadingPaymentInfo')}</div>
+              <div className="text-gray-500">{t('admin.documents.table.modal.loadingPaymentInfo')}</div>
             </div>
           ) : paymentInfo ? (
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="flex items-center gap-3 mb-3">
                 <CreditCard className="w-6 h-6 text-blue-600" />
-                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.modal.paymentInformation')}</h4>
+                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.table.modal.paymentInformation')}</h4>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.amount')}</label>
+                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.amount')}</label>
                   <p className="text-gray-900 font-semibold">{formatCurrency(paymentInfo.amount, paymentInfo.currency)}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.status')}</label>
+                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.status')}</label>
                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                     paymentInfo.status === 'completed' 
                       ? 'bg-green-100 text-green-800'
@@ -909,16 +967,16 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                   </span>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.paymentMethod')}</label>
+                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.paymentMethod')}</label>
                   <p className="text-gray-900">{paymentInfo.payment_method || 'Stripe'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.paymentDate')}</label>
+                  <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.paymentDate')}</label>
                   <p className="text-gray-900">{formatDate(paymentInfo.payment_date)}</p>
                 </div>
                 {paymentInfo.stripe_session_id && (
                   <div className="sm:col-span-2">
-                    <label className="text-sm font-medium text-gray-700">{t('admin.documents.modal.stripeSessionId')}</label>
+                    <label className="text-sm font-medium text-gray-700">{t('admin.documents.table.modal.stripeSessionId')}</label>
                     <p className="text-gray-900 font-mono text-sm break-all">{paymentInfo.stripe_session_id}</p>
                   </div>
                 )}
@@ -954,14 +1012,14 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h5 className="text-sm font-medium text-gray-900">{t('admin.documents.modal.paymentActions')}</h5>
-                      <p className="text-sm text-gray-500">{t('admin.documents.modal.cancelAndRefund')}</p>
+                      <h5 className="text-sm font-medium text-gray-900">{t('admin.documents.table.modal.paymentActions')}</h5>
+                      <p className="text-sm text-gray-500">{t('admin.documents.table.modal.cancelAndRefund')}</p>
                     </div>
                     <button
                       onClick={openCancelModal}
                       className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
                     >
-{t('admin.documents.modal.cancelPayment')}
+{t('admin.documents.table.modal.cancelPayment')}
                     </button>
                   </div>
                 </div>
@@ -971,16 +1029,16 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="flex items-center gap-3 mb-3">
                 <CreditCard className="w-6 h-6 text-blue-600" />
-                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.modal.paymentInformation')}</h4>
+                <h4 className="text-lg font-semibold text-gray-900">{t('admin.documents.table.modal.paymentInformation')}</h4>
               </div>
-              <div className="text-gray-500">{t('admin.documents.modal.noPaymentInfo')}</div>
+              <div className="text-gray-500">{t('admin.documents.table.modal.noPaymentInfo')}</div>
             </div>
           )}
 
           {/* Actions */}
           {((document as any).translated_file_url || (document as any).file_url) && (
             <div className="bg-blue-50 rounded-lg p-4">
-              <h4 className="text-lg font-semibold text-blue-900 mb-3">{t('admin.documents.modal.fileActions')}</h4>
+              <h4 className="text-lg font-semibold text-blue-900 mb-3">{t('admin.documents.table.modal.fileActions')}</h4>
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={handleViewFile}
@@ -994,9 +1052,9 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                     const hasTranslated = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
                     
                     if (isApproved && hasTranslated) {
-                      return t('admin.documents.modal.viewTranslated');
+                      return t('admin.documents.table.modal.viewTranslated');
                     } else {
-                      return t('admin.documents.modal.viewOriginal');
+                      return t('admin.documents.table.modal.viewOriginal');
                     }
                   })()}
                 </button>
@@ -1012,9 +1070,9 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                     const hasTranslated = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
                     
                     if (isApproved && hasTranslated) {
-                      return t('admin.documents.modal.downloadTranslated');
+                      return t('admin.documents.table.modal.downloadTranslated');
                     } else {
-                      return t('admin.documents.modal.downloadOriginal');
+                      return t('admin.documents.table.modal.downloadOriginal');
                     }
                   })()}
                 </button>
@@ -1028,7 +1086,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
           >
-{t('admin.documents.modal.close')}
+{t('admin.documents.table.modal.close')}
           </button>
         </div>
       </div>
@@ -1039,7 +1097,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">{t('admin.documents.modal.cancelPayment')}</h3>
+                <h3 className="text-lg font-medium text-gray-900">{t('admin.documents.table.modal.cancelPayment')}</h3>
                 <button
                   onClick={closeCancelModal}
                   className="text-gray-400 hover:text-gray-600"
