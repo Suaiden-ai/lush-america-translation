@@ -49,14 +49,20 @@ export function WithdrawalTimer({
         const remainingMinutes = 59 - diffInMinutes;
         
         if (remainingDays > 0) {
-          setTimeLeft(t('affiliate.withdrawalAvailableIn')
-            .replace('{days}', remainingDays.toString())
-            .replace('{hours}', remainingHours.toString())
-            .replace('{minutes}', remainingMinutes.toString()));
+          setTimeLeft(
+            t('affiliate.withdrawalAvailableIn', {
+              days: remainingDays,
+              hours: remainingHours,
+              minutes: remainingMinutes
+            })
+          );
         } else {
-          setTimeLeft(t('affiliate.withdrawalAvailableInHours')
-            .replace('{hours}', remainingHours.toString())
-            .replace('{minutes}', remainingMinutes.toString()));
+          setTimeLeft(
+            t('affiliate.withdrawalAvailableInHours', {
+              hours: remainingHours,
+              minutes: remainingMinutes
+            })
+          );
         }
       }
     };

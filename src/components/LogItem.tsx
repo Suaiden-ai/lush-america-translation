@@ -195,10 +195,7 @@ export const LogItem: React.FC<LogItemProps> = ({ log, onEntityClick }) => {
         const rejectedFileNew = metadata?.filename || 'document';
         return `❌ Document rejected: ${rejectedFileNew}`;
       
-      case 'DOCUMENT_STATUS_CHANGED':
-        const statusFileNew = metadata?.filename || 'document';
-        const newStatusNew = metadata?.new_status || 'updated';
-        return `📋 Document status changed to ${newStatusNew}: ${statusFileNew}`;
+      // duplicate of DOCUMENT_STATUS_CHANGED removed to avoid unreachable case
       
       default:
         // Para ações não mapeadas, tentar melhorar a descrição

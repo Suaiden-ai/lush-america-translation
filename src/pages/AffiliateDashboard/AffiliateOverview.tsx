@@ -172,7 +172,7 @@ export function AffiliateOverview() {
                     <span className="font-medium">{200 - stats.total_pages}</span> {t('affiliate.pagesToReachLevel2')}
                   </div>
                   <div className="text-xs text-gray-500">
-                    {t('affiliate.earnXPerPage').replace('{rate}', '$1.00')} {t('affiliate.insteadOf')} $0.50
+                    {t('affiliate.earnXPerPage', { rate: '$1.00' })} {t('affiliate.insteadOf')} $0.50
                   </div>
                 </div>
               ) : (
@@ -182,7 +182,7 @@ export function AffiliateOverview() {
                     <span className="text-sm font-medium text-gray-900">{t('affiliate.level2Achieved')} 🎉</span>
                   </div>
                   <div className="text-xs text-gray-500">
-                    {t('affiliate.earningXPerPage').replace('{rate}', '$1.00')}
+                    {t('affiliate.earningXPerPage', { rate: '$1.00' })}
                   </div>
                 </div>
               )}
