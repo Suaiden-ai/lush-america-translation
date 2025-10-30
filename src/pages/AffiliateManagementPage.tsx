@@ -3,7 +3,7 @@ import { Users, DollarSign, Search } from 'lucide-react';
 import { useAffiliateAdmin } from '../hooks/useAffiliate';
 
 // Importar hooks customizados
-import { useClientsCache } from '../hooks/useClientsCache';
+// import { useClientsCache } from '../hooks/useClientsCache';
 import { useAffiliateFilters } from '../hooks/useAffiliateFilters';
 import { useWithdrawalActions } from '../hooks/useWithdrawalActions';
 
@@ -43,10 +43,8 @@ export function AffiliateManagementPage() {
   const [clientSearchTerm, setClientSearchTerm] = useState('');
 
   // Hooks customizados
-  const {
-    saveClientsCache,
-    getCachedClients
-  } = useClientsCache();
+  // Cache local simples por affiliateId
+  const [clientsCache, setClientsCache] = useState<Record<string, any[]>>({});
 
   const {
     searchTerm,
@@ -89,8 +87,8 @@ export function AffiliateManagementPage() {
     } else {
       setExpandedAffiliate(affiliateId);
       
-      // Verificar cache
-      const cachedClients = getCachedClients(affiliateId);
+      // Verificar cache local
+      const cachedClients = clientsCache[affiliateId];
       if (cachedClients) {
         setAffiliateClients(cachedClients);
         return;
@@ -100,7 +98,7 @@ export function AffiliateManagementPage() {
       try {
         const clients = await fetchAffiliateClients(affiliateId);
         setAffiliateClients(clients);
-        saveClientsCache(affiliateId, clients);
+        setClientsCache(prev => ({ ...prev, [affiliateId]: clients }));
       } catch (error) {
         console.error('Error loading clients:', error);
       } finally {

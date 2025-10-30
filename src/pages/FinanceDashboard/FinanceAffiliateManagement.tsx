@@ -3,7 +3,7 @@ import { Users, Search, Filter, ChevronDown, ChevronUp, Eye, Clock, XCircle, Use
 import { useAffiliateAdmin } from '../../hooks/useAffiliate';
 import { formatDate } from '../../utils/dateUtils';
 import { useI18n } from '../../contexts/I18nContext';
-import { useClientsCache } from '../../hooks/useClientsCache';
+// import { useClientsCache } from '../../hooks/useClientsCache';
 
 export function FinanceAffiliateManagement() {
   const { t } = useI18n();
@@ -31,11 +31,8 @@ export function FinanceAffiliateManagement() {
   const [loadingClients, setLoadingClients] = useState(false);
   const [clientSearchTerm, setClientSearchTerm] = useState('');
 
-  // Cache for clients data
-  const {
-    saveClientsCache,
-    getCachedClients
-  } = useClientsCache();
+  // Cache local simples (em memória do componente)
+  const [clientsCache, setClientsCache] = useState<Record<string, any[]>>({});
   
   // Timer state for withdrawal countdown
   const [timeLeft, setTimeLeft] = useState<string>('');
@@ -53,10 +50,10 @@ export function FinanceAffiliateManagement() {
     } else {
       setExpandedAffiliate(affiliateId);
       
-      // Verificar cache
-      const cachedClients = getCachedClients(affiliateId);
-      if (cachedClients) {
-        setAffiliateClients(cachedClients);
+      // Verificar cache local
+      const cached = clientsCache[affiliateId];
+      if (cached) {
+        setAffiliateClients(cached);
         return;
       }
       
@@ -64,7 +61,7 @@ export function FinanceAffiliateManagement() {
       try {
         const clients = await fetchAffiliateClients(affiliateId);
         setAffiliateClients(clients);
-        saveClientsCache(affiliateId, clients);
+        setClientsCache(prev => ({ ...prev, [affiliateId]: clients }));
       } catch (error) {
         console.error('Error loading clients:', error);
       } finally {
@@ -215,8 +212,8 @@ export function FinanceAffiliateManagement() {
       <div className="max-w-7xl mx-auto px-1 sm:px-4 lg:px-6 overflow-hidden">
         {/* Header */}
         <div className="mb-4 sm:mb-6">
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Affiliate Management</h1>
-          <p className="text-gray-600 mt-1 sm:mt-2 text-sm">View and manage all affiliates</p>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">{t('finance.affiliates.title', { defaultValue: 'Affiliate Management' })}</h1>
+          <p className="text-gray-600 mt-1 sm:mt-2 text-sm">{t('finance.affiliates.subtitle', { defaultValue: 'View and manage all affiliates' })}</p>
         </div>
 
         {/* Search and Filters */}
@@ -227,7 +224,7 @@ export function FinanceAffiliateManagement() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search affiliates..."
+                  placeholder={t('finance.affiliates.searchPlaceholder', { defaultValue: 'Search affiliates...' })}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500"
@@ -239,7 +236,7 @@ export function FinanceAffiliateManagement() {
               className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
             >
               <Filter className="w-4 h-4" />
-              Filters
+              {t('common.filters', { defaultValue: 'Filters' })}
               {(levelFilter !== 'all' || balanceFilter !== 'all' || dateFilter !== 'all') && (
                 <span className="bg-tfe-blue-500 text-white text-xs rounded-full px-2 py-1">
                   {[levelFilter, balanceFilter, dateFilter].filter(f => f !== 'all').length}
@@ -255,27 +252,27 @@ export function FinanceAffiliateManagement() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Level Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Level</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">{t('affiliate.level', { defaultValue: 'Level' })}</label>
                   <select
                     value={levelFilter}
                     onChange={(e) => setLevelFilter(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500"
                   >
-                    <option value="all">All Levels</option>
-                    <option value="1">Level 1</option>
-                    <option value="2">Level 2</option>
+                    <option value="all">{t('finance.affiliates.allLevels', { defaultValue: 'All Levels' })}</option>
+                    <option value="1">{t('affiliate.level', { defaultValue: 'Level' })} 1</option>
+                    <option value="2">{t('affiliate.level', { defaultValue: 'Level' })} 2</option>
                   </select>
                 </div>
                 
                 {/* Balance Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Balance</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">{t('finance.affiliates.balance', { defaultValue: 'Balance' })}</label>
                   <select
                     value={balanceFilter}
                     onChange={(e) => setBalanceFilter(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500"
                   >
-                    <option value="all">All Balances</option>
+                    <option value="all">{t('finance.affiliates.allBalances', { defaultValue: 'All Balances' })}</option>
                     <option value="high">High ($100+)</option>
                     <option value="medium">Medium ($10-$99)</option>
                     <option value="low">Low (Under $10)</option>
@@ -284,15 +281,15 @@ export function FinanceAffiliateManagement() {
                 
                 {/* Date Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Registration</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">{t('finance.affiliates.registration', { defaultValue: 'Registration' })}</label>
                   <select
                     value={dateFilter}
                     onChange={(e) => setDateFilter(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500"
                   >
-                    <option value="all">All Time</option>
-                    <option value="recent">Last 30 Days</option>
-                    <option value="old">Older than 30 Days</option>
+                    <option value="all">{t('finance.affiliates.allTime', { defaultValue: 'All Time' })}</option>
+                    <option value="recent">{t('finance.affiliates.last30Days', { defaultValue: 'Last 30 Days' })}</option>
+                    <option value="old">{t('finance.affiliates.olderThan30Days', { defaultValue: 'Older than 30 Days' })}</option>
                   </select>
                 </div>
               </div>
@@ -308,7 +305,7 @@ export function FinanceAffiliateManagement() {
                    }}
                   className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
-                  Clear All Filters
+                  {t('finance.affiliates.clearAllFilters', { defaultValue: 'Clear All Filters' })}
                 </button>
               </div>
             </div>
@@ -322,31 +319,31 @@ export function FinanceAffiliateManagement() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Affiliate
+                    {t('finance.affiliates.table.affiliate', { defaultValue: 'Affiliate' })}
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Code
+                    {t('finance.affiliates.table.code', { defaultValue: 'Code' })}
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Level
+                    {t('affiliate.level', { defaultValue: 'Level' })}
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Clients
+                    {t('affiliate.totalClients', { defaultValue: 'Clients' })}
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pages
+                    {t('affiliate.totalPages', { defaultValue: 'Pages' })}
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Available
+                    {t('affiliate.availableBalance', { defaultValue: 'Available' })}
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pending
+                    {t('affiliate.pendingBalance', { defaultValue: 'Pending' })}
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Total
+                    {t('affiliate.totalEarned', { defaultValue: 'Total' })}
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                    {t('common.actions', { defaultValue: 'Actions' })}
                   </th>
                 </tr>
               </thead>
@@ -409,7 +406,7 @@ export function FinanceAffiliateManagement() {
                           ) : (
                             <ChevronDown className="w-3 h-3" />
                           )}
-                          {expandedAffiliate === affiliate.affiliate_id ? 'Hide' : 'View'}
+                          {expandedAffiliate === affiliate.affiliate_id ? t('common.hide', { defaultValue: 'Hide' }) : t('common.view', { defaultValue: 'View' })}
                         </button>
                         <button
                           onClick={() => {
@@ -419,7 +416,7 @@ export function FinanceAffiliateManagement() {
                           className="text-gray-600 hover:text-gray-900 flex items-center gap-1 text-xs"
                         >
                           <Eye className="w-3 h-3" />
-                          Details
+                          {t('common.details', { defaultValue: 'Details' })}
                         </button>
                       </div>
                     </td>
@@ -430,7 +427,7 @@ export function FinanceAffiliateManagement() {
                         <div className="px-6 py-4 space-y-4">
                           <div className="flex items-center justify-between">
                             <h4 className="text-lg font-semibold text-gray-900">
-                              {t('affiliate.totalClientsInList').replace('{count}', affiliate.total_clients)}
+                              {t('affiliate.totalClientsInList', { count: affiliate.total_clients })}
                             </h4>
                             <div className="flex items-center gap-2">
                               <Search className="w-4 h-4 text-gray-400" />
@@ -462,16 +459,16 @@ export function FinanceAffiliateManagement() {
                                       {t('affiliate.clientName')}
                                     </th>
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                      Email
+                                      {t('affiliate.clientEmail', { defaultValue: 'Email' })}
                                     </th>
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                      Registered
+                                      {t('affiliate.registered', { defaultValue: 'Registered' })}
                                     </th>
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                      Pages
+                                      {t('affiliate.totalPages', { defaultValue: 'Pages' })}
                                     </th>
                                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                      Commission
+                                      {t('affiliate.commission', { defaultValue: 'Commission' })}
                                     </th>
                                   </tr>
                                 </thead>
