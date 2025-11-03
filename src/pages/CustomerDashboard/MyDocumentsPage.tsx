@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Folder as FolderIcon, FileText, Plus, MoreVertical, ArrowLeft, Grid, List, Download, Eye, Edit2, Trash2 } from 'lucide-react';
+import { Folder as FolderIcon, FileText, Plus, MoreVertical, ArrowLeft, Grid, List, Download, Eye, Edit2, Trash2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useFolders } from '../../hooks/useFolders';
 import { useTranslatedDocuments } from '../../hooks/useDocuments';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { supabase, db } from '../../lib/supabase';
 import { formatDateTime } from '../../utils/dateUtils';
 import { Logger } from '../../lib/loggingHelpers';
 import { ActionTypes } from '../../types/actionTypes';
@@ -31,6 +31,15 @@ export default function MyDocumentsPage() {
   const [showDeleteFolderModal, setShowDeleteFolderModal] = useState(false);
   const [editingFolderName, setEditingFolderName] = useState('');
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  
+  // Modal de visualização de documento
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<'pdf' | 'image' | 'unknown'>('unknown');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<any | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
 
   const { folders, createFolder, updateFolder, deleteFolder, loading: foldersLoading } = useFolders(user?.id);
   const { documents, loading: docsLoading, refetch } = useTranslatedDocuments(user?.id);
@@ -746,12 +755,12 @@ export default function MyDocumentsPage() {
                           performerType: 'user'
                         }
                       );
-                      console.log('✅ Document view logged successfully');
                     } catch (logError) {
                       console.error('Error logging document view:', logError);
                     }
                     
-                    window.open(item.translated_file_url, '_blank');
+                    // Abrir no modal usando setSelectedFile (não usar window.open)
+                    setSelectedFile(item);
                   }}
                 >
                   <Eye className="w-4 h-4" />
@@ -783,25 +792,46 @@ export default function MyDocumentsPage() {
                           performerType: 'user'
                         }
                       );
-                      console.log('✅ Document download logged successfully');
                     } catch (logError) {
                       console.error('Error logging document download:', logError);
                     }
                     
                     try {
-                      const response = await fetch(item.translated_file_url);
-                      const blob = await response.blob();
-                      const url = window.URL.createObjectURL(blob);
-                      const link = document.createElement('a');
-                      link.href = url;
-                      link.download = item.filename;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      window.URL.revokeObjectURL(url);
+                      // Extrair filePath e bucket da URL
+                      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+                      const pathInfo = extractFilePathFromUrl(item.translated_file_url);
+                      
+                      if (!pathInfo) {
+                        // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+                        try {
+                          const response = await fetch(item.translated_file_url);
+                          if (response.ok) {
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = item.filename;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            window.URL.revokeObjectURL(url);
+                            return;
+                          }
+                        } catch (error) {
+                          alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+                          return;
+                        }
+                      }
+                      
+                      // Usar download autenticado direto
+                      const success = await db.downloadFileAndTrigger(pathInfo.filePath, item.filename, pathInfo.bucket);
+                      
+                      if (!success) {
+                        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                      }
                     } catch (error) {
                       console.error('Error downloading file:', error);
-                      alert('Error downloading file. Please try again.');
+                      alert(`Erro ao baixar arquivo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
                     }
                   }}
                 >
@@ -936,12 +966,50 @@ export default function MyDocumentsPage() {
                         performerType: 'user'
                       }
                     );
-                    console.log('✅ Document view logged successfully');
                   } catch (logError) {
                     console.error('Error logging document view:', logError);
                   }
                   
-                  window.open(selectedFile.translated_file_url, '_blank');
+                  // Abrir no modal usando blob URL (não expõe URL original)
+                  try {
+                    setPreviewLoading(true);
+                    setPreviewError(null);
+                    setPreviewDocument(selectedFile);
+                    
+                    const { db } = await import('../../lib/supabase');
+                    const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+                    const pathInfo = extractFilePathFromUrl(selectedFile.translated_file_url);
+                    
+                    if (!pathInfo) {
+                      throw new Error('Não foi possível acessar o arquivo. URL inválida.');
+                    }
+                    
+                    // Fazer download autenticado do arquivo
+                    const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
+                    
+                    if (!blob) {
+                      throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                    }
+                    
+                    // Criar blob URL (URL local, não expõe URL original)
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    
+                    // Detectar tipo do arquivo
+                    const filename = selectedFile.original_filename || selectedFile.filename;
+                    const isImage = filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i);
+                    const fileType = isImage ? 'image' : filename.toLowerCase().endsWith('.pdf') ? 'pdf' : 'unknown';
+                    
+                    setPreviewBlobUrl(blobUrl);
+                    setPreviewUrl(blobUrl);
+                    setPreviewType(fileType);
+                    setPreviewOpen(true);
+                  } catch (error) {
+                    console.error('Erro ao abrir arquivo:', error);
+                    setPreviewError(error instanceof Error ? error.message : 'Erro desconhecido');
+                    setPreviewOpen(true);
+                  } finally {
+                    setPreviewLoading(false);
+                  }
                 }}
               >
                 <Eye className="w-4 h-4" />
@@ -971,25 +1039,46 @@ export default function MyDocumentsPage() {
                         performerType: 'user'
                       }
                     );
-                    console.log('✅ Document download logged successfully');
                   } catch (logError) {
                     console.error('Error logging document download:', logError);
                   }
                   
                   try {
-                    const response = await fetch(selectedFile.translated_file_url);
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = selectedFile.filename;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    window.URL.revokeObjectURL(url);
+                    // Extrair filePath e bucket da URL
+                    const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+                    const pathInfo = extractFilePathFromUrl(selectedFile.translated_file_url);
+                    
+                    if (!pathInfo) {
+                      // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+                      try {
+                        const response = await fetch(selectedFile.translated_file_url);
+                        if (response.ok) {
+                          const blob = await response.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = selectedFile.filename;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          window.URL.revokeObjectURL(url);
+                          return;
+                        }
+                      } catch (error) {
+                        alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+                        return;
+                      }
+                    }
+                    
+                    // Usar download autenticado direto
+                    const success = await db.downloadFileAndTrigger(pathInfo.filePath, selectedFile.filename, pathInfo.bucket);
+                    
+                    if (!success) {
+                      alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                    }
                   } catch (error) {
                     console.error('Error downloading file:', error);
-                    alert('Error downloading file. Please try again.');
+                    alert(`Erro ao baixar arquivo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
                   }
                 }}
               >
@@ -1147,6 +1236,121 @@ export default function MyDocumentsPage() {
 
       {/* Touch Drag Indicator */}
       {/* Removed touch drag indicator */}
+
+      {/* Modal de Visualização de Documento */}
+      {previewOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[10000]" style={{ touchAction: 'none' }}>
+          <div className="absolute inset-0 bg-white flex flex-col">
+            <div className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
+              <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
+                <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-tfe-blue-600 flex-shrink-0" />
+                <span className="font-semibold text-gray-900 text-xs sm:text-sm truncate">{previewDocument?.original_filename || previewDocument?.filename || 'Document preview'}</span>
+              </div>
+              <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                <button
+                  className="px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  disabled={previewLoading || !previewUrl}
+                  onClick={async () => {
+                    if (!previewDocument) return;
+                    try {
+                      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+                      const pathInfo = extractFilePathFromUrl(previewDocument.translated_file_url);
+                      if (pathInfo) {
+                        const { db } = await import('../../lib/supabase');
+                        const success = await db.downloadFileAndTrigger(pathInfo.filePath, previewDocument.filename, pathInfo.bucket);
+                        if (!success) {
+                          alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                        }
+                      }
+                    } catch (err) {
+                      console.error('Error downloading preview:', err);
+                      alert(`Erro ao baixar arquivo: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                    }
+                  }}
+                >
+                  Download
+                </button>
+                <button
+                  className="px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  onClick={() => {
+                    if (previewBlobUrl) {
+                      window.URL.revokeObjectURL(previewBlobUrl);
+                    }
+                    setPreviewOpen(false);
+                    setPreviewDocument(null);
+                    setPreviewUrl(null);
+                    setPreviewBlobUrl(null);
+                    setPreviewError(null);
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-gray-50 overflow-auto" style={{ 
+              WebkitOverflowScrolling: 'touch',
+              touchAction: 'pan-x pan-y pinch-zoom'
+            }}>
+              {previewLoading && (
+                <div className="flex items-center justify-center h-full text-gray-600">
+                  <div className="text-center">
+                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p className="text-sm sm:text-base">Loading document...</p>
+                  </div>
+                </div>
+              )}
+              {!previewLoading && previewError && (
+                <div className="p-4 sm:p-6 text-center text-tfe-red-600">
+                  <AlertCircle className="w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-2" />
+                  <p className="text-sm sm:text-base">{previewError}</p>
+                </div>
+              )}
+              {!previewLoading && !previewError && previewUrl && (
+                <>
+                  {previewType === 'image' ? (
+                    <div className="flex items-center justify-center h-full p-2 sm:p-4" style={{ 
+                      minHeight: 'calc(100vh - 60px)',
+                      WebkitUserSelect: 'none',
+                      userSelect: 'none'
+                    }}>
+                      <img 
+                        src={previewUrl} 
+                        alt={previewDocument?.filename || 'Document'} 
+                        className="max-w-full max-h-full object-contain"
+                        style={{ 
+                          maxHeight: 'calc(100vh - 60px)',
+                          width: 'auto',
+                          height: 'auto',
+                          display: 'block'
+                        }}
+                        draggable={false}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-full" style={{ 
+                      minHeight: 'calc(100vh - 60px)',
+                      overflow: 'auto',
+                      WebkitOverflowScrolling: 'touch'
+                    }}>
+                      <iframe 
+                        src={previewUrl} 
+                        className="w-full h-full border-0" 
+                        title="Document Preview"
+                        style={{
+                          minHeight: 'calc(100vh - 60px)',
+                          width: '100%',
+                          height: '100%'
+                        }}
+                        scrolling="auto"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

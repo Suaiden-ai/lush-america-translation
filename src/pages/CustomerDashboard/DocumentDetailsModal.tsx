@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { XCircle, FileText, Calendar, Hash, Shield, Globe, DollarSign, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
 import { Document } from '../../App';
-import { db } from '../../lib/supabase';
+import { db, supabase } from '../../lib/supabase';
 import { ImageViewerModal } from '../../components/ImageViewerModal';
 import { getValidFileUrl } from '../../utils/fileUtils';
 import { Logger } from '../../lib/loggingHelpers';
@@ -75,9 +75,17 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
   };
 
   // Função para visualizar arquivo
+  // SEMPRE gera um novo signed URL quando o usuário clica em "view"
+  // Isso garante que mesmo se o link original estiver expirado, funcionará
   const handleViewFile = async (url: string, filename: string) => {
     try {
-      const validUrl = await getValidFileUrl(url);
+      // SEMPRE gerar um novo signed URL para visualização usando a função helper
+      const { db } = await import('../../lib/supabase');
+      const viewUrl = await db.generateViewUrl(url);
+      
+      if (!viewUrl) {
+        throw new Error('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+      }
       
       // Log de visualização do documento
       try {
@@ -90,7 +98,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
             metadata: {
               document_id: document?.id,
               filename: filename,
-              file_url: validUrl,
+              file_url: viewUrl,
               file_type: filename.split('.').pop()?.toLowerCase(),
               user_id: document?.user_id,
               timestamp: new Date().toISOString(),
@@ -100,17 +108,43 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
             performerType: 'user'
           }
         );
-        console.log('✅ Document view logged successfully');
       } catch (logError) {
         console.error('Error logging document view:', logError);
       }
       
+      // IMPORTANTE: Usar blob URL para evitar expor URL original no DOM
+      // 1. Extrair filePath da URL original
+      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+      const pathInfo = extractFilePathFromUrl(url);
+      
+      if (!pathInfo) {
+        // Se não conseguir extrair, usar signed URL diretamente (para URLs externas)
+        if (isImageFile(filename)) {
+          setImageToView({ url: viewUrl, filename });
+          setShowImageViewer(true);
+        } else {
+          window.open(viewUrl, '_blank');
+        }
+        return;
+      }
+      
+      // 2. Fazer download autenticado do arquivo
+      const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
+      
+      if (!blob) {
+        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+      }
+      
+      // 3. Criar blob URL (URL local, não expõe URL original)
+      const blobUrl = window.URL.createObjectURL(blob);
+      
       if (isImageFile(filename)) {
-        setImageToView({ url: validUrl, filename });
+        setImageToView({ url: blobUrl, filename });
         setShowImageViewer(true);
       } else {
-        // Para PDFs e outros arquivos, abrir em nova aba
-        window.open(validUrl, '_blank');
+        // Para PDFs, também usar blob URL no iframe
+        setImageToView({ url: blobUrl, filename });
+        setShowImageViewer(true);
       }
     } catch (error) {
       console.error('Error opening file:', error);
@@ -119,10 +153,65 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
   };
 
   // Função para download automático (incluindo PDFs)
+  // Usa download autenticado direto - URLs não podem ser compartilhadas externamente
   const handleDownload = async (url: string, filename: string) => {
     try {
-      // Obter uma URL válida
-      const validUrl = await getValidFileUrl(url);
+      // Extrair filePath e bucket da URL
+      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+      const pathInfo = extractFilePathFromUrl(url);
+      
+      if (!pathInfo) {
+        // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = window.document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            window.document.body.appendChild(link);
+            link.click();
+            window.document.body.removeChild(link);
+            window.URL.revokeObjectURL(downloadUrl);
+            
+            // Log de download
+            try {
+              await Logger.log(
+                ActionTypes.DOCUMENT.DOWNLOADED,
+                `Document downloaded: ${filename}`,
+                {
+                  entityType: 'document',
+                  entityId: document?.id,
+                  metadata: {
+                    document_id: document?.id,
+                    filename: filename,
+                    file_url: url,
+                    file_type: filename.split('.').pop()?.toLowerCase(),
+                    user_id: document?.user_id,
+                    timestamp: new Date().toISOString(),
+                    download_type: 'external_url'
+                  },
+                  affectedUserId: document?.user_id,
+                  performerType: 'user'
+                }
+              );
+            } catch (logError) {
+              console.error('Error logging document download:', logError);
+            }
+            return;
+          }
+        } catch (error) {
+          throw new Error('Não foi possível acessar o arquivo. Verifique sua conexão.');
+        }
+      }
+      
+      // Usar download autenticado direto
+      const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
+      
+      if (!success) {
+        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+      }
       
       // Log de download do documento
       try {
@@ -135,35 +224,19 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
             metadata: {
               document_id: document?.id,
               filename: filename,
-              file_url: validUrl,
+              file_url: url,
               file_type: filename.split('.').pop()?.toLowerCase(),
               user_id: document?.user_id,
               timestamp: new Date().toISOString(),
-              download_type: 'direct_download'
+              download_type: 'authenticated_download'
             },
             affectedUserId: document?.user_id,
             performerType: 'user'
           }
         );
-        console.log('✅ Document download logged successfully');
       } catch (logError) {
         console.error('Error logging document download:', logError);
       }
-      
-      // Fazer o download
-      const response = await fetch(validUrl);
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      
-      const link = window.document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename;
-      window.document.body.appendChild(link);
-      link.click();
-      window.document.body.removeChild(link);
-      
-      // Limpar o URL do blob
-      window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error('Erro ao baixar arquivo:', error);
       alert((error as Error).message || 'Failed to download file.');
@@ -462,18 +535,8 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
                   <span className="font-mono text-xs">{document.file_id}</span>
                 </div>
               )}
-              {document.file_url && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Original File URL:</span>
-                  <span className="font-mono text-xs truncate max-w-[200px]">{document.file_url}</span>
-                </div>
-              )}
-              {translatedInfo?.translated_file_url && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Translated File URL:</span>
-                  <span className="font-mono text-xs truncate max-w-[200px]">{translatedInfo.translated_file_url}</span>
-                </div>
-              )}
+              {/* URLs não são mais exibidas diretamente por segurança */}
+              {/* Use os botões de View/Download para acessar os arquivos */}
               {document.folder_id && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Folder ID:</span>

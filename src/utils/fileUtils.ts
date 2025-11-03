@@ -52,7 +52,105 @@ export function generateUniqueFileName(originalFileName: string): string {
 }
 
 /**
- * Verifica se uma URL do S3 expirou e regenera se necessário
+ * Extrai filePath de uma URL do Supabase Storage
+ * Retorna { filePath, bucket } ou null se não conseguir extrair
+ */
+export function extractFilePathFromUrl(url: string): { filePath: string; bucket: string } | null {
+  try {
+    // Detectar e corrigir URL duplicada
+    let cleanUrl = url;
+    if (url.includes('https://') && (url.match(/https:\/\//g) || []).length > 1) {
+      const firstUrlMatch = url.match(/https:\/\/[^h]+/);
+      if (firstUrlMatch) {
+        cleanUrl = firstUrlMatch[0];
+      }
+    }
+    
+    const urlObj = new URL(cleanUrl);
+    const pathParts = urlObj.pathname.split('/').filter(p => p);
+    
+    // Detectar bucket
+    let bucket = 'documents';
+    if (pathParts.includes('arquivosfinaislush')) {
+      bucket = 'arquivosfinaislush';
+    } else if (pathParts.includes('payment-receipts')) {
+      bucket = 'payment-receipts';
+    }
+    
+    // Extrair filePath
+    // Para signed URLs, o formato é: /storage/v1/object/sign/{bucket}/{filePath}?token=...
+    // Para public URLs, o formato é: /storage/v1/object/public/{bucket}/{filePath}
+    // Para direct URLs, pode ser: /storage/v1/object/{bucket}/{filePath}
+    
+    let filePath = '';
+    const signIndex = pathParts.findIndex(p => p === 'sign');
+    const publicIndex = pathParts.findIndex(p => p === 'public');
+    const objectIndex = pathParts.findIndex(p => p === 'object');
+    const bucketIndex = pathParts.findIndex(p => p === bucket);
+    
+    if (signIndex >= 0) {
+      // Signed URL: /storage/v1/object/sign/{bucket}/{filePath}
+      // Pular 'sign', 'bucket' e pegar o resto
+      const afterSign = signIndex + 1;
+      if (pathParts[afterSign] === bucket) {
+        filePath = pathParts.slice(afterSign + 1).join('/');
+      } else {
+        // Se bucket não está logo após 'sign', procurar
+        const bucketIdx = pathParts.findIndex((p, idx) => idx > signIndex && p === bucket);
+        if (bucketIdx >= 0) {
+          filePath = pathParts.slice(bucketIdx + 1).join('/');
+        }
+      }
+    } else if (publicIndex >= 0) {
+      // Public URL: /storage/v1/object/public/{bucket}/{filePath}
+      // Pular 'public', 'bucket' e pegar o resto
+      const afterPublic = publicIndex + 1;
+      if (pathParts[afterPublic] === bucket) {
+        filePath = pathParts.slice(afterPublic + 1).join('/');
+      } else {
+        // Se bucket não está logo após 'public', procurar
+        const bucketIdx = pathParts.findIndex((p, idx) => idx > publicIndex && p === bucket);
+        if (bucketIdx >= 0) {
+          filePath = pathParts.slice(bucketIdx + 1).join('/');
+        }
+      }
+    } else if (objectIndex >= 0 && bucketIndex >= 0 && bucketIndex > objectIndex) {
+      // Direct URL: /storage/v1/object/{bucket}/{filePath}
+      // Pular tudo até o bucket e pegar o resto
+      filePath = pathParts.slice(bucketIndex + 1).join('/');
+    } else if (bucketIndex >= 0) {
+      // Fallback: se encontrou bucket em qualquer lugar, pegar tudo depois
+      filePath = pathParts.slice(bucketIndex + 1).join('/');
+      // Remover duplicatas de bucket no caminho (ex: documents/documents/...)
+      if (filePath.startsWith(`${bucket}/`)) {
+        filePath = filePath.substring(bucket.length + 1);
+      }
+    } else {
+      // Último fallback: pegar últimos segmentos (assumindo formato userId/filename)
+      filePath = pathParts.slice(-2).join('/');
+    }
+    
+    // Se filePath contém query params (token), remover
+    if (filePath.includes('?')) {
+      filePath = filePath.split('?')[0];
+    }
+    
+    // Remover duplicatas de bucket no início do caminho
+    if (filePath.startsWith(`${bucket}/`)) {
+      filePath = filePath.substring(bucket.length + 1);
+    }
+    
+    return { filePath, bucket };
+  } catch (error) {
+    console.error('Erro ao extrair filePath da URL:', error);
+    return null;
+  }
+}
+
+/**
+ * Verifica se uma URL do S3 ou Supabase está válida
+ * DEPRECATED: Para downloads, use downloadFile() diretamente.
+ * Esta função ainda é usada para visualização de arquivos (PDFs, imagens) que precisam de URL.
  */
 export async function getValidFileUrl(url: string): Promise<string> {
   try {
@@ -61,108 +159,38 @@ export async function getValidFileUrl(url: string): Promise<string> {
       return url;
     }
 
-    // Para URLs do S3 externo, simplesmente retornar a URL original
+    // Para URLs do S3 externo, retornar a URL original
     if (url.includes('s3.amazonaws.com')) {
-      console.log('URL do S3 detectada, retornando URL original para tentativa de visualização...');
       return url;
     }
 
-    // Para URLs do Supabase Storage, verificar e regenerar se necessário
+    // Para URLs do Supabase Storage, verificar se está válida
     try {
       const response = await fetch(url, { method: 'HEAD' });
       if (response.ok) {
         return url;
       }
 
-      // Se a URL expirou (403 Forbidden), tentar regenerar
-      if (response.status === 403) {
-        console.log('URL do Supabase Storage expirou, tentando regenerar...');
-        
-        // Extrair informações da URL para regenerar
-        const urlObj = new URL(url);
-        const pathParts = urlObj.pathname.split('/');
-        
-        // Para URLs do Supabase Storage
-        const bucket = 'documents';
-        const filePath = pathParts.slice(2).join('/');
-        
-        console.log('Bucket:', bucket);
-        console.log('FilePath:', filePath);
-        
-        // Regenerar URL do Supabase Storage usando as novas funções
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        
-        if (!supabaseUrl || !supabaseAnonKey) {
-          throw new Error('Configuração do Supabase não encontrada');
-        }
-        
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
-        
-        // Tentar URL pública primeiro (não expira)
-        const { data: { publicUrl } } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(filePath);
-        
-        // Verificar se a nova URL funciona
-        try {
-          const newResponse = await fetch(publicUrl, { method: 'HEAD' });
-          if (newResponse.ok) {
-            console.log('✅ URL pública regenerada com sucesso');
-            return publicUrl;
-          }
-        } catch (newUrlError) {
-          console.log('URL pública falhou, tentando URL pré-assinado...');
-        }
-        
-        // Se URL pública falhou, tentar URL pré-assinado de 30 dias
-        const { data: signedUrlData } = await supabase.storage
-          .from(bucket)
-          .createSignedUrl(filePath, 2592000); // 30 dias
-        
-        if (signedUrlData?.signedUrl) {
-          console.log('✅ URL pré-assinada regenerada com sucesso');
-          return signedUrlData.signedUrl;
-        }
-        
-        throw new Error('Não foi possível regenerar URL do arquivo');
+      // Se a URL expirou ou é inválida, lançar erro
+      // Não regeneramos signed URLs mais - use downloadFile() para downloads
+      if (response.status === 403 || response.status === 400) {
+        console.warn('URL do Supabase Storage expirou ou inválida. Para downloads, use downloadFile() em vez de getValidFileUrl().');
+        throw new Error('URL expirada. Use download direto autenticado.');
       }
-    } catch (fetchError) {
-      console.log('Erro ao verificar URL do Supabase Storage:', fetchError);
+    } catch (fetchError: any) {
+      // Se o erro é de URL expirada, relançar
+      if (fetchError.message?.includes('URL expirada')) {
+        throw fetchError;
+      }
       
-      // Tentar regenerar mesmo assim
-      try {
-        const urlObj = new URL(url);
-        const pathParts = urlObj.pathname.split('/');
-        const bucket = 'documents';
-        const filePath = pathParts.slice(2).join('/');
-        
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        
-        if (!supabaseUrl || !supabaseAnonKey) {
-          throw new Error('Configuração do Supabase não encontrada');
-        }
-        
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
-        
-        // Tentar URL pública primeiro
-        const { data: { publicUrl } } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(filePath);
-        
-        return publicUrl;
-      } catch (regenerateError) {
-        console.error('Erro ao regenerar URL:', regenerateError);
-        throw new Error('Não foi possível acessar o arquivo. Tente novamente mais tarde.');
-      }
+      console.error('Erro ao verificar URL do Supabase Storage:', fetchError);
+      // Para outros erros, tentar retornar a URL original
+      return url;
     }
     
     return url;
   } catch (error) {
-    console.error('Erro ao verificar/regenerar URL:', error);
+    console.error('Erro ao verificar URL:', error);
     throw error;
   }
 } 

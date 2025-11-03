@@ -283,25 +283,85 @@ export const db = {
     return data;
   },
 
-  // Função para gerar URL pública permanente (não expira)
-  generatePublicUrl: async (filePath: string) => {
+  // Função helper para detectar bucket baseado no filePath ou URL
+  detectBucket: (filePathOrUrl: string): string => {
+    // Se for URL, extrair o bucket do caminho
+    if (filePathOrUrl.includes('arquivosfinaislush')) {
+      return 'arquivosfinaislush';
+    }
+    if (filePathOrUrl.includes('payment-receipts')) {
+      return 'payment-receipts';
+    }
+    // Fallback para documents
+    return 'documents';
+  },
+
+  // Função para download direto e autenticado do arquivo
+  // IMPORTANTE: Requer autenticação ativa. URLs não podem ser compartilhadas externamente.
+  downloadFile: async (filePath: string, bucketName?: string): Promise<Blob | null> => {
     try {
-      const { data: { publicUrl } } = supabase.storage
-        .from('documents')
-        .getPublicUrl(filePath);
+      const bucket = bucketName || db.detectBucket(filePath);
       
-      return publicUrl;
+      // Limpar filePath de possíveis duplicatas de bucket
+      let cleanFilePath = filePath;
+      if (cleanFilePath.startsWith(`${bucket}/`)) {
+        cleanFilePath = cleanFilePath.substring(bucket.length + 1);
+      }
+      
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .download(cleanFilePath);
+      
+      if (error) {
+        console.error('Erro ao fazer download do arquivo:', error);
+        return null;
+      }
+      
+      return data;
     } catch (error) {
-      console.error('Erro ao gerar URL pública:', error);
+      console.error('Erro ao fazer download do arquivo:', error);
       return null;
     }
   },
 
+  // Função para download e iniciar download automático
+  downloadFileAndTrigger: async (filePath: string, filename: string, bucketName?: string): Promise<boolean> => {
+    try {
+      const blob = await db.downloadFile(filePath, bucketName);
+      
+      if (!blob) {
+        return false;
+      }
+      
+      // Criar URL local do blob para download
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      return true;
+    } catch (error) {
+      console.error('Erro ao fazer download e iniciar download:', error);
+      return false;
+    }
+  },
+
+  // Função para gerar URL pública permanente (não expira)
+  // DEPRECATED: Para buckets privados, isso não funciona. Use downloadFile() em vez disso.
+  generatePublicUrl: async (filePath: string) => {
+    console.warn('generatePublicUrl está deprecated. Use downloadFile() para downloads autenticados.');
+    return null;
+  },
+
   // Função para gerar URL pré-assinado com tempo maior (30 dias)
-  generateSignedUrl: async (filePath: string) => {
+  generateSignedUrl: async (filePath: string, bucketName: string = 'documents') => {
     try {
       const { data, error } = await supabase.storage
-        .from('documents')
+        .from(bucketName)
         .createSignedUrl(filePath, 2592000); // 30 dias de validade
       
       if (error) {
@@ -312,6 +372,77 @@ export const db = {
       return data.signedUrl;
     } catch (error) {
       console.error('Erro ao gerar URL do arquivo:', error);
+      return null;
+    }
+  },
+
+  // Função helper para SEMPRE gerar um novo signed URL para visualização
+  // Extrai filePath da URL, gera novo signed URL de 5 minutos e retorna
+  // Se não conseguir extrair filePath, tenta usar URL original (para S3 externo)
+  generateViewUrl: async (url: string): Promise<string | null> => {
+    try {
+      // Importar extractFilePathFromUrl dinamicamente para evitar dependência circular
+      const { extractFilePathFromUrl } = await import('../utils/fileUtils');
+      const pathInfo = extractFilePathFromUrl(url);
+      
+      if (!pathInfo) {
+        // Se não conseguir extrair filePath, pode ser URL externa (S3) ou URL malformada
+        if (url.includes('supabase.co')) {
+          return null;
+        }
+        // Se for URL externa (S3), retornar como está
+        return url;
+      }
+      
+      // SEMPRE gerar um novo signed URL de curta duração (5 minutos) para visualização
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from(pathInfo.bucket)
+        .createSignedUrl(pathInfo.filePath, 300); // 5 minutos
+      
+      if (signedData?.signedUrl) {
+        return signedData.signedUrl;
+      } else if (signedError) {
+        console.error('Erro ao gerar URL para visualização:', signedError);
+        
+        // Tentar verificar se o problema é com o caminho
+        if (signedError.message?.includes('not found') || signedError.message?.includes('does not exist')) {
+          // Tentar buscar o arquivo na raiz do bucket
+          const rootFile = pathInfo.filePath.split('/').pop();
+          if (rootFile && rootFile !== pathInfo.filePath) {
+            const { data: altSignedData } = await supabase.storage
+              .from(pathInfo.bucket)
+              .createSignedUrl(rootFile, 300);
+            if (altSignedData?.signedUrl) {
+              return altSignedData.signedUrl;
+            }
+          }
+        }
+        
+        return null;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Erro ao gerar URL para visualização:', error);
+      return null;
+    }
+  },
+
+  // Função para gerar signed URL para arquivos finais (arquivosfinaislush)
+  generateSignedUrlForFinalFiles: async (filePath: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('arquivosfinaislush')
+        .createSignedUrl(filePath, 2592000); // 30 dias de validade
+      
+      if (error) {
+        console.error('Erro ao gerar URL para arquivos finais:', error);
+        return null;
+      }
+      
+      return data.signedUrl;
+    } catch (error) {
+      console.error('Erro ao gerar URL do arquivo final:', error);
       return null;
     }
   },
@@ -334,17 +465,11 @@ export const db = {
   },
 
   // Função para regenerar URL se necessário
-  regenerateFileUrl: async (filePath: string, useSignedUrl: boolean = false) => {
-    try {
-      if (useSignedUrl) {
-        return await db.generateSignedUrl(filePath);
-      } else {
-        return await db.generatePublicUrl(filePath);
-      }
-    } catch (error) {
-      console.error('Erro ao regenerar URL:', error);
-      return null;
-    }
+  // DEPRECATED: Use downloadFile() para downloads autenticados que não podem ser compartilhados
+  regenerateFileUrl: async (filePath: string, useSignedUrl: boolean = true) => {
+    console.warn('regenerateFileUrl está deprecated. Use downloadFile() para downloads autenticados.');
+    // Manter compatibilidade temporária, mas retornar null
+    return null;
   }
 };
 

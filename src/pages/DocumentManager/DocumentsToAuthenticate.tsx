@@ -507,7 +507,7 @@ export default function DocumentsToAuthenticate({ user }: Props) {
                 <div className="space-y-3">
                   {/* Document Name */}
                   <div>
-                    <a href={doc.file_url || '#'} target="_blank" rel="noopener noreferrer" className="text-tfe-blue-700 underline font-medium text-sm">{doc.filename}</a>
+                    <span className="text-gray-900 font-medium text-sm">{doc.filename}</span>
                   </div>
 
                   {/* Document Details */}
@@ -594,7 +594,7 @@ export default function DocumentsToAuthenticate({ user }: Props) {
                 {documents.map(doc => (
                   <tr key={doc.id} className="border-t hover:bg-tfe-blue-50 transition-colors">
                     <td className="px-4 py-2">
-                      <a href={doc.file_url || '#'} target="_blank" rel="noopener noreferrer" className="text-tfe-blue-700 underline font-medium text-sm">{doc.filename}</a>
+                      <span className="text-gray-900 font-medium text-sm">{doc.filename}</span>
                     </td>
                     <td className="px-4 py-2 text-sm">
                       {doc.client_name ? (

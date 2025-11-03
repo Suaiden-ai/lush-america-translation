@@ -58,6 +58,13 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
+  
+  // Modal de Visualização de Documento
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<'pdf' | 'image' | 'unknown'>('unknown');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [customReason, setCustomReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -196,65 +203,180 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
     
     if (url && filename) {
       try {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        const objUrl = window.URL.createObjectURL(blob);
-        const link = window.document.createElement('a');
-        link.href = objUrl;
-        link.download = filename;
-        window.document.body.appendChild(link);
-        link.click();
-        window.document.body.removeChild(link);
-        window.URL.revokeObjectURL(objUrl);
+        // Extrair filePath e bucket da URL
+        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+        const pathInfo = extractFilePathFromUrl(url);
+        
+        if (!pathInfo) {
+          // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              const blob = await response.blob();
+              const objUrl = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = objUrl;
+              link.download = filename;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(objUrl);
+              return;
+            }
+          } catch (error) {
+            alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+            return;
+          }
+        }
+        
+        // Usar download autenticado direto
+        const { db } = await import('../../lib/supabase');
+        const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
+        
+        if (!success) {
+          alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        }
       } catch (error) {
         console.error('Error downloading file:', error);
-        alert('Erro ao fazer download do arquivo');
+        alert(`Erro ao fazer download do arquivo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
       }
     } else {
       alert('Arquivo não disponível para download');
     }
   };
 
-  const handleViewFile = () => {
+  function detectPreviewType(url: string, filename?: string | null): 'pdf' | 'image' | 'unknown' {
+    const name = (filename || url).toLowerCase();
+    if (name.endsWith('.pdf')) return 'pdf';
+    if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.gif') || name.endsWith('.webp')) return 'image';
+    // Heurística para URLs sem extensão
+    if (url.includes('content-type=application%2Fpdf')) return 'pdf';
+    return 'unknown';
+  }
+
+  const handleViewFile = async () => {
     console.log('👁️ handleViewFile chamado');
     console.log('📄 document:', document);
     console.log('📑 translatedDoc:', translatedDoc);
     
-    // Verifica se o documento foi aprovado pelo autenticador
+    try {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      
+      // Verifica se o documento foi aprovado pelo autenticador
+      const isApproved = (document as any)?.is_authenticated === true || 
+                        (document as any)?.status === 'approved' || 
+                        (document as any)?.status === 'completed';
+      
+      console.log('✅ Documento aprovado:', isApproved);
+      
+      let url: string | null = null;
+      
+      if (isApproved) {
+        // Se aprovado, prioriza o arquivo traduzido
+        url = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
+        
+        // Se não encontrou arquivo traduzido, usa o arquivo original como fallback
+        if (!url) {
+          url = (document as any)?.file_url;
+        }
+      } else {
+        // Se não aprovado, mostra apenas o arquivo original
+        url = (document as any)?.file_url;
+      }
+      
+      if (!url) {
+        setPreviewError('No document available to view.');
+        setPreviewOpen(true);
+        return;
+      }
+      
+      console.log(`🔗 Abrindo arquivo:`, url);
+      
+      // SEMPRE gerar um novo signed URL para visualização
+      const { db } = await import('../../lib/supabase');
+      const viewUrl = await db.generateViewUrl(url);
+      
+      if (!viewUrl) {
+        throw new Error('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+      }
+      
+      setPreviewUrl(viewUrl);
+      setPreviewType(detectPreviewType(viewUrl, (document as any)?.filename));
+      setPreviewOpen(true);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');
+      setPreviewOpen(true);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  async function downloadPreview(filename?: string | null) {
+    if (!previewUrl) return;
+    
+    // Usar URL original do documento para download, não o previewUrl (signed URL)
     const isApproved = (document as any)?.is_authenticated === true || 
                       (document as any)?.status === 'approved' || 
                       (document as any)?.status === 'completed';
     
-    console.log('✅ Documento aprovado:', isApproved);
-    
-    let url: string | null = null;
-    let fileType: string = '';
-    
+    let originalUrl: string | null = null;
     if (isApproved) {
-      // Se aprovado, prioriza o arquivo traduzido
-      url = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
-      fileType = 'traduzido';
-      
-      // Se não encontrou arquivo traduzido, usa o arquivo original como fallback
-      if (!url) {
-        url = (document as any)?.file_url;
-        fileType = 'original (traduzido não encontrado)';
+      originalUrl = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
+      if (!originalUrl) {
+        originalUrl = (document as any)?.file_url;
       }
     } else {
-      // Se não aprovado, mostra apenas o arquivo original
-      url = (document as any)?.file_url;
-      fileType = 'original';
+      originalUrl = (document as any)?.file_url;
     }
     
-    console.log(`🔗 Abrindo arquivo ${fileType}:`, url);
-    
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } else {
-      console.log('❌ Nenhuma URL encontrada para abrir');
-      alert('Arquivo não disponível');
+    if (!originalUrl) {
+      alert('URL do arquivo não disponível.');
+      return;
     }
-  };
+    
+    try {
+      const downloadFilename = filename || (document as any)?.filename || 'document';
+      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+      
+      // Extrair filePath da URL ORIGINAL, não do signed URL
+      const pathInfo = extractFilePathFromUrl(originalUrl);
+      
+      if (!pathInfo) {
+        // Se não conseguir extrair, tentar download direto da URL original
+        try {
+          const response = await fetch(originalUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = downloadFilename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            return;
+          }
+        } catch (fetchError) {
+          console.error('Erro no download direto:', fetchError);
+          alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+          return;
+        }
+      }
+      
+      // Usar download autenticado direto usando a URL original
+      const { db } = await import('../../lib/supabase');
+      const success = await db.downloadFileAndTrigger(pathInfo.filePath, downloadFilename, pathInfo.bucket);
+      
+      if (!success) {
+        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+      }
+    } catch (err) {
+      console.error('Error downloading preview:', err);
+      alert(`Erro ao baixar arquivo: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+    }
+  }
 
   const cancellationReasons = [
     { value: 'fraud', label: 'Suspected Fraud' },
@@ -1187,6 +1309,74 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                   {cancelling ? 'Cancelling...' : 'Cancel Payment'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Preview do Documento */}
+      {previewOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[10000]">
+          <div className="absolute inset-0 bg-white flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-tfe-blue-600" />
+                <span className="font-semibold text-gray-900">
+                  {(document as any)?.filename || 'Document Preview'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+                  disabled={previewLoading || !previewUrl}
+                  onClick={() => downloadPreview((document as any)?.filename)}
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
+                <button
+                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  onClick={() => {
+                    setPreviewOpen(false);
+                    setPreviewUrl(null);
+                    setPreviewError(null);
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-gray-50 overflow-auto">
+              {previewLoading && (
+                <div className="flex items-center justify-center h-full text-gray-600">
+                  <div className="text-center">
+                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p>Loading document...</p>
+                  </div>
+                </div>
+              )}
+              {!previewLoading && previewError && (
+                <div className="p-6 text-center text-red-600">
+                  <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
+                  <p>{previewError}</p>
+                </div>
+              )}
+              {!previewLoading && !previewError && previewUrl && (
+                <>
+                  {previewType === 'image' ? (
+                    <div className="flex items-center justify-center h-full p-4">
+                      <img 
+                        src={previewUrl} 
+                        alt={(document as any)?.filename || 'Document'} 
+                        className="max-w-full max-h-full object-contain"
+                        style={{ maxHeight: 'calc(100vh - 80px)' }}
+                      />
+                    </div>
+                  ) : (
+                    <iframe src={previewUrl} className="w-full h-full border-0" title="Document Preview" />
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
