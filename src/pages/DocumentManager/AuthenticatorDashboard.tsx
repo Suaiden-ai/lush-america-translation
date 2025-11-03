@@ -219,11 +219,11 @@ export default function AuthenticatorDashboard() {
         // Calcular estatísticas
         const pendingCount = validDocuments.length;
 
-        // Buscar contagem de aprovados (completed) separadamente para o overview
+        // Buscar contagem de aprovados a partir de translated_documents (fonte de verdade)
         const { count: approvedCountRaw } = await supabase
-          .from('documents_to_be_verified')
+          .from('translated_documents')
           .select('*', { count: 'exact', head: true })
-          .eq('status', 'completed');
+          .or('is_authenticated.eq.true,status.eq.completed');
         const approvedCount = approvedCountRaw || 0;
 
         console.log(`📈 Estatísticas: Pending: ${pendingCount}, Approved: ${approvedCount}`);

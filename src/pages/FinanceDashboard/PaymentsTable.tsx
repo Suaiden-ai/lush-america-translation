@@ -172,6 +172,31 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         console.error('Error loading verified documents:', verifiedDocError);
       }
 
+      // ✅ BUSCAR DADOS DE AUTENTICAÇÃO DE translated_documents
+      let translatedDocsMap = new Map();
+      if (verifiedDocuments && verifiedDocuments.length > 0) {
+        const dtbvIds = verifiedDocuments.map(vd => vd.id);
+        const { data: translatedDocs, error: tdError } = await supabase
+          .from('translated_documents')
+          .select('original_document_id, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated, status')
+          .in('original_document_id', dtbvIds);
+          
+        if (tdError) {
+          console.error('Error loading translated_documents:', tdError);
+        } else if (translatedDocs) {
+          // Criar mapa: dtbv.id -> dados de autenticação
+          translatedDocs.forEach(td => {
+            translatedDocsMap.set(td.original_document_id, {
+              authenticated_by_name: td.authenticated_by_name,
+              authenticated_by_email: td.authenticated_by_email,
+              authentication_date: td.authentication_date,
+              is_authenticated: td.is_authenticated,
+              status: td.status
+            });
+          });
+        }
+      }
+
       // Buscar dados de pagamentos
       let paymentsQuery = supabase
         .from('payments')
@@ -282,10 +307,10 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
           idioma_raiz: verifiedDoc.source_language,
           tipo_trad: verifiedDoc.target_language,
           
-          // Dados de autenticação
-          authenticated_by_name: verifiedDoc.authenticated_by_name,
-          authenticated_by_email: verifiedDoc.authenticated_by_email,
-          authentication_date: verifiedDoc.authentication_date,
+          // ✅ DADOS DE AUTENTICAÇÃO VINDOS DE translated_documents (fonte de verdade)
+          authenticated_by_name: (translatedDocsMap.get(verifiedDoc.id)?.authenticated_by_name) || verifiedDoc.authenticated_by_name || null,
+          authenticated_by_email: (translatedDocsMap.get(verifiedDoc.id)?.authenticated_by_email) || verifiedDoc.authenticated_by_email || null,
+          authentication_date: (translatedDocsMap.get(verifiedDoc.id)?.authentication_date) || verifiedDoc.authentication_date || null,
           source_language: verifiedDoc.source_language,
           target_language: verifiedDoc.target_language,
           

@@ -43,6 +43,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
   const [internalDateRange, setInternalDateRange] = useState<DateRange>(dateRange || {
     startDate: null,
     endDate: null,
@@ -97,11 +99,13 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       console.log('🔍 DEBUG - Documents loaded:', documents?.length || 0);
       console.log('🔍 DEBUG - Sample documents:', documents?.slice(0, 3));
 
-      // ✅ BUSCAR DADOS DE DOCUMENTS_TO_BE_VERIFIED SEPARADAMENTE
+      // ✅ BUSCAR DADOS DE DOCUMENTS_TO_BE_VERIFIED E TRANSLATED_DOCUMENTS SEPARADAMENTE
       const documentIds = documents?.map(doc => doc.id) || [];
       let documentsToBeVerified: any[] = [];
+      let translatedDocuments: any[] = [];
       
       if (documentIds.length > 0) {
+        // Buscar dados de documents_to_be_verified
         const { data: dtbvData, error: dtbvError } = await supabase
           .from('documents_to_be_verified')
           .select('original_document_id, translation_status')
@@ -112,14 +116,60 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         } else {
           documentsToBeVerified = dtbvData || [];
         }
+
+        // ✅ BUSCAR DADOS DE AUTENTICAÇÃO DE translated_documents
+        // Primeiro, buscar os IDs de documents_to_be_verified correspondentes aos documentos
+        const { data: dtbvFullData, error: dtbvFullError } = await supabase
+          .from('documents_to_be_verified')
+          .select('id, original_document_id')
+          .in('original_document_id', documentIds);
+          
+        if (dtbvFullError) {
+          console.error('Error loading full documents_to_be_verified:', dtbvFullError);
+        } else if (dtbvFullData && dtbvFullData.length > 0) {
+          // Agora buscar translated_documents usando os IDs de documents_to_be_verified
+          const dtbvIds = dtbvFullData.map(d => d.id);
+          
+          const { data: tdData, error: tdError } = await supabase
+            .from('translated_documents')
+            .select('original_document_id, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated, status')
+            .in('original_document_id', dtbvIds);
+            
+          if (tdError) {
+            console.error('Error loading translated_documents:', tdError);
+          } else {
+            translatedDocuments = tdData || [];
+            // Criar um mapa auxiliar para relacionar dtbv.id -> dtbv.original_document_id
+            const dtbvMap = new Map(dtbvFullData.map(d => [d.id, d.original_document_id]));
+            // Adicionar original_document_id dos documents ao translatedDocuments para facilitar lookup
+            translatedDocuments = translatedDocuments.map(td => ({
+              ...td,
+              document_id: dtbvMap.get(td.original_document_id) // document_id agora aponta para documents.id
+            }));
+          }
+        }
       }
 
-      // Criar um mapa para acesso rápido aos dados de translation_status
+      // Criar mapas para acesso rápido
       const translationStatusMap = new Map(
         documentsToBeVerified.map(dtbv => [dtbv.original_document_id, dtbv.translation_status])
       );
+      
+      // ✅ Mapa de dados de autenticação: key = document_id (de documents)
+      const authenticationMap = new Map(
+        translatedDocuments.map(td => [
+          (td as any).document_id, // Usar document_id que aponta para documents.id
+          {
+            authenticated_by_name: td.authenticated_by_name,
+            authenticated_by_email: td.authenticated_by_email,
+            authentication_date: td.authentication_date,
+            is_authenticated: td.is_authenticated,
+            status: td.status
+          }
+        ])
+      );
 
-      // Processar dados com lógica corrigida para translation_status
+      // Processar dados com lógica corrigida para translation_status e dados de autenticação
       const processedDocuments = documents?.map(doc => {
         // Lógica original: usar payment_method do documento se não houver na tabela payments
         const paymentMethod = doc.payments?.[0]?.payment_method || doc.payment_method || null;
@@ -134,11 +184,14 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           : null;
         
         // ✅ CORREÇÃO: Usar translation_status da tabela documents_to_be_verified
-        // Mas se o documento foi autenticado (tem authenticator), deve ser "completed"
         let translationStatus = translationStatusMap.get(doc.id) || doc.status || 'pending';
         
+        // ✅ BUSCAR DADOS DE AUTENTICAÇÃO DE translated_documents
+        // Buscar diretamente usando o ID do documento (já mapeado corretamente)
+        const authData = authenticationMap.get(doc.id);
+        
         // Se o documento foi autenticado, deve mostrar "completed" independentemente do translation_status
-        if (doc.authenticated_by_name && doc.authenticated_by_name !== 'N/A' && doc.is_authenticated) {
+        if (authData && (authData.is_authenticated === true || authData.status === 'completed')) {
           translationStatus = 'completed';
         }
         
@@ -152,7 +205,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           payment_status: paymentStatus,
           payment_amount: paymentAmount,
           payment_amount_total: paymentAmountTotal,
-          translation_status: translationStatus, // ✅ NOVO CAMPO
+          translation_status: translationStatus,
+          // ✅ DADOS DE AUTENTICAÇÃO VINDOS DE translated_documents
+          authenticated_by_name: authData?.authenticated_by_name || doc.authenticated_by_name || null,
+          authenticated_by_email: authData?.authenticated_by_email || doc.authenticated_by_email || null,
+          authentication_date: authData?.authentication_date || doc.authentication_date || null,
+          is_authenticated: authData?.is_authenticated ?? doc.is_authenticated ?? false,
           display_name: doc.profiles?.name || null,
           document_type: 'regular' as const,
           client_name: doc.client_name || null,
@@ -217,7 +275,21 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         }
       }
 
-      return matchesSearch && matchesStatus && matchesRole;
+      // Filtro de Payment Status
+      let matchesPaymentStatus = true;
+      if (paymentStatusFilter !== 'all') {
+        const docPaymentStatus = (doc.payment_status || '').toLowerCase();
+        matchesPaymentStatus = docPaymentStatus === paymentStatusFilter.toLowerCase();
+      }
+
+      // Filtro de Payment Method
+      let matchesPaymentMethod = true;
+      if (paymentMethodFilter !== 'all') {
+        const docPaymentMethod = (doc.payment_method || '').toLowerCase();
+        matchesPaymentMethod = docPaymentMethod === paymentMethodFilter.toLowerCase();
+      }
+
+      return matchesSearch && matchesStatus && matchesRole && matchesPaymentStatus && matchesPaymentMethod;
     });
     
     // Debug log para mostrar quantos documentos foram filtrados
@@ -226,7 +298,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
     }
     
     return filtered;
-  }, [extendedDocuments, searchTerm, statusFilter, roleFilter]);
+  }, [extendedDocuments, searchTerm, statusFilter, roleFilter, paymentStatusFilter, paymentMethodFilter]);
 
   // Total dinâmico baseado nos filtros atuais
   const totalAmountFiltered = useMemo(() => {
@@ -380,63 +452,107 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
       {/* Filtros */}
       <div className="px-3 sm:px-4 lg:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
-          {/* Search */}
-          <div className="sm:col-span-2">
-            <input
-              type="text"
-              placeholder={t('admin.documents.table.searchPlaceholder')}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-              aria-label="Search documents"
+        <div className="space-y-3">
+          {/* Primeira linha: Search e Date Range */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
+            {/* Search */}
+            <div className="sm:col-span-2 lg:col-span-1">
+              <input
+                type="text"
+                placeholder={t('admin.documents.table.searchPlaceholder')}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                aria-label="Search documents"
+              />
+            </div>
+
+            {/* Google Style Date Range Filter */}
+            <GoogleStyleDatePicker
+              dateRange={internalDateRange}
+              onDateRangeChange={(newDateRange) => {
+                setInternalDateRange(newDateRange);
+                if (onDateRangeChange) {
+                  onDateRangeChange(newDateRange);
+                }
+              }}
+              className="w-full"
             />
           </div>
 
-          {/* Status Filter */}
-          <div className="flex items-center space-x-2">
-            <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-              aria-label="Filter by document status"
-            >
-              <option value="all">{t('admin.documents.table.filters.allStatus')}</option>
-              <option value="completed">{t('admin.documents.table.status.completed')}</option>
-              <option value="pending">{t('admin.documents.table.status.pending')}</option>
-              <option value="processing">{t('admin.documents.table.status.processing')}</option>
-              <option value="failed">{t('admin.documents.table.status.failed')}</option>
-              <option value="draft">{t('admin.documents.table.status.draft')}</option>
-            </select>
-          </div>
+          {/* Segunda linha: Filtros de Status, Role, Payment Status e Payment Method */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
+            {/* Status Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                aria-label="Filter by document status"
+              >
+                <option value="all">{t('admin.documents.table.filters.allStatus')}</option>
+                <option value="completed">{t('admin.documents.table.status.completed')}</option>
+                <option value="pending">{t('admin.documents.table.status.pending')}</option>
+                <option value="processing">{t('admin.documents.table.status.processing')}</option>
+                <option value="failed">{t('admin.documents.table.status.failed')}</option>
+                <option value="draft">{t('admin.documents.table.status.draft')}</option>
+              </select>
+            </div>
 
-          {/* Role Filter */}
-          <div className="flex items-center space-x-2">
-            <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-              aria-label="Filter by user role"
-            >
-              <option value="all">{t('admin.documents.table.filters.allUserRoles')}</option>
-              <option value="user">{t('admin.documents.table.filters.user')}</option>
-              <option value="authenticator">{t('admin.documents.table.filters.authenticator')}</option>
-            </select>
-          </div>
+            {/* Role Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                aria-label="Filter by user role"
+              >
+                <option value="all">{t('admin.documents.table.filters.allUserRoles')}</option>
+                <option value="user">{t('admin.documents.table.filters.user')}</option>
+                <option value="authenticator">{t('admin.documents.table.filters.authenticator')}</option>
+              </select>
+            </div>
 
-          {/* Google Style Date Range Filter */}
-          <GoogleStyleDatePicker
-            dateRange={internalDateRange}
-            onDateRangeChange={(newDateRange) => {
-              setInternalDateRange(newDateRange);
-              if (onDateRangeChange) {
-                onDateRangeChange(newDateRange);
-              }
-            }}
-            className="w-full"
-          />
+            {/* Payment Status Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+              <select
+                value={paymentStatusFilter}
+                onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                aria-label="Filter by payment status"
+              >
+                <option value="all">All Payment Status</option>
+                <option value="completed">Paid</option>
+                <option value="pending">Pending</option>
+                <option value="pending_verification">Pending Verification</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="refunded">Refunded</option>
+              </select>
+            </div>
+
+            {/* Payment Method Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+              <select
+                value={paymentMethodFilter}
+                onChange={(e) => setPaymentMethodFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                aria-label="Filter by payment method"
+              >
+                <option value="all">All Payment Methods</option>
+                <option value="card">💳 Card</option>
+                <option value="stripe">💳 Stripe</option>
+                <option value="zelle">💰 Zelle</option>
+                <option value="bank_transfer">🏦 Bank Transfer</option>
+                <option value="paypal">📱 PayPal</option>
+                <option value="upload">📋 Upload</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 

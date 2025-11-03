@@ -15,6 +15,8 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
   const [extendedStats, setExtendedStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [overrideRevenue, setOverrideRevenue] = useState<number | null>(null);
+  // ✅ Contagem exclusiva para o card "Completed" a partir de translated_documents
+  const [completedTranslatedCount, setCompletedTranslatedCount] = useState<number | null>(null);
   
   // 🔍 BUSCAR STATUS DE PAGAMENTOS PARA FILTRAR CORRETAMENTE
   const [paymentStatuses, setPaymentStatuses] = useState<Map<string, string>>(new Map());
@@ -80,6 +82,104 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     };
     fetchRevenueData();
   }, []);
+
+  // ✅ Buscar contagem usando a MESMA LÓGICA da DocumentsTable
+  useEffect(() => {
+    const fetchCompletedCount = async () => {
+      try {
+        // Aplicar filtros de data (mesma lógica da DocumentsTable)
+        let startDateParam = null;
+        let endDateParam = null;
+        
+        if (dateRange?.startDate) {
+          const startDate = new Date(dateRange.startDate);
+          startDate.setHours(0, 0, 0, 0);
+          startDateParam = startDate.toISOString();
+        }
+        
+        if (dateRange?.endDate) {
+          const endDate = new Date(dateRange.endDate);
+          endDate.setHours(23, 59, 59, 999);
+          endDateParam = endDate.toISOString();
+        }
+
+        // 1) Buscar documentos da tabela documents (mesma query da DocumentsTable)
+        let query = supabase
+          .from('documents')
+          .select('id, status, profiles!documents_user_id_fkey(role)')
+          .order('created_at', { ascending: false });
+
+        if (startDateParam) {
+          query = query.gte('created_at', startDateParam);
+        }
+        if (endDateParam) {
+          query = query.lte('created_at', endDateParam);
+        }
+
+        const { data: documentsData, error: docsError } = await query;
+        if (docsError) {
+          console.warn('[StatsCards] Erro ao buscar documents:', docsError);
+          setCompletedTranslatedCount(null);
+          return;
+        }
+
+        // 2) Filtrar documentos válidos (mesma lógica: excluir drafts e cancelled/refunded)
+        const documentIds = documentsData?.map(d => d.id) || [];
+        const validDocs = (documentsData || []).filter(doc => {
+          if ((doc.status || '') === 'draft') return false;
+          const payStatus = paymentStatuses.get(doc.id);
+          if (!payStatus) return true;
+          return payStatus !== 'cancelled' && payStatus !== 'refunded';
+        });
+
+        if (validDocs.length === 0) {
+          setCompletedTranslatedCount(0);
+          return;
+        }
+
+        // 3) Buscar dados de documents_to_be_verified e translated_documents (mesma lógica da DocumentsTable)
+        const { data: dtbvData } = await supabase
+          .from('documents_to_be_verified')
+          .select('id, original_document_id')
+          .in('original_document_id', documentIds);
+        
+        const dtbvIds = (dtbvData || []).map(d => d.id);
+        const dtbvIdToDocId = new Map((dtbvData || []).map(d => [d.id, d.original_document_id]));
+
+        let translatedDocsData: any[] = [];
+        if (dtbvIds.length > 0) {
+          const { data: tdData } = await supabase
+            .from('translated_documents')
+            .select('original_document_id, is_authenticated, status')
+            .in('original_document_id', dtbvIds);
+          translatedDocsData = tdData || [];
+        }
+
+        // 4) Criar mapa de autenticação (dtbv.id -> authData)
+        const authMap = new Map();
+        translatedDocsData.forEach(td => {
+          if (td.is_authenticated === true || String(td.status || '').toLowerCase() === 'completed') {
+            authMap.set(td.original_document_id, true);
+          }
+        });
+
+        // 5) Contar documentos válidos que têm tradução autenticada
+        const completedCount = validDocs.filter(doc => {
+          // Encontrar dtbv.id correspondente a este document.id
+          const dtbvEntry = dtbvData?.find(d => d.original_document_id === doc.id);
+          if (!dtbvEntry) return false;
+          // Verificar se tem autenticação em translated_documents
+          return authMap.has(dtbvEntry.id);
+        }).length;
+
+        setCompletedTranslatedCount(completedCount);
+      } catch (e) {
+        console.warn('[StatsCards] Erro inesperado na contagem de completed:', e);
+        setCompletedTranslatedCount(null);
+      }
+    };
+    fetchCompletedCount();
+  }, [dateRange, paymentStatuses]);
   
   // Filtrar documentos: excluir drafts e pagamentos cancelados/reembolsados
   const validDocuments = documents.filter(doc => {
@@ -141,7 +241,7 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
       const [documentsResult, verifiedResult, translatedResult, profilesResult] = await Promise.all([
         supabase.from('documents').select('id, status, total_cost, user_id, filename, profiles!inner(role)'),
         supabase.from('documents_to_be_verified').select('id, status, user_id, filename'),
-        supabase.from('translated_documents').select('status, user_id'),
+        supabase.from('translated_documents').select('status, user_id, is_authenticated'),
         supabase.from('profiles').select('id, role, created_at')
       ]);
 
@@ -172,9 +272,11 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
 
         // Calcular estatísticas estendidas usando o status correto
         // Active Users agora é o número real de usuários do sistema
+        // Completed/Authenticated deve vir de translated_documents (fonte de verdade)
+        const translatedAuthenticatedCount = (translatedResult.data || []).filter((d: any) => d?.is_authenticated === true || String(d?.status || '').toLowerCase() === 'completed').length;
         const stats = {
           total_documents: mainDocuments.length,
-          completed: documentsWithCorrectStatus.filter((d: any) => d.actualStatus === 'completed').length,
+          completed: translatedAuthenticatedCount,
           pending: documentsWithCorrectStatus.filter((d: any) => d.actualStatus === 'pending').length,
           processing: documentsWithCorrectStatus.filter((d: any) => d.actualStatus === 'processing').length,
           translated: translatedResult.data.length,
@@ -224,7 +326,8 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
   const statusStats = [
     {
       title: t('admin.stats.completed'),
-      value: extendedStats?.completed || completedDocuments,
+      // ✅ Usar prioridade: contagem direta de translated_documents; fallback para extendedStats; por último, fallback local
+      value: (completedTranslatedCount ?? undefined) ?? extendedStats?.completed ?? completedDocuments,
       icon: CheckCircle,
       bgColor: 'bg-green-100',
       iconColor: 'text-green-900',
