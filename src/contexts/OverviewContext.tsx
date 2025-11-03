@@ -108,10 +108,11 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
       let totalDocs, pendingDocs, approvedDocs, rejectedDocs, totalValue, totalPages;
 
       if (currentUser.role === 'admin') {
-        // Admin sees all documents
+        // Admin: pendências a partir de documents_to_be_verified; aprovados/autenticados a partir de translated_documents
         totalDocs = allDocuments?.length || 0;
         pendingDocs = allDocuments?.filter(doc => doc.status === 'pending').length || 0;
-        approvedDocs = allDocuments?.filter(doc => doc.status === 'completed').length || 0;
+        const approvedTranslated = (translatedDocs || []).filter((doc: any) => (doc.is_authenticated === true) || ((doc.status || '').toLowerCase() === 'completed'));
+        approvedDocs = approvedTranslated.length;
         rejectedDocs = allDocuments?.filter(doc => doc.status === 'rejected').length || 0;
         // Receita de uploads de autenticador (gratuitos): somar mesmo com payment pending (excluir apenas drafts)
         const authenticatorDocs = (allDocuments || []).filter((doc: any) => doc.profiles?.role === 'authenticator' && doc.status !== 'draft');
@@ -128,10 +129,11 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
         totalPages = (allDocuments?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0) +
                     (translatedDocs?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0);
       } else {
-        // Authenticator sees their authenticated documents + pending documents they can review
-        totalDocs = translatedDocs?.length || 0;
+        // Authenticator: aprovados/autenticados a partir de translated_documents
+        const approvedTranslated = (translatedDocs || []).filter((doc: any) => (doc.is_authenticated === true) || ((doc.status || '').toLowerCase() === 'completed'));
+        totalDocs = approvedTranslated.length;
         pendingDocs = allDocuments?.filter(doc => doc.status === 'pending').length || 0; // All pending docs
-        approvedDocs = translatedDocs?.length || 0; // All translated docs are approved
+        approvedDocs = approvedTranslated.length; // translated = aprovados
         rejectedDocs = 0; // Rejected docs are not in translated_documents
         // Para autenticador: receita = soma direta dos documentos (sem drafts)
         const validTranslatedDocsForAuth = (translatedDocs || []).filter((doc: any) => doc.status !== 'draft');
