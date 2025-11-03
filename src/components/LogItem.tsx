@@ -13,7 +13,9 @@ import {
   CreditCard,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  Download
 } from 'lucide-react';
 import { ActionLog } from '../hooks/useActionLogs';
 
@@ -24,6 +26,11 @@ interface LogItemProps {
 
 export const LogItem: React.FC<LogItemProps> = ({ log, onEntityClick }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [originalFileUrl, setOriginalFileUrl] = useState<string | null>(null); // Guardar URL original para download
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -424,6 +431,12 @@ export const LogItem: React.FC<LogItemProps> = ({ log, onEntityClick }) => {
           details.push(createDetail(<CheckCircle className="w-4 h-4" />, key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()), value ? 'Yes' : 'No', value ? 'text-green-600' : 'text-red-600'));
           break;
 
+        // URL de arquivo - NÃO exibir diretamente, usar botão de visualização
+        case 'file_url':
+        case 'translated_file_url':
+          // Não adicionar ao details - será tratado separadamente com botão de visualização
+          break;
+        
         // Outros campos - mostrar de forma genérica mas amigável
         default:
           // Converter snake_case para Title Case
@@ -471,6 +484,92 @@ export const LogItem: React.FC<LogItemProps> = ({ log, onEntityClick }) => {
     }
     return 'bg-gray-50 border-gray-200';
   };
+
+  // Função para abrir preview do documento de forma segura
+  const handleViewDocument = async () => {
+    const fileUrl = log.metadata?.file_url || log.metadata?.translated_file_url;
+    if (!fileUrl) return;
+
+    try {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      
+      // Guardar URL original para usar no download
+      setOriginalFileUrl(fileUrl);
+      
+      // SEMPRE gerar um novo signed URL para visualização
+      const { db } = await import('../lib/supabase');
+      const viewUrl = await db.generateViewUrl(fileUrl);
+      
+      if (!viewUrl) {
+        throw new Error('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+      }
+      
+      setPreviewUrl(viewUrl);
+      setPreviewOpen(true);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');
+      setPreviewOpen(true);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Função para download do preview
+  // IMPORTANTE: Usar a URL original do metadata, não o previewUrl (signed URL)
+  const handleDownloadPreview = async () => {
+    // Usar URL original do metadata, não o previewUrl
+    const fileUrl = originalFileUrl || log.metadata?.file_url || log.metadata?.translated_file_url;
+    if (!fileUrl) {
+      alert('URL do arquivo não disponível.');
+      return;
+    }
+    
+    try {
+      const filename = log.metadata?.filename || log.metadata?.document_name || 'document';
+      const { extractFilePathFromUrl } = await import('../utils/fileUtils');
+      
+      // Extrair filePath da URL ORIGINAL, não do signed URL
+      const pathInfo = extractFilePathFromUrl(fileUrl);
+      
+      if (!pathInfo) {
+        // Se não conseguir extrair, tentar download direto da URL original
+        try {
+          const response = await fetch(fileUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            return;
+          }
+        } catch (fetchError) {
+          console.error('Erro no download direto:', fetchError);
+          alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+          return;
+        }
+      }
+      
+      // Usar download autenticado direto usando a URL original
+      const { db } = await import('../lib/supabase');
+      const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
+      
+      if (!success) {
+        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+      }
+    } catch (err) {
+      console.error('Error downloading preview:', err);
+      alert(`Erro ao baixar arquivo: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Verificar se há URL de arquivo no metadata
+  const hasFileUrl = log.metadata?.file_url || log.metadata?.translated_file_url;
 
   const performerName = log.performed_by_name || log.performed_by_email || 'Unknown User';
 
@@ -583,13 +682,26 @@ export const LogItem: React.FC<LogItemProps> = ({ log, onEntityClick }) => {
         </div>
       </div>
 
-      {/* Expanded metadata */}
+          {/* Expanded metadata */}
       {isExpanded && log.metadata && (
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="flex items-center gap-2 mb-3 text-sm font-medium text-gray-700">
             <Code className="w-4 h-4" />
             Complete Details
           </div>
+          
+          {/* Botão para visualizar documento se houver URL */}
+          {hasFileUrl && (
+            <div className="mb-3">
+              <button
+                onClick={handleViewDocument}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                <Eye className="w-4 h-4" />
+                View Document
+              </button>
+            </div>
+          )}
           
           <div className="grid grid-cols-1 gap-3">
             {renderMetadataDetails(formatMetadata(log.metadata))?.map((detail, index) => (
@@ -609,6 +721,83 @@ export const LogItem: React.FC<LogItemProps> = ({ log, onEntityClick }) => {
             ))}
           </div>
 
+        </div>
+      )}
+
+      {/* Modal de Preview do Documento */}
+      {previewOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[10000]">
+          <div className="absolute inset-0 bg-white flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-tfe-blue-600" />
+                <span className="font-semibold text-gray-900">
+                  {log.metadata?.filename || log.metadata?.document_name || 'Document Preview'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+                  disabled={previewLoading || !previewUrl}
+                  onClick={handleDownloadPreview}
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
+                <button
+                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  onClick={() => {
+                    setPreviewOpen(false);
+                    setPreviewUrl(null);
+                    setOriginalFileUrl(null);
+                    setPreviewError(null);
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-gray-50 overflow-auto">
+              {previewLoading && (
+                <div className="flex items-center justify-center h-full text-gray-600">
+                  <div className="text-center">
+                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p>Loading document...</p>
+                  </div>
+                </div>
+              )}
+              {!previewLoading && previewError && (
+                <div className="p-6 text-center text-red-600">
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                  <p>{previewError}</p>
+                </div>
+              )}
+              {!previewLoading && !previewError && previewUrl && (
+                <>
+                  {(() => {
+                    // Detectar tipo de arquivo baseado no filename ou URL
+                    const filename = log.metadata?.filename || log.metadata?.document_name || '';
+                    const isImage = filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i) || 
+                                   previewUrl.toLowerCase().includes('image') ||
+                                   previewUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp)/i);
+                    
+                    return isImage ? (
+                      <div className="flex items-center justify-center h-full p-4">
+                        <img 
+                          src={previewUrl} 
+                          alt={filename || 'Document'} 
+                          className="max-w-full max-h-full object-contain"
+                          style={{ maxHeight: 'calc(100vh - 80px)' }}
+                        />
+                      </div>
+                    ) : (
+                      <iframe src={previewUrl} className="w-full h-full border-0" title="Document Preview" />
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

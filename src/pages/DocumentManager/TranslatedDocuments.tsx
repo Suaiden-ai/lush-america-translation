@@ -235,8 +235,15 @@ export default function TranslatedDocuments() {
         setPreviewOpen(true);
         return;
       }
-      const validUrl = await getValidFileUrl(doc.translated_file_url);
-      setPreviewUrl(validUrl);
+      // SEMPRE gerar um novo signed URL para visualização
+      const { db } = await import('../../lib/supabase');
+      const viewUrl = await db.generateViewUrl(doc.translated_file_url);
+      
+      if (!viewUrl) {
+        throw new Error('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+      }
+      
+      setPreviewUrl(viewUrl);
       setPreviewOpen(true);
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');

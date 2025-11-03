@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { XCircle, FileText, User, Calendar, Hash, Eye, Download, Phone } from 'lucide-react';
 import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
 import { Document } from './PaymentsTable';
-import { supabase } from '../../lib/supabase';
+import { supabase, db } from '../../lib/supabase';
 
 interface DocumentDetailsModalProps {
   document: Document | null;
@@ -223,25 +223,48 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
     
     if (fileUrl) {
       try {
-        // Usar um link simples para download é mais direto e compatível
-        const link = globalThis.document.createElement('a');
-        link.href = fileUrl;
-        link.download = document.filename; // O nome que o arquivo terá ao ser baixado
-        link.target = '_blank'; // Abrir em nova aba para iniciar o download
-        link.rel = 'noopener noreferrer';
-        globalThis.document.body.appendChild(link);
-        link.click();
-        globalThis.document.body.removeChild(link);
+        // Extrair filePath e bucket da URL
+        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+        const pathInfo = extractFilePathFromUrl(fileUrl);
+        
+        if (!pathInfo) {
+          // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+          try {
+            const response = await fetch(fileUrl);
+            if (response.ok) {
+              const blob = await response.blob();
+              const downloadUrl = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = downloadUrl;
+              link.download = document.filename;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(downloadUrl);
+              return;
+            }
+          } catch (error) {
+            alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+            return;
+          }
+        }
+        
+        // Usar download autenticado direto
+        const success = await db.downloadFileAndTrigger(pathInfo.filePath, document.filename, pathInfo.bucket);
+        
+        if (!success) {
+          alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        }
       } catch (error) {
         console.error('Error downloading file:', error);
-        alert('Error downloading file');
+        alert(`Erro ao baixar arquivo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
       }
     } else {
         alert('No file available to download');
     }
   };
 
-  const handleViewFile = () => {
+  const handleViewFile = async () => {
     // Verificar se o documento foi aprovado pelo autenticador
     const isAuthenticated = actualDocumentStatus === 'completed' || actualDocumentStatus === 'approved';
     
@@ -272,7 +295,15 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
     console.log('🚀 Tentando abrir URL:', url);
     
     if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      // SEMPRE gerar um novo signed URL para visualização
+      const { db } = await import('../../lib/supabase');
+      const viewUrl = await db.generateViewUrl(url);
+      
+      if (viewUrl) {
+        window.open(viewUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        alert('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+      }
     } else {
       console.error('❌ Nenhuma URL disponível para visualizar');
       alert('No file available to view');

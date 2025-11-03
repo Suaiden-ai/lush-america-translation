@@ -204,23 +204,52 @@ Deno.serve(async (req: Request) => {
     if (record) {
       // Called from Storage trigger
       console.log("Processing storage trigger payload");
-      const bucket = record.bucket_id || record.bucket || record.bucketId;
+      const bucket = record.bucket_id || record.bucket || record.bucketId || 'documents';
       const path = record.name || record.path || record.file_name;
       
-      // Corrigir a geração da URL pública
+      // IMPORTANTE: Como os buckets são privados, gerar signed URL usando service_role
       let publicUrl;
-      if (url && url.startsWith('http')) {
-        // Se já temos uma URL válida, usar ela
+      if (url && url.startsWith('http') && url.includes('sign')) {
+        // Se já temos uma signed URL válida, usar ela
         publicUrl = url;
+        console.log("Using existing signed URL:", publicUrl);
       } else {
-        // Gerar URL pública corretamente
-        const { data: { publicUrl: generatedUrl } } = supabase.storage
-          .from(bucket || 'documents')
-          .getPublicUrl(path);
-        publicUrl = generatedUrl;
+        // Gerar signed URL válido por 24 horas (86400 segundos)
+        // Usando service_role, funciona mesmo com buckets privados
+        try {
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(path, 86400); // 24 horas
+          
+          if (signedData?.signedUrl) {
+            publicUrl = signedData.signedUrl;
+            console.log("Generated signed URL from storage trigger (valid for 24h):", publicUrl);
+          } else if (signedError) {
+            console.error("Error generating signed URL from storage trigger:", signedError);
+            // Fallback: tentar URL pública (pode não funcionar se bucket for privado)
+            const { data: { publicUrl: fallbackUrl } } = supabase.storage
+              .from(bucket)
+              .getPublicUrl(path);
+            publicUrl = fallbackUrl;
+            console.log("Fallback to public URL (may not work if bucket is private):", publicUrl);
+          }
+        } catch (urlError) {
+          console.error("Error generating URL from storage trigger:", urlError);
+          // Último fallback: tentar URL pública
+          try {
+            const { data: { publicUrl: fallbackUrl } } = supabase.storage
+              .from(bucket)
+              .getPublicUrl(path);
+            publicUrl = fallbackUrl;
+            console.log("Final fallback to public URL:", publicUrl);
+          } catch (fallbackError) {
+            console.error("All URL generation methods failed:", fallbackError);
+            publicUrl = url || `https://${supabaseUrl}/storage/v1/object/${bucket}/${path}`;
+          }
+        }
       }
       
-      console.log("Generated public URL:", publicUrl);
+      console.log("Final URL for n8n:", publicUrl);
       
       payload = {
         filename: path,
@@ -259,7 +288,8 @@ Deno.serve(async (req: Request) => {
       // Verificar se a URL já é válida
       let finalUrl = url;
       if (url && !url.startsWith('http')) {
-        // Se a URL não é completa, tentar gerar uma URL pública
+        // Se a URL não é completa (é apenas um filePath), gerar um signed URL
+        // IMPORTANTE: Como os buckets são privados, precisamos gerar signed URL usando service_role
         try {
           // Extrair o caminho do arquivo da URL
           const urlParts = url.split('/');
@@ -269,16 +299,73 @@ Deno.serve(async (req: Request) => {
           
           console.log("Extracted file path:", filePath);
           
-          const { data: { publicUrl: generatedUrl } } = supabase.storage
-            .from('documents')
-            .getPublicUrl(filePath);
+          // Detectar bucket baseado no caminho
+          let bucket = 'documents';
+          if (filePath.includes('arquivosfinaislush')) {
+            bucket = 'arquivosfinaislush';
+          }
           
-          finalUrl = generatedUrl;
-          console.log("Generated public URL from path:", finalUrl);
+          // Gerar signed URL válido por 24 horas (86400 segundos)
+          // Usando service_role, funciona mesmo com buckets privados
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(filePath, 86400); // 24 horas
+          
+          if (signedData?.signedUrl) {
+            finalUrl = signedData.signedUrl;
+            console.log("Generated signed URL from path (valid for 24h):", finalUrl);
+          } else if (signedError) {
+            console.error("Error generating signed URL:", signedError);
+            // Tentar fallback: construir URL direta (pode não funcionar se bucket for privado)
+            const { data: { publicUrl: fallbackUrl } } = supabase.storage
+              .from(bucket)
+              .getPublicUrl(filePath);
+            finalUrl = fallbackUrl;
+            console.log("Fallback to public URL (may not work if bucket is private):", finalUrl);
+          }
         } catch (urlError) {
-          console.error("Error generating public URL:", urlError);
+          console.error("Error generating URL:", urlError);
           // Usar a URL original se não conseguir gerar
           finalUrl = url;
+        }
+      } else if (url && url.startsWith('http') && url.includes('supabase.co')) {
+        // Se já é uma URL do Supabase, verificar se é signed URL válida
+        // Se não for signed URL e o bucket for privado, tentar gerar signed URL
+        try {
+          // Extrair filePath da URL existente
+          const urlObj = new URL(url);
+          const pathParts = urlObj.pathname.split('/').filter(p => p);
+          
+          // Detectar bucket
+          let bucket = 'documents';
+          if (pathParts.includes('arquivosfinaislush')) {
+            bucket = 'arquivosfinaislush';
+          }
+          
+          // Se não é signed URL (não tem 'sign' no path), tentar gerar
+          if (!pathParts.includes('sign')) {
+            // Tentar extrair filePath da URL
+            const bucketIndex = pathParts.findIndex(p => p === bucket);
+            if (bucketIndex >= 0) {
+              const filePath = pathParts.slice(bucketIndex + 1).join('/');
+              console.log("Extracted filePath from existing URL:", filePath);
+              
+              // Gerar signed URL válido por 24 horas
+              const { data: signedData, error: signedError } = await supabase.storage
+                .from(bucket)
+                .createSignedUrl(filePath, 86400);
+              
+              if (signedData?.signedUrl) {
+                finalUrl = signedData.signedUrl;
+                console.log("Generated signed URL from existing URL (valid for 24h):", finalUrl);
+              } else if (signedError) {
+                console.error("Error generating signed URL from existing URL:", signedError);
+              }
+            }
+          }
+        } catch (urlError) {
+          console.error("Error processing existing URL:", urlError);
+          // Manter URL original
         }
       }
       

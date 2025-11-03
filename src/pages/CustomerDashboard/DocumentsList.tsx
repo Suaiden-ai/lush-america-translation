@@ -3,6 +3,9 @@ import { FileText, Eye, Download, Copy } from 'lucide-react';
 import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
 import { Document } from '../../App';
 import { db } from '../../lib/supabase';
+import { Logger } from '../../lib/loggingHelpers';
+import { ActionTypes } from '../../types/actionTypes';
+import { useAuth } from '../../hooks/useAuth';
 
 interface DocumentsListProps {
   documents: Document[];
@@ -10,95 +13,78 @@ interface DocumentsListProps {
 }
 
 export function DocumentsList({ documents, onViewDocument }: DocumentsListProps) {
+  const { user } = useAuth();
+  
   const copyVerificationCode = (code: string) => {
     navigator.clipboard.writeText(code);
     // You could add a toast notification here
   };
 
   // Função para download automático (incluindo PDFs)
-  const handleDownload = async (url: string, filename: string) => {
+  // Usa download autenticado direto - URLs não podem ser compartilhadas externamente
+  const handleDownload = async (url: string, filename: string, documentId?: string) => {
     try {
-      // Tentar baixar com URL atual
-      const response = await fetch(url);
-      
-      // Se der erro de acesso negado, tentar regenerar URL
-      if (!response.ok && response.status === 403) {
-        console.log('URL expirado, regenerando URL...');
-        
-        // Extrair o caminho do arquivo da URL
-        const urlParts = url.split('/');
-        const filePath = urlParts.slice(-2).join('/'); // Pega os últimos 2 segmentos
-        
-        // Tentar URL público primeiro (não expira)
-        const publicUrl = await db.generatePublicUrl(filePath);
-        if (publicUrl) {
-          try {
-            const publicResponse = await fetch(publicUrl);
-            if (publicResponse.ok) {
-              const blob = await publicResponse.blob();
-              const downloadUrl = window.URL.createObjectURL(blob);
-              
-              const link = window.document.createElement('a');
-              link.href = downloadUrl;
-              link.download = filename;
-              window.document.body.appendChild(link);
-              link.click();
-              window.document.body.removeChild(link);
-              
-              window.URL.revokeObjectURL(downloadUrl);
-              return;
+      // Log de download do documento
+      if (documentId) {
+        try {
+          await Logger.log(
+            ActionTypes.DOCUMENT.DOWNLOADED,
+            `Document downloaded: ${filename}`,
+            {
+              entityType: 'document',
+              entityId: documentId,
+              metadata: {
+                document_id: documentId,
+                filename: filename,
+                file_url: url,
+                file_type: filename?.split('.').pop()?.toLowerCase(),
+                user_id: user?.id,
+                timestamp: new Date().toISOString(),
+                download_type: 'documents_list_download'
+              },
+              affectedUserId: user?.id,
+              performerType: 'user'
             }
-          } catch (error) {
-            console.log('URL público falhou, tentando URL pré-assinado...');
-          }
+          );
+        } catch (logError) {
+          console.error('Error logging document download:', logError);
         }
-        
-        // Se URL público falhou, tentar URL pré-assinado de 30 dias
-        const signedUrl = await db.generateSignedUrl(filePath);
-        if (signedUrl) {
-          try {
-            const signedResponse = await fetch(signedUrl);
-            if (signedResponse.ok) {
-              const blob = await signedResponse.blob();
-              const downloadUrl = window.URL.createObjectURL(blob);
-              
-              const link = window.document.createElement('a');
-              link.href = downloadUrl;
-              link.download = filename;
-              window.document.body.appendChild(link);
-              link.click();
-              window.document.body.removeChild(link);
-              
-              window.URL.revokeObjectURL(downloadUrl);
-              return;
-            }
-          } catch (error) {
-            console.error('Erro ao baixar com URL pré-assinada:', error);
-          }
-        }
-        
-        throw new Error('Não foi possível baixar o arquivo. Tente novamente mais tarde.');
       }
       
-      // Se a URL original funcionou, fazer download
-      if (response.ok) {
-        const blob = await response.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        
-        const link = window.document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        window.document.body.appendChild(link);
-        link.click();
-        window.document.body.removeChild(link);
-        
-        window.URL.revokeObjectURL(downloadUrl);
-      } else {
-        throw new Error(`Erro ao baixar arquivo: ${response.status} ${response.statusText}`);
+      // Extrair filePath e bucket da URL
+      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+      const pathInfo = extractFilePathFromUrl(url);
+      
+      if (!pathInfo) {
+        // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = window.document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            window.document.body.appendChild(link);
+            link.click();
+            window.document.body.removeChild(link);
+            window.URL.revokeObjectURL(downloadUrl);
+            return;
+          }
+        } catch (error) {
+          throw new Error('Não foi possível acessar o arquivo. Verifique sua conexão.');
+        }
       }
-    } catch (error) {
+      
+      // Usar download autenticado direto
+      const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
+      
+      if (!success) {
+        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+      }
+    } catch (error: any) {
       console.error('Erro no download:', error);
-      alert(`Erro ao baixar arquivo: ${error.message}`);
+      alert(`Erro ao baixar arquivo: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -157,7 +143,7 @@ export function DocumentsList({ documents, onViewDocument }: DocumentsListProps)
                   
                   {doc.file_url && (
                     <button
-                      onClick={() => handleDownload(doc.file_url!, doc.filename)}
+                      onClick={() => handleDownload(doc.file_url!, doc.filename, doc.id)}
                       className="p-2 text-gray-400 hover:text-green-600 transition-colors"
                       title="Download Original"
                     >
