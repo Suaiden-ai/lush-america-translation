@@ -193,7 +193,13 @@ export default function DocumentProgress() {
       const pathInfo = extractFilePathFromUrl(url);
       
       if (!pathInfo) {
-        // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+        // Se não conseguir extrair, verificar se é URL do Supabase (não deve tentar fetch direto)
+        if (url.includes('supabase.co')) {
+          alert('Não foi possível acessar o arquivo. URL do Supabase inválida ou expirada.');
+          return;
+        }
+        
+        // Se não for URL do Supabase, tentar download direto da URL (para S3 externo)
         try {
           const response = await fetch(url);
           if (response.ok) {
@@ -207,6 +213,8 @@ export default function DocumentProgress() {
             window.document.body.removeChild(link);
             window.URL.revokeObjectURL(downloadUrl);
             return;
+          } else {
+            throw new Error('Não foi possível acessar o arquivo.');
           }
         } catch (error) {
           console.error('Erro no download direto:', error);

@@ -154,7 +154,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       const translationStatusMap = new Map(
         documentsToBeVerified.map(dtbv => [dtbv.original_document_id, dtbv.translation_status])
       );
-      
+
       // ✅ Mapa de dados de autenticação: key = document_id (de documents)
       const authenticationMap = new Map(
         translatedDocuments.map(td => [
@@ -455,17 +455,17 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         <div className="space-y-3">
           {/* Primeira linha: Search e Date Range */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
-            {/* Search */}
+          {/* Search */}
             <div className="sm:col-span-2 lg:col-span-1">
-              <input
-                type="text"
-                placeholder={t('admin.documents.table.searchPlaceholder')}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-                aria-label="Search documents"
-              />
-            </div>
+            <input
+              type="text"
+              placeholder={t('admin.documents.table.searchPlaceholder')}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+              aria-label="Search documents"
+            />
+          </div>
 
             {/* Google Style Date Range Filter */}
             <GoogleStyleDatePicker
@@ -482,38 +482,38 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
           {/* Segunda linha: Filtros de Status, Role, Payment Status e Payment Method */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
-            {/* Status Filter */}
-            <div className="flex items-center space-x-2">
-              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                aria-label="Filter by document status"
-              >
-                <option value="all">{t('admin.documents.table.filters.allStatus')}</option>
-                <option value="completed">{t('admin.documents.table.status.completed')}</option>
-                <option value="pending">{t('admin.documents.table.status.pending')}</option>
-                <option value="processing">{t('admin.documents.table.status.processing')}</option>
-                <option value="failed">{t('admin.documents.table.status.failed')}</option>
-                <option value="draft">{t('admin.documents.table.status.draft')}</option>
-              </select>
-            </div>
+          {/* Status Filter */}
+          <div className="flex items-center space-x-2">
+            <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+              aria-label="Filter by document status"
+            >
+              <option value="all">{t('admin.documents.table.filters.allStatus')}</option>
+              <option value="completed">{t('admin.documents.table.status.completed')}</option>
+              <option value="pending">{t('admin.documents.table.status.pending')}</option>
+              <option value="processing">{t('admin.documents.table.status.processing')}</option>
+              <option value="failed">{t('admin.documents.table.status.failed')}</option>
+              <option value="draft">{t('admin.documents.table.status.draft')}</option>
+            </select>
+          </div>
 
-            {/* Role Filter */}
-            <div className="flex items-center space-x-2">
-              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-                aria-label="Filter by user role"
-              >
-                <option value="all">{t('admin.documents.table.filters.allUserRoles')}</option>
-                <option value="user">{t('admin.documents.table.filters.user')}</option>
-                <option value="authenticator">{t('admin.documents.table.filters.authenticator')}</option>
-              </select>
-            </div>
+          {/* Role Filter */}
+          <div className="flex items-center space-x-2">
+            <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+              aria-label="Filter by user role"
+            >
+              <option value="all">{t('admin.documents.table.filters.allUserRoles')}</option>
+              <option value="user">{t('admin.documents.table.filters.user')}</option>
+              <option value="authenticator">{t('admin.documents.table.filters.authenticator')}</option>
+            </select>
+          </div>
 
             {/* Payment Status Filter */}
             <div className="flex items-center space-x-2">

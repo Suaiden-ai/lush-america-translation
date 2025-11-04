@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { FileText, Download, Eye, Calendar, DollarSign, User, CheckCircle, XCircle, Filter } from 'lucide-react';
-import { getValidFileUrl } from '../../utils/fileUtils';
+// Removed getValidFileUrl import - using downloadFileAndTrigger instead
 import { GoogleStyleDatePicker } from '../../components/GoogleStyleDatePicker';
 import { DateRange } from '../../components/DateRangeFilter';
 
@@ -486,17 +486,46 @@ export default function TranslatedDocuments() {
                             onClick={async e => {
                               e.preventDefault();
                               try {
-                                const validUrl = await getValidFileUrl(doc.translated_file_url || '');
-                                const response = await fetch(validUrl);
-                                const blob = await response.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.download = doc.filename || 'translated_document.pdf';
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                window.URL.revokeObjectURL(url);
+                                const urlToDownload = doc.translated_file_url || '';
+                                if (!urlToDownload) {
+                                  alert('No document available to download.');
+                                  return;
+                                }
+                                
+                                // Extrair filePath e bucket da URL
+                                const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+                                const pathInfo = extractFilePathFromUrl(urlToDownload);
+                                
+                                if (!pathInfo) {
+                                  // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+                                  try {
+                                    const response = await fetch(urlToDownload);
+                                    if (response.ok) {
+                                      const blob = await response.blob();
+                                      const url = window.URL.createObjectURL(blob);
+                                      const link = document.createElement('a');
+                                      link.href = url;
+                                      link.download = doc.filename || 'translated_document.pdf';
+                                      document.body.appendChild(link);
+                                      link.click();
+                                      document.body.removeChild(link);
+                                      window.URL.revokeObjectURL(url);
+                                      return;
+                                    }
+                                  } catch (error) {
+                                    alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+                                    return;
+                                  }
+                                }
+                                
+                                // Usar download autenticado direto
+                                const filename = doc.filename || 'translated_document.pdf';
+                                const { db } = await import('../../lib/supabase');
+                                const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
+                                
+                                if (!success) {
+                                  alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                                }
                               } catch (err) {
                                 console.error('Error downloading file:', err);
                                 alert((err as Error).message || 'Failed to download file.');

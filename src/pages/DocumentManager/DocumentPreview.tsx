@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { getValidFileUrl } from '../../utils/fileUtils';
+// Removed getValidFileUrl import - using generateViewUrl instead
 import { FileText, ArrowLeft, Download } from 'lucide-react';
 
 interface VerifiedDoc {
@@ -39,8 +39,14 @@ export default function DocumentPreview() {
           setError('Nenhum arquivo disponível para visualização.');
           return;
         }
-        const valid = await getValidFileUrl(source);
-        setFileUrl(valid);
+        // SEMPRE gerar um novo signed URL para visualização
+        const { db } = await import('../../lib/supabase');
+        const viewUrl = await db.generateViewUrl(source);
+        if (!viewUrl) {
+          setError('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+          return;
+        }
+        setFileUrl(viewUrl);
       } catch (e: any) {
         setError(e?.message || 'Falha ao carregar documento');
       } finally {
@@ -51,19 +57,56 @@ export default function DocumentPreview() {
   }, [id]);
 
   async function handleDownload() {
-    if (!fileUrl) return;
+    if (!fileUrl || !id) return;
     try {
-      const response = await fetch(fileUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename || 'document';
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      // Abrir diretamente caso o fetch falhe
-      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      // Usar a URL original do documento para download, não o viewUrl (signed URL)
+      const { data: doc } = await supabase
+        .from('documents_to_be_verified')
+        .select('translated_file_url, file_url, filename')
+        .eq('id', id)
+        .single();
+      
+      const sourceUrl = doc?.translated_file_url || doc?.file_url;
+      if (!sourceUrl) {
+        alert('URL do arquivo não disponível.');
+        return;
+      }
+      
+      // Extrair filePath e bucket da URL
+      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+      const pathInfo = extractFilePathFromUrl(sourceUrl);
+      
+      if (!pathInfo) {
+        // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+        try {
+          const response = await fetch(sourceUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = doc?.filename || filename || 'document';
+            a.click();
+            window.URL.revokeObjectURL(url);
+            return;
+          }
+        } catch (error) {
+          alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+          return;
+        }
+      }
+      
+      // Usar download autenticado direto
+      const downloadFilename = doc?.filename || filename || 'document';
+      const { db } = await import('../../lib/supabase');
+      const success = await db.downloadFileAndTrigger(pathInfo.filePath, downloadFilename, pathInfo.bucket);
+      
+      if (!success) {
+        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+      }
+    } catch (err) {
+      console.error('Error downloading file:', err);
+      alert((err as Error).message || 'Failed to download file.');
     }
   }
 
