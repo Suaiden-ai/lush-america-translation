@@ -148,9 +148,49 @@ export function extractFilePathFromUrl(url: string): { filePath: string; bucket:
 }
 
 /**
+ * Converte uma URL do Supabase Storage para usar a Edge Function serve-document
+ * Isso permite mostrar uma página customizada de erro quando o arquivo não existe
+ * 
+ * @param url - URL original do Supabase Storage
+ * @returns URL da Edge Function que serve o arquivo com página de erro customizada
+ */
+export function convertToServeDocumentUrl(url: string): string {
+  try {
+    // Se não é URL do Supabase, retornar como está
+    if (!url.includes('supabase.co')) {
+      return url;
+    }
+
+    // Extrair bucket e filePath da URL original
+    const extracted = extractFilePathFromUrl(url);
+    if (!extracted) {
+      return url; // Fallback para URL original se não conseguir extrair
+    }
+
+    const { bucket, filePath } = extracted;
+    
+    // Obter a URL base do Supabase (do .env ou da URL original)
+    const urlObj = new URL(url);
+    const supabaseUrl = `${urlObj.protocol}//${urlObj.host}`;
+    
+    // Construir URL da Edge Function
+    // Formato: {supabaseUrl}/functions/v1/serve-document?bucket={bucket}&path={filePath}
+    const edgeFunctionUrl = `${supabaseUrl}/functions/v1/serve-document?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(filePath)}`;
+    
+    return edgeFunctionUrl;
+  } catch (error) {
+    console.error('Erro ao converter URL para serve-document:', error);
+    return url; // Fallback para URL original
+  }
+}
+
+/**
  * Verifica se uma URL do S3 ou Supabase está válida
  * DEPRECATED: Para downloads, use downloadFile() diretamente.
  * Esta função ainda é usada para visualização de arquivos (PDFs, imagens) que precisam de URL.
+ * 
+ * IMPORTANTE: Para URLs do Supabase Storage, considere usar convertToServeDocumentUrl() primeiro
+ * para ter página de erro customizada quando o arquivo não existir.
  */
 export async function getValidFileUrl(url: string): Promise<string> {
   try {

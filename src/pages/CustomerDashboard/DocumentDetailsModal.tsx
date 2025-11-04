@@ -4,7 +4,7 @@ import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
 import { Document } from '../../App';
 import { db, supabase } from '../../lib/supabase';
 import { ImageViewerModal } from '../../components/ImageViewerModal';
-import { getValidFileUrl } from '../../utils/fileUtils';
+// Removed getValidFileUrl import - using downloadFileAndTrigger and generateViewUrl instead
 import { Logger } from '../../lib/loggingHelpers';
 import { ActionTypes } from '../../types/actionTypes';
 
@@ -161,7 +161,12 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       const pathInfo = extractFilePathFromUrl(url);
       
       if (!pathInfo) {
-        // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+        // Se não conseguir extrair, verificar se é URL do Supabase (não deve tentar fetch direto)
+        if (url.includes('supabase.co')) {
+          throw new Error('Não foi possível acessar o arquivo. URL do Supabase inválida ou expirada.');
+        }
+        
+        // Se não for URL do Supabase, tentar download direto da URL (para S3 externo)
         try {
           const response = await fetch(url);
           if (response.ok) {
@@ -200,6 +205,8 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
               console.error('Error logging document download:', logError);
             }
             return;
+          } else {
+            throw new Error('Não foi possível acessar o arquivo. Verifique sua conexão.');
           }
         } catch (error) {
           throw new Error('Não foi possível acessar o arquivo. Verifique sua conexão.');

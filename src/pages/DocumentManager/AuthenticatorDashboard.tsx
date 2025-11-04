@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { FileText, Check, Clock, ShieldCheck, Download, CheckCircle, XCircle, Eye, Upload as UploadIcon, Phone, AlertCircle } from 'lucide-react';
-import { getValidFileUrl, extractFilePathFromUrl } from '../../utils/fileUtils';
+import { extractFilePathFromUrl } from '../../utils/fileUtils';
 import { db } from '../../lib/supabase';
 import { notifyTranslationCompleted } from '../../utils/webhookNotifications';
 import { Logger } from '../../lib/loggingHelpers';
@@ -1240,17 +1240,38 @@ export default function AuthenticatorDashboard() {
                                     return;
                                   }
                                   
-                                  const validUrl = await getValidFileUrl(urlToDownload);
-                                  const response = await fetch(validUrl);
-                                  const blob = await response.blob();
-                                  const url = window.URL.createObjectURL(blob);
-                                  const link = document.createElement('a');
-                                  link.href = url;
-                                  link.download = (doc.filename ? String(doc.filename) : 'document.pdf');
-                                  document.body.appendChild(link);
-                                  link.click();
-                                  document.body.removeChild(link);
-                                  window.URL.revokeObjectURL(url);
+                                  // Extrair filePath e bucket da URL
+                                  const pathInfo = extractFilePathFromUrl(urlToDownload);
+                                  
+                                  if (!pathInfo) {
+                                    // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+                                    try {
+                                      const response = await fetch(urlToDownload);
+                                      if (response.ok) {
+                                        const blob = await response.blob();
+                                        const url = window.URL.createObjectURL(blob);
+                                        const link = document.createElement('a');
+                                        link.href = url;
+                                        link.download = (doc.filename ? String(doc.filename) : 'document.pdf');
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                        window.URL.revokeObjectURL(url);
+                                        return;
+                                      }
+                                    } catch (error) {
+                                      alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
+                                      return;
+                                    }
+                                  }
+                                  
+                                  // Usar download autenticado direto
+                                  const filename = doc.filename ? String(doc.filename) : 'document.pdf';
+                                  const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
+                                  
+                                  if (!success) {
+                                    alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                                  }
                                 } catch (err) {
                                   console.error('Error downloading file:', err);
                                   alert((err as Error).message || 'Failed to download file.');

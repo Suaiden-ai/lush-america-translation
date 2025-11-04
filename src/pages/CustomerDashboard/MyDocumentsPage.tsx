@@ -802,7 +802,13 @@ export default function MyDocumentsPage() {
                       const pathInfo = extractFilePathFromUrl(item.translated_file_url);
                       
                       if (!pathInfo) {
-                        // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+                        // Se não conseguir extrair, verificar se é URL do Supabase (não deve tentar fetch direto)
+                        if (item.translated_file_url.includes('supabase.co')) {
+                          alert('Não foi possível acessar o arquivo. URL do Supabase inválida ou expirada.');
+                          return;
+                        }
+                        
+                        // Se não for URL do Supabase, tentar download direto da URL (para S3 externo)
                         try {
                           const response = await fetch(item.translated_file_url);
                           if (response.ok) {
@@ -816,6 +822,8 @@ export default function MyDocumentsPage() {
                             document.body.removeChild(link);
                             window.URL.revokeObjectURL(url);
                             return;
+                          } else {
+                            throw new Error('Não foi possível acessar o arquivo.');
                           }
                         } catch (error) {
                           alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
@@ -1049,7 +1057,13 @@ export default function MyDocumentsPage() {
                     const pathInfo = extractFilePathFromUrl(selectedFile.translated_file_url);
                     
                     if (!pathInfo) {
-                      // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+                      // Se não conseguir extrair, verificar se é URL do Supabase (não deve tentar fetch direto)
+                      if (selectedFile.translated_file_url.includes('supabase.co')) {
+                        alert('Não foi possível acessar o arquivo. URL do Supabase inválida ou expirada.');
+                        return;
+                      }
+                      
+                      // Se não for URL do Supabase, tentar download direto da URL (para S3 externo)
                       try {
                         const response = await fetch(selectedFile.translated_file_url);
                         if (response.ok) {
@@ -1063,6 +1077,8 @@ export default function MyDocumentsPage() {
                           document.body.removeChild(link);
                           window.URL.revokeObjectURL(url);
                           return;
+                        } else {
+                          throw new Error('Não foi possível acessar o arquivo.');
                         }
                       } catch (error) {
                         alert('Não foi possível acessar o arquivo. Verifique sua conexão.');

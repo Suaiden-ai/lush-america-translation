@@ -56,7 +56,12 @@ export function DocumentsList({ documents, onViewDocument }: DocumentsListProps)
       const pathInfo = extractFilePathFromUrl(url);
       
       if (!pathInfo) {
-        // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
+        // Se não conseguir extrair, verificar se é URL do Supabase (não deve tentar fetch direto)
+        if (url.includes('supabase.co')) {
+          throw new Error('Não foi possível acessar o arquivo. URL do Supabase inválida ou expirada.');
+        }
+        
+        // Se não for URL do Supabase, tentar download direto da URL (para S3 externo)
         try {
           const response = await fetch(url);
           if (response.ok) {
@@ -70,6 +75,8 @@ export function DocumentsList({ documents, onViewDocument }: DocumentsListProps)
             window.document.body.removeChild(link);
             window.URL.revokeObjectURL(downloadUrl);
             return;
+          } else {
+            throw new Error('Não foi possível acessar o arquivo. Verifique sua conexão.');
           }
         } catch (error) {
           throw new Error('Não foi possível acessar o arquivo. Verifique sua conexão.');
