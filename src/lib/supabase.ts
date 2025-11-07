@@ -296,10 +296,44 @@ export const db = {
     return 'documents';
   },
 
+  // Função simplificada para verificar se há sessão
+  // Se o usuário está logado na plataforma, confiamos que o Supabase gerencia a sessão automaticamente
+  ensureAuthenticated: async (): Promise<boolean> => {
+    try {
+      // Apenas verificar se há uma sessão - o Supabase gerencia renovação automaticamente
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('[downloadFile] Erro ao verificar sessão:', sessionError);
+        return false;
+      }
+      
+      // Se há sessão, o usuário está autenticado e pode baixar seus documentos
+      // O Supabase vai gerenciar a renovação de tokens automaticamente (autoRefreshToken: true)
+      if (session && session.user) {
+        return true;
+      }
+      
+      // Sem sessão = usuário não está logado
+      console.warn('[downloadFile] Nenhuma sessão encontrada. Usuário não está autenticado.');
+      return false;
+    } catch (error) {
+      console.error('[downloadFile] Erro ao verificar sessão:', error);
+      return false;
+    }
+  },
+
   // Função para download direto e autenticado do arquivo
   // IMPORTANTE: Requer autenticação ativa. URLs não podem ser compartilhadas externamente.
   downloadFile: async (filePath: string, bucketName?: string): Promise<Blob | null> => {
     try {
+      // Verificar autenticação antes de tentar download
+      const isAuthenticated = await db.ensureAuthenticated();
+      if (!isAuthenticated) {
+        console.error('[downloadFile] Usuário não está autenticado. Não é possível fazer download.');
+        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+      }
+      
       const bucket = bucketName || db.detectBucket(filePath);
       
       // Limpar filePath de possíveis duplicatas de bucket
@@ -308,28 +342,83 @@ export const db = {
         cleanFilePath = cleanFilePath.substring(bucket.length + 1);
       }
       
+      console.log('[downloadFile] Tentando fazer download:', { bucket, cleanFilePath });
+      
       const { data, error } = await supabase.storage
         .from(bucket)
         .download(cleanFilePath);
       
       if (error) {
-        console.error('Erro ao fazer download do arquivo:', error);
-        return null;
+        console.error('[downloadFile] Erro ao fazer download do arquivo:', {
+          error,
+          message: error.message,
+          statusCode: error.statusCode,
+          bucket,
+          filePath: cleanFilePath
+        });
+        
+        // Verificar se é erro de autenticação
+        const isAuthError = error.statusCode === 401 || error.statusCode === 403 || 
+            error.message?.includes('JWT') || error.message?.includes('token') ||
+            error.message?.includes('authentication') || error.message?.includes('unauthorized');
+        
+        if (isAuthError) {
+          console.error('[downloadFile] Erro de autenticação detectado:', error.message);
+          // Não mostrar detalhes técnicos - apenas lançar erro genérico
+          throw new Error('AUTH_ERROR');
+        }
+        
+        // Outros erros - não expor detalhes técnicos
+        throw new Error('DOWNLOAD_ERROR');
       }
       
+      if (!data) {
+        console.error('[downloadFile] Download retornou null sem erro.');
+        throw new Error('FILE_NOT_FOUND');
+      }
+      
+      console.log('[downloadFile] Download realizado com sucesso.');
       return data;
-    } catch (error) {
-      console.error('Erro ao fazer download do arquivo:', error);
-      return null;
+    } catch (error: any) {
+      console.error('[downloadFile] Erro ao fazer download do arquivo:', error);
+      
+      // Se já é um erro genérico (AUTH_ERROR, DOWNLOAD_ERROR, FILE_NOT_FOUND), apenas re-lançar
+      if (error?.message === 'AUTH_ERROR' || error?.message === 'DOWNLOAD_ERROR' || error?.message === 'FILE_NOT_FOUND') {
+        throw error;
+      }
+      
+      // Para outros erros, converter para erro genérico
+      throw new Error('DOWNLOAD_ERROR');
     }
   },
 
   // Função para download e iniciar download automático
   downloadFileAndTrigger: async (filePath: string, filename: string, bucketName?: string): Promise<boolean> => {
     try {
+      console.log('[downloadFileAndTrigger] Iniciando download:', { filePath, filename, bucketName });
+      
+      // Importar helpers dinamicamente para evitar dependência circular
+      const { logError, showUserFriendlyError } = await import('../utils/errorHelpers');
+      
       const blob = await db.downloadFile(filePath, bucketName);
       
       if (!blob) {
+        console.error('[downloadFileAndTrigger] Download retornou null.');
+        
+        // Obter userId para logging
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        // Logar erro
+        await logError('download', new Error('Download retornou null'), {
+          userId: user?.id,
+          filePath,
+          filename,
+          bucket: bucketName,
+        });
+        
+        // Mostrar mensagem amigável
+        showUserFriendlyError('DOWNLOAD_ERROR');
+        
         return false;
       }
       
@@ -343,9 +432,48 @@ export const db = {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
       
+      console.log('[downloadFileAndTrigger] Download iniciado com sucesso.');
       return true;
-    } catch (error) {
-      console.error('Erro ao fazer download e iniciar download:', error);
+    } catch (error: any) {
+      console.error('[downloadFileAndTrigger] Erro ao fazer download e iniciar download:', {
+        error,
+        message: error?.message,
+        filePath,
+        filename
+      });
+      
+      // Importar helpers dinamicamente
+      const { logError, showUserFriendlyError } = await import('../utils/errorHelpers');
+      
+      // Obter userId para logging
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Determinar tipo de erro
+      const errorType = error?.message?.includes('autenticado') || 
+                       error?.message?.includes('authentication') ||
+                       error?.message?.includes('JWT') ||
+                       error?.message?.includes('token')
+                       ? 'auth' : 'download';
+      
+      // Logar erro
+      await logError(errorType, error, {
+        userId: user?.id,
+        filePath,
+        filename,
+        bucket: bucketName,
+        additionalInfo: {
+          error_code: error?.code,
+          error_status: error?.statusCode,
+        },
+      });
+      
+      // Mostrar mensagem amigável (sem detalhes técnicos)
+      if (errorType === 'auth') {
+        showUserFriendlyError('AUTH_ERROR');
+      } else {
+        showUserFriendlyError('DOWNLOAD_ERROR');
+      }
+      
       return false;
     }
   },

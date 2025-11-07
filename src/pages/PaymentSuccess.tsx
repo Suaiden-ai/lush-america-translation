@@ -547,28 +547,27 @@ export function PaymentSuccess() {
     } catch (err: any) {
       console.error('ERROR: Erro no processamento:', err);
       
-      // Log de falha no upload
+      // Logar erro usando helper (com mais detalhes)
+      const { logError, showUserFriendlyError } = await import('../utils/errorHelpers');
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await Logger.log(
-          ActionTypes.DOCUMENT.UPLOAD_FAILED,
-          `Document upload failed: ${err.message}`,
-          {
-            entityType: 'document',
-            entityId: sessionData?.metadata?.documentId,
-            metadata: {
-              filename: sessionData?.metadata?.filename,
-              error_message: err.message,
-              error_type: err.name,
-              stripe_session_id: sessionId,
-              timestamp: new Date().toISOString()
-            },
-            affectedUserId: sessionData?.metadata?.userId
-          }
-        );
-      }
       
-      setError(err.message || 'Erro ao processar pagamento');
+      await logError('upload', err, {
+        userId: session?.user?.id || sessionData?.metadata?.userId,
+        documentId: sessionData?.metadata?.documentId,
+        filename: sessionData?.metadata?.filename,
+        additionalInfo: {
+          stripe_session_id: sessionId,
+          error_type: err.name,
+          error_code: err.code,
+          is_mobile: sessionIsMobile === 'true',
+          upload_stage: 'payment_success_processing',
+        },
+      });
+      
+      // Mostrar mensagem amigável
+      showUserFriendlyError('UPLOAD_ERROR');
+      
+      setError('Erro ao processar pagamento. Por favor, entre em contato com o suporte.');
     } finally {
       setIsUploading(false);
     }

@@ -345,6 +345,23 @@ export default function UploadDocument() {
 
       if (createError) {
         console.error('ERROR: Erro ao criar documento no banco:', createError);
+        
+        // Logar erro de upload
+        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+        await logError('upload', createError, {
+          userId: user.id,
+          filename: uniqueFileName,
+          additionalInfo: {
+            original_filename: selectedFile.name,
+            pages,
+            file_size: selectedFile.size,
+            file_type: selectedFile.type,
+            error_code: createError.code,
+            error_message: createError.message,
+          },
+        });
+        
+        showUserFriendlyError('UPLOAD_ERROR');
         throw new Error('Erro ao criar documento no banco de dados');
       }
 
@@ -397,7 +414,25 @@ export default function UploadDocument() {
 
     } catch (err: any) {
       console.error('ERROR: Erro ao preparar documento:', err);
-      setError(err.message || 'Erro ao preparar documento');
+      
+      // Se já logou o erro acima, não logar novamente
+      if (!err.message?.includes('Erro ao criar documento no banco de dados')) {
+        // Logar erro genérico de upload
+        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+        await logError('upload', err, {
+          userId: user?.id,
+          filename: selectedFile?.name,
+          additionalInfo: {
+            file_size: selectedFile?.size,
+            file_type: selectedFile?.type,
+            pages,
+          },
+        });
+        
+        showUserFriendlyError('UPLOAD_ERROR');
+      }
+      
+      setError('Erro ao preparar documento. Por favor, tente novamente.');
     } finally {
       setIsUploading(false);
     }

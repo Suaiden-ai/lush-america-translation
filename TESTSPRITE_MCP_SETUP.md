@@ -78,3 +78,10 @@ Deve retornar: `1.0.0`
 - Os avisos `npm warn tar TAR_ENTRY_ERROR ENOENT` são normais e não impedem o funcionamento
 - O pacote está instalado corretamente em: `C:\Users\victurib\AppData\Roaming\npm\node_modules\@testsprite\testsprite-mcp`
 
+
+
+
+
+
+
+
