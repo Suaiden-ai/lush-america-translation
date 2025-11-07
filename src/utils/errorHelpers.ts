@@ -32,7 +32,7 @@ export function showUserFriendlyError(
  * Loga erros no sistema de action logs para rastreamento
  */
 export async function logError(
-  errorType: 'auth' | 'download' | 'upload' | 'network' | 'generic',
+  errorType: 'auth' | 'download' | 'upload' | 'network' | 'generic' | 'system',
   error: Error | unknown,
   context?: {
     userId?: string;
