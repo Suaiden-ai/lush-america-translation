@@ -6,6 +6,7 @@ import { AuthProvider } from './hooks/useAuth';
 import { I18nProvider } from './contexts/I18nContext';
 import { BrowserRouter } from 'react-router-dom';
 import './index.css';
+import './utils/diagnoseUserScript'; // Carregar funções de diagnóstico no console
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

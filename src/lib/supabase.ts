@@ -352,15 +352,16 @@ export const db = {
         console.error('[downloadFile] Erro ao fazer download do arquivo:', {
           error,
           message: error.message,
-          statusCode: error.statusCode,
+          name: error.name,
           bucket,
           filePath: cleanFilePath
         });
         
-        // Verificar se é erro de autenticação
-        const isAuthError = error.statusCode === 401 || error.statusCode === 403 || 
-            error.message?.includes('JWT') || error.message?.includes('token') ||
-            error.message?.includes('authentication') || error.message?.includes('unauthorized');
+        // Verificar se é erro de autenticação (baseado na mensagem)
+        const isAuthError = error.message?.includes('JWT') || error.message?.includes('token') ||
+            error.message?.includes('authentication') || error.message?.includes('unauthorized') ||
+            error.message?.includes('401') || error.message?.includes('403') ||
+            error.name?.includes('Auth') || error.name?.includes('Unauthorized');
         
         if (isAuthError) {
           console.error('[downloadFile] Erro de autenticação detectado:', error.message);
@@ -461,10 +462,10 @@ export const db = {
         filePath,
         filename,
         bucket: bucketName,
-        additionalInfo: {
-          error_code: error?.code,
-          error_status: error?.statusCode,
-        },
+          additionalInfo: {
+            error_code: error?.code,
+            error_name: error?.name,
+          },
       });
       
       // Mostrar mensagem amigável (sem detalhes técnicos)
@@ -509,13 +510,24 @@ export const db = {
   // Se não conseguir extrair filePath, tenta usar URL original (para S3 externo)
   generateViewUrl: async (url: string): Promise<string | null> => {
     try {
-      // Importar extractFilePathFromUrl dinamicamente para evitar dependência circular
+      // Importar helpers dinamicamente para evitar dependência circular
       const { extractFilePathFromUrl } = await import('../utils/fileUtils');
+      const { logError } = await import('../utils/errorHelpers');
+      
       const pathInfo = extractFilePathFromUrl(url);
       
       if (!pathInfo) {
         // Se não conseguir extrair filePath, pode ser URL externa (S3) ou URL malformada
         if (url.includes('supabase.co')) {
+          // Logar erro de URL malformada do Supabase
+          const { data: { user } } = await supabase.auth.getUser();
+          await logError('system', new Error('Não foi possível extrair filePath de URL do Supabase'), {
+            userId: user?.id,
+            additionalInfo: {
+              url,
+              error_type: 'url_parsing_failed',
+            },
+          });
           return null;
         }
         // Se for URL externa (S3), retornar como está
@@ -531,6 +543,19 @@ export const db = {
         return signedData.signedUrl;
       } else if (signedError) {
         console.error('Erro ao gerar URL para visualização:', signedError);
+        
+        // Logar erro de geração de signed URL
+        const { data: { user } } = await supabase.auth.getUser();
+        await logError('system', signedError, {
+          userId: user?.id,
+          filePath: pathInfo.filePath,
+          bucket: pathInfo.bucket,
+          additionalInfo: {
+            error_message: signedError.message,
+            error_name: signedError.name,
+            operation: 'generate_view_url',
+          },
+        });
         
         // Tentar verificar se o problema é com o caminho
         if (signedError.message?.includes('not found') || signedError.message?.includes('does not exist')) {
@@ -552,6 +577,18 @@ export const db = {
       return null;
     } catch (error) {
       console.error('Erro ao gerar URL para visualização:', error);
+      
+      // Logar erro inesperado
+      const { logError } = await import('../utils/errorHelpers');
+      const { data: { user } } = await supabase.auth.getUser();
+      await logError('system', error, {
+        userId: user?.id,
+        additionalInfo: {
+          url,
+          operation: 'generate_view_url',
+        },
+      });
+      
       return null;
     }
   },
