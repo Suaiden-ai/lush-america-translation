@@ -85,6 +85,17 @@ export const ActionTypes = {
     BATCH_PROCESSING_STARTED: 'batch_processing_started',
     BATCH_PROCESSING_COMPLETED: 'batch_processing_completed',
   },
+
+  // Error actions (for tracking client errors)
+  ERROR: {
+    AUTHENTICATION_ERROR: 'authentication_error',
+    DOWNLOAD_ERROR: 'download_error',
+    UPLOAD_ERROR: 'upload_error',
+    NETWORK_ERROR: 'network_error',
+    SYSTEM_ERROR: 'system_error',
+    UPLOAD_LOST: 'upload_lost',
+    FILE_NOT_FOUND: 'file_not_found',
+  },
 } as const;
 
 /**
@@ -156,6 +167,15 @@ export const ActionTypeLabels: Record<string, string> = {
   [ActionTypes.SYSTEM.REPORT_GENERATED]: 'Report Generated',
   [ActionTypes.SYSTEM.BATCH_PROCESSING_STARTED]: 'Batch Processing Started',
   [ActionTypes.SYSTEM.BATCH_PROCESSING_COMPLETED]: 'Batch Processing Completed',
+  
+  // Errors
+  [ActionTypes.ERROR.AUTHENTICATION_ERROR]: 'Authentication Error',
+  [ActionTypes.ERROR.DOWNLOAD_ERROR]: 'Download Error',
+  [ActionTypes.ERROR.UPLOAD_ERROR]: 'Upload Error',
+  [ActionTypes.ERROR.NETWORK_ERROR]: 'Network Error',
+  [ActionTypes.ERROR.SYSTEM_ERROR]: 'System Error',
+  [ActionTypes.ERROR.UPLOAD_LOST]: 'Upload Lost',
+  [ActionTypes.ERROR.FILE_NOT_FOUND]: 'File Not Found',
 };
 
 /**
