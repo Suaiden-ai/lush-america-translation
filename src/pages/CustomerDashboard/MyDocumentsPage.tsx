@@ -986,13 +986,40 @@ export default function MyDocumentsPage() {
                     
                     const { db } = await import('../../lib/supabase');
                     const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
-                    const pathInfo = extractFilePathFromUrl(selectedFile.translated_file_url);
+                    
+                    // Tentar múltiplas URLs como fallback (sem bloqueios)
+                    let urlToView = selectedFile.translated_file_url || selectedFile.file_url || selectedFile.file_path;
+                    
+                    // Se não encontrou URL, tentar buscar na tabela translated_documents
+                    if (!urlToView) {
+                      try {
+                        const { data: translatedDocs } = await supabase
+                          .from('translated_documents')
+                          .select('translated_file_url, filename')
+                          .eq('user_id', selectedFile.user_id || user?.id)
+                          .eq('filename', selectedFile.filename)
+                          .order('created_at', { ascending: false })
+                          .limit(1);
+                        
+                        if (translatedDocs && translatedDocs.length > 0 && translatedDocs[0].translated_file_url) {
+                          urlToView = translatedDocs[0].translated_file_url;
+                        }
+                      } catch (error) {
+                        console.error('Erro ao buscar documento traduzido:', error);
+                      }
+                    }
+                    
+                    if (!urlToView) {
+                      throw new Error('Não foi possível acessar o arquivo. URL não disponível.');
+                    }
+                    
+                    const pathInfo = extractFilePathFromUrl(urlToView);
                     
                     if (!pathInfo) {
                       throw new Error('Não foi possível acessar o arquivo. URL inválida.');
                     }
                     
-                    // Fazer download autenticado do arquivo
+                    // Fazer download do arquivo (bucket público - sem bloqueios)
                     const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
                     
                     if (!blob) {
@@ -1020,7 +1047,8 @@ export default function MyDocumentsPage() {
                       const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
                       
                       // Extrair informações do arquivo para o log
-                      const pathInfo = selectedFile.translated_file_url ? extractFilePathFromUrl(selectedFile.translated_file_url) : null;
+                      const urlToView = selectedFile.translated_file_url || selectedFile.file_url || selectedFile.file_path;
+                      const pathInfo = urlToView ? extractFilePathFromUrl(urlToView) : null;
                       const logFilename = selectedFile.original_filename || selectedFile.filename || 'unknown';
                       
                       await logError('view', error instanceof Error ? error : new Error(String(error)), {
@@ -1081,20 +1109,47 @@ export default function MyDocumentsPage() {
                   }
                   
                   try {
+                    // Tentar múltiplas URLs como fallback (sem bloqueios)
+                    let urlToDownload = selectedFile.translated_file_url || selectedFile.file_url || selectedFile.file_path;
+                    
+                    // Se não encontrou URL, tentar buscar na tabela translated_documents
+                    if (!urlToDownload) {
+                      try {
+                        const { data: translatedDocs } = await supabase
+                          .from('translated_documents')
+                          .select('translated_file_url, filename')
+                          .eq('user_id', selectedFile.user_id || user?.id)
+                          .eq('filename', selectedFile.filename)
+                          .order('created_at', { ascending: false })
+                          .limit(1);
+                        
+                        if (translatedDocs && translatedDocs.length > 0 && translatedDocs[0].translated_file_url) {
+                          urlToDownload = translatedDocs[0].translated_file_url;
+                        }
+                      } catch (error) {
+                        console.error('Erro ao buscar documento traduzido:', error);
+                      }
+                    }
+                    
+                    if (!urlToDownload) {
+                      alert('URL do arquivo não disponível.');
+                      return;
+                    }
+                    
                     // Extrair filePath e bucket da URL
                     const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
-                    const pathInfo = extractFilePathFromUrl(selectedFile.translated_file_url);
+                    const pathInfo = extractFilePathFromUrl(urlToDownload);
                     
                     if (!pathInfo) {
                       // Se não conseguir extrair, verificar se é URL do Supabase (não deve tentar fetch direto)
-                      if (selectedFile.translated_file_url.includes('supabase.co')) {
+                      if (urlToDownload.includes('supabase.co')) {
                         alert('Não foi possível acessar o arquivo. URL do Supabase inválida ou expirada.');
                         return;
                       }
                       
                       // Se não for URL do Supabase, tentar download direto da URL (para S3 externo)
                       try {
-                        const response = await fetch(selectedFile.translated_file_url);
+                        const response = await fetch(urlToDownload);
                         if (response.ok) {
                           const blob = await response.blob();
                           const url = window.URL.createObjectURL(blob);
