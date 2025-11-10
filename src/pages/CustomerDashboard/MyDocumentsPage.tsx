@@ -835,7 +835,7 @@ export default function MyDocumentsPage() {
                       const success = await db.downloadFileAndTrigger(pathInfo.filePath, item.filename, pathInfo.bucket);
                       
                       if (!success) {
-                        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                        alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
                       }
                     } catch (error) {
                       console.error('Error downloading file:', error);
@@ -996,7 +996,7 @@ export default function MyDocumentsPage() {
                     const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
                     
                     if (!blob) {
-                      throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                      throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
                     }
                     
                     // Criar blob URL (URL local, não expõe URL original)
@@ -1275,7 +1275,7 @@ export default function MyDocumentsPage() {
                         const { db } = await import('../../lib/supabase');
                         const success = await db.downloadFileAndTrigger(pathInfo.filePath, previewDocument.filename, pathInfo.bucket);
                         if (!success) {
-                          alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                          alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
                         }
                       }
                     } catch (err) {

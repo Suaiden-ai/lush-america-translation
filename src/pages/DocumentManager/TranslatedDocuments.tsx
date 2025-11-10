@@ -240,7 +240,7 @@ export default function TranslatedDocuments() {
       const viewUrl = await db.generateViewUrl(doc.translated_file_url);
       
       if (!viewUrl) {
-        throw new Error('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+        throw new Error('Não foi possível gerar link para visualização. Por favor, tente novamente.');
       }
       
       setPreviewUrl(viewUrl);
@@ -524,7 +524,7 @@ export default function TranslatedDocuments() {
                                 const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
                                 
                                 if (!success) {
-                                  alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                                  alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
                                 }
                               } catch (err) {
                                 console.error('Error downloading file:', err);

@@ -229,12 +229,12 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
           }
         }
         
-        // Usar download autenticado direto
+        // Usar download direto
         const { db } = await import('../../lib/supabase');
         const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
         
         if (!success) {
-          alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+          alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
         }
       } catch (error) {
         console.error('Error downloading file:', error);
@@ -298,7 +298,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
       const viewUrl = await db.generateViewUrl(url);
       
       if (!viewUrl) {
-        throw new Error('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+        throw new Error('Não foi possível gerar link para visualização. Por favor, tente novamente.');
       }
       
       setPreviewUrl(viewUrl);

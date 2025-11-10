@@ -88,12 +88,12 @@ export default function DocumentProgress() {
         throw new Error('Não foi possível extrair informações do arquivo da URL.');
       }
       
-      // 2. Fazer download autenticado do arquivo
+      // 2. Fazer download do arquivo
       const { db } = await import('../../lib/supabase');
       const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
       
       if (!blob) {
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
       
       // 3. Criar blob URL (URL local, não expõe URL original)
@@ -142,7 +142,7 @@ export default function DocumentProgress() {
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {
-        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
     } catch (err) {
       console.error('Error downloading preview:', err);
@@ -160,7 +160,7 @@ export default function DocumentProgress() {
   }, [previewBlobUrl]);
 
   // Função para download automático (incluindo PDFs)
-  // Usa download autenticado direto - URLs não podem ser compartilhadas externamente
+  // Usa download direto - bucket público
   const handleDownload = async (url: string, filename: string, documentId: string) => {
     try {
       // Log de download do documento
@@ -223,12 +223,12 @@ export default function DocumentProgress() {
         }
       }
       
-      // Usar download autenticado direto
+      // Usar download direto
       const { db } = await import('../../lib/supabase');
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {
-        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
     } catch (error) {
       console.error('Erro ao baixar arquivo:', error);

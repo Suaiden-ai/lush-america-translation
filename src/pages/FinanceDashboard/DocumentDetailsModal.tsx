@@ -249,11 +249,11 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
           }
         }
         
-        // Usar download autenticado direto
+        // Usar download direto
         const success = await db.downloadFileAndTrigger(pathInfo.filePath, document.filename, pathInfo.bucket);
         
         if (!success) {
-          alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+          alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
         }
       } catch (error) {
         console.error('Error downloading file:', error);
@@ -302,7 +302,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       if (viewUrl) {
         window.open(viewUrl, '_blank', 'noopener,noreferrer');
       } else {
-        alert('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+        alert('Não foi possível gerar link para visualização. Por favor, tente novamente.');
       }
     } else {
       console.error('❌ Nenhuma URL disponível para visualizar');

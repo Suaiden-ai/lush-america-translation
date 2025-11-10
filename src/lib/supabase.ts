@@ -296,44 +296,9 @@ export const db = {
     return 'documents';
   },
 
-  // Função simplificada para verificar se há sessão
-  // Se o usuário está logado na plataforma, confiamos que o Supabase gerencia a sessão automaticamente
-  ensureAuthenticated: async (): Promise<boolean> => {
-    try {
-      // Apenas verificar se há uma sessão - o Supabase gerencia renovação automaticamente
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('[downloadFile] Erro ao verificar sessão:', sessionError);
-        return false;
-      }
-      
-      // Se há sessão, o usuário está autenticado e pode baixar seus documentos
-      // O Supabase vai gerenciar a renovação de tokens automaticamente (autoRefreshToken: true)
-      if (session && session.user) {
-        return true;
-      }
-      
-      // Sem sessão = usuário não está logado
-      console.warn('[downloadFile] Nenhuma sessão encontrada. Usuário não está autenticado.');
-      return false;
-    } catch (error) {
-      console.error('[downloadFile] Erro ao verificar sessão:', error);
-      return false;
-    }
-  },
-
-  // Função para download direto e autenticado do arquivo
-  // IMPORTANTE: Requer autenticação ativa. URLs não podem ser compartilhadas externamente.
+  // Função para download direto do arquivo (bucket público - sem autenticação necessária)
   downloadFile: async (filePath: string, bucketName?: string): Promise<Blob | null> => {
     try {
-      // Verificar autenticação antes de tentar download
-      const isAuthenticated = await db.ensureAuthenticated();
-      if (!isAuthenticated) {
-        console.error('[downloadFile] Usuário não está autenticado. Não é possível fazer download.');
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
-      }
-      
       const bucket = bucketName || db.detectBucket(filePath);
       
       // Limpar filePath de possíveis duplicatas de bucket
@@ -344,6 +309,7 @@ export const db = {
       
       console.log('[downloadFile] Tentando fazer download:', { bucket, cleanFilePath });
       
+      // Tentar download direto (funciona para buckets públicos)
       const { data, error } = await supabase.storage
         .from(bucket)
         .download(cleanFilePath);
@@ -357,19 +323,29 @@ export const db = {
           filePath: cleanFilePath
         });
         
-        // Verificar se é erro de autenticação (baseado na mensagem)
-        const isAuthError = error.message?.includes('JWT') || error.message?.includes('token') ||
+        // Se erro de acesso, tentar usar URL pública como fallback
+        if (error.message?.includes('JWT') || error.message?.includes('token') ||
             error.message?.includes('authentication') || error.message?.includes('unauthorized') ||
-            error.message?.includes('401') || error.message?.includes('403') ||
-            error.name?.includes('Auth') || error.name?.includes('Unauthorized');
-        
-        if (isAuthError) {
-          console.error('[downloadFile] Erro de autenticação detectado:', error.message);
-          // Não mostrar detalhes técnicos - apenas lançar erro genérico
-          throw new Error('AUTH_ERROR');
+            error.message?.includes('401') || error.message?.includes('403')) {
+          console.log('[downloadFile] Erro de autenticação, tentando URL pública como fallback');
+          
+          // Gerar URL pública e fazer fetch direto
+          const { data: { publicUrl } } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(cleanFilePath);
+          
+          try {
+            const response = await fetch(publicUrl);
+            if (response.ok) {
+              const blob = await response.blob();
+              console.log('[downloadFile] Download via URL pública realizado com sucesso.');
+              return blob;
+            }
+          } catch (fetchError) {
+            console.error('[downloadFile] Erro ao fazer fetch da URL pública:', fetchError);
+          }
         }
         
-        // Outros erros - não expor detalhes técnicos
         throw new Error('DOWNLOAD_ERROR');
       }
       
@@ -383,8 +359,8 @@ export const db = {
     } catch (error: any) {
       console.error('[downloadFile] Erro ao fazer download do arquivo:', error);
       
-      // Se já é um erro genérico (AUTH_ERROR, DOWNLOAD_ERROR, FILE_NOT_FOUND), apenas re-lançar
-      if (error?.message === 'AUTH_ERROR' || error?.message === 'DOWNLOAD_ERROR' || error?.message === 'FILE_NOT_FOUND') {
+      // Se já é um erro genérico (DOWNLOAD_ERROR, FILE_NOT_FOUND), apenas re-lançar
+      if (error?.message === 'DOWNLOAD_ERROR' || error?.message === 'FILE_NOT_FOUND') {
         throw error;
       }
       
@@ -393,7 +369,7 @@ export const db = {
     }
   },
 
-  // Função para download e iniciar download automático
+  // Função para download e iniciar download automático (bucket público - sem autenticação necessária)
   downloadFileAndTrigger: async (filePath: string, filename: string, bucketName?: string): Promise<boolean> => {
     try {
       console.log('[downloadFileAndTrigger] Iniciando download:', { filePath, filename, bucketName });
@@ -406,12 +382,18 @@ export const db = {
       if (!blob) {
         console.error('[downloadFileAndTrigger] Download retornou null.');
         
-        // Obter userId para logging
-        const { data: { user } } = await supabase.auth.getUser();
+        // Obter userId para logging (se disponível, mas não obrigatório)
+        let userId: string | undefined;
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          userId = user?.id;
+        } catch (e) {
+          // Ignorar erro de autenticação - não é necessário para download
+        }
         
         // Logar erro
         await logError('download', new Error('Download retornou null'), {
-          userId: user?.id,
+          userId,
           filePath,
           filename,
           bucket: bucketName,
@@ -446,44 +428,58 @@ export const db = {
       // Importar helpers dinamicamente
       const { logError, showUserFriendlyError } = await import('../utils/errorHelpers');
       
-      // Obter userId para logging
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Determinar tipo de erro
-      const errorType = error?.message?.includes('autenticado') || 
-                       error?.message?.includes('authentication') ||
-                       error?.message?.includes('JWT') ||
-                       error?.message?.includes('token')
-                       ? 'auth' : 'download';
+      // Obter userId para logging (se disponível, mas não obrigatório)
+      let userId: string | undefined;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        userId = user?.id;
+      } catch (e) {
+        // Ignorar erro de autenticação - não é necessário para download
+      }
       
       // Logar erro
-      await logError(errorType, error, {
-        userId: user?.id,
+      await logError('download', error, {
+        userId,
         filePath,
         filename,
         bucket: bucketName,
-          additionalInfo: {
-            error_code: error?.code,
-            error_name: error?.name,
-          },
+        additionalInfo: {
+          error_code: error?.code,
+          error_name: error?.name,
+        },
       });
       
-      // Mostrar mensagem amigável (sem detalhes técnicos)
-      if (errorType === 'auth') {
-        showUserFriendlyError('AUTH_ERROR');
-      } else {
-        showUserFriendlyError('DOWNLOAD_ERROR');
-      }
+      // Mostrar mensagem amigável
+      showUserFriendlyError('DOWNLOAD_ERROR');
       
       return false;
     }
   },
 
   // Função para gerar URL pública permanente (não expira)
-  // DEPRECATED: Para buckets privados, isso não funciona. Use downloadFile() em vez disso.
-  generatePublicUrl: async (filePath: string) => {
-    console.warn('generatePublicUrl está deprecated. Use downloadFile() para downloads autenticados.');
-    return null;
+  // Funciona para buckets públicos - não requer autenticação
+  generatePublicUrl: async (filePath: string, bucketName: string = 'documents') => {
+    try {
+      // Limpar filePath de possíveis duplicatas de bucket
+      let cleanFilePath = filePath;
+      if (cleanFilePath.startsWith(`${bucketName}/`)) {
+        cleanFilePath = cleanFilePath.substring(bucketName.length + 1);
+      }
+      
+      const { data } = await supabase.storage
+        .from(bucketName)
+        .getPublicUrl(cleanFilePath);
+      
+      if (!data?.publicUrl) {
+        console.error('[generatePublicUrl] Erro ao gerar URL pública: data ou publicUrl não disponível');
+        return null;
+      }
+      
+      return data.publicUrl;
+    } catch (error) {
+      console.error('[generatePublicUrl] Erro ao gerar URL pública:', error);
+      return null;
+    }
   },
 
   // Função para gerar URL pré-assinado com tempo maior (30 dias)
@@ -505,8 +501,8 @@ export const db = {
     }
   },
 
-  // Função helper para SEMPRE gerar um novo signed URL para visualização
-  // Extrai filePath da URL, gera novo signed URL de 5 minutos e retorna
+  // Função helper para gerar URL pública para visualização (bucket público - não requer autenticação)
+  // Extrai filePath da URL, gera URL pública permanente e retorna
   // Se não conseguir extrair filePath, tenta usar URL original (para S3 externo)
   generateViewUrl: async (url: string): Promise<string | null> => {
     try {
@@ -519,75 +515,80 @@ export const db = {
       if (!pathInfo) {
         // Se não conseguir extrair filePath, pode ser URL externa (S3) ou URL malformada
         if (url.includes('supabase.co')) {
-          // Logar erro de URL malformada do Supabase
-          const { data: { user } } = await supabase.auth.getUser();
-          await logError('system', new Error('Não foi possível extrair filePath de URL do Supabase'), {
-            userId: user?.id,
-            additionalInfo: {
-              url,
-              error_type: 'url_parsing_failed',
-            },
-          });
+          // Logar erro de URL malformada do Supabase (se usuário estiver logado)
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            await logError('system', new Error('Não foi possível extrair filePath de URL do Supabase'), {
+              userId: user?.id,
+              additionalInfo: {
+                url,
+                error_type: 'url_parsing_failed',
+              },
+            });
+          } catch (e) {
+            // Ignorar erro de autenticação - não é necessário
+          }
           return null;
         }
         // Se for URL externa (S3), retornar como está
         return url;
       }
       
-      // SEMPRE gerar um novo signed URL de curta duração (5 minutos) para visualização
-      const { data: signedData, error: signedError } = await supabase.storage
+      // Gerar URL pública permanente (não expira) para visualização
+      const { data: publicUrlData } = await supabase.storage
         .from(pathInfo.bucket)
-        .createSignedUrl(pathInfo.filePath, 300); // 5 minutos
+        .getPublicUrl(pathInfo.filePath);
       
-      if (signedData?.signedUrl) {
-        return signedData.signedUrl;
-      } else if (signedError) {
-        console.error('Erro ao gerar URL para visualização:', signedError);
+      if (publicUrlData?.publicUrl) {
+        return publicUrlData.publicUrl;
+      } else {
+        console.error('Erro ao gerar URL pública para visualização: data ou publicUrl não disponível');
         
-        // Logar erro de geração de signed URL
-        const { data: { user } } = await supabase.auth.getUser();
-        await logError('system', signedError, {
-          userId: user?.id,
-          filePath: pathInfo.filePath,
-          bucket: pathInfo.bucket,
-          additionalInfo: {
-            error_message: signedError.message,
-            error_name: signedError.name,
-            operation: 'generate_view_url',
-          },
-        });
+        // Logar erro de geração de URL pública (se usuário estiver logado)
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          await logError('system', new Error('Não foi possível gerar URL pública'), {
+            userId: user?.id,
+            filePath: pathInfo.filePath,
+            bucket: pathInfo.bucket,
+            additionalInfo: {
+              operation: 'generate_view_url',
+            },
+          });
+        } catch (e) {
+          // Ignorar erro de autenticação - não é necessário
+        }
         
-        // Tentar verificar se o problema é com o caminho
-        if (signedError.message?.includes('not found') || signedError.message?.includes('does not exist')) {
-          // Tentar buscar o arquivo na raiz do bucket
-          const rootFile = pathInfo.filePath.split('/').pop();
-          if (rootFile && rootFile !== pathInfo.filePath) {
-            const { data: altSignedData } = await supabase.storage
-              .from(pathInfo.bucket)
-              .createSignedUrl(rootFile, 300);
-            if (altSignedData?.signedUrl) {
-              return altSignedData.signedUrl;
-            }
+        // Tentar buscar o arquivo na raiz do bucket como fallback
+        const rootFile = pathInfo.filePath.split('/').pop();
+        if (rootFile && rootFile !== pathInfo.filePath) {
+          const { data: altPublicUrlData } = await supabase.storage
+            .from(pathInfo.bucket)
+            .getPublicUrl(rootFile);
+          if (altPublicUrlData?.publicUrl) {
+            return altPublicUrlData.publicUrl;
           }
         }
         
         return null;
       }
-      
-      return null;
     } catch (error) {
       console.error('Erro ao gerar URL para visualização:', error);
       
-      // Logar erro inesperado
-      const { logError } = await import('../utils/errorHelpers');
-      const { data: { user } } = await supabase.auth.getUser();
-      await logError('system', error, {
-        userId: user?.id,
-        additionalInfo: {
-          url,
-          operation: 'generate_view_url',
-        },
-      });
+      // Logar erro inesperado (se usuário estiver logado)
+      try {
+        const { logError } = await import('../utils/errorHelpers');
+        const { data: { user } } = await supabase.auth.getUser();
+        await logError('system', error, {
+          userId: user?.id,
+          additionalInfo: {
+            url,
+            operation: 'generate_view_url',
+          },
+        });
+      } catch (e) {
+        // Ignorar erro de autenticação - não é necessário
+      }
       
       return null;
     }
@@ -630,9 +631,9 @@ export const db = {
   },
 
   // Função para regenerar URL se necessário
-  // DEPRECATED: Use downloadFile() para downloads autenticados que não podem ser compartilhados
+  // DEPRECATED: Use generatePublicUrl() ou downloadFile() em vez disso
   regenerateFileUrl: async (filePath: string, useSignedUrl: boolean = true) => {
-    console.warn('regenerateFileUrl está deprecated. Use downloadFile() para downloads autenticados.');
+    console.warn('regenerateFileUrl está deprecated. Use generatePublicUrl() ou downloadFile() em vez disso.');
     // Manter compatibilidade temporária, mas retornar null
     return null;
   }

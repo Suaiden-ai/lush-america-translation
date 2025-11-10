@@ -119,11 +119,11 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
         }
       }
       
-      // Usar download autenticado direto
+      // Usar download direto
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
     } catch (error) {
       console.error('Erro no download:', error);
@@ -224,7 +224,7 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
       const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
       
       if (!blob) {
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
       
       // 3. Criar blob URL (URL local, não expõe URL original)
