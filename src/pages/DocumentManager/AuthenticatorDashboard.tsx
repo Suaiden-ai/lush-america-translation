@@ -112,12 +112,12 @@ export default function AuthenticatorDashboard() {
         throw new Error('Não foi possível extrair informações do arquivo da URL.');
       }
       
-      // 2. Fazer download autenticado do arquivo
+      // 2. Fazer download do arquivo
       const { db } = await import('../../lib/supabase');
       const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
       
       if (!blob) {
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
       
       // 3. Criar blob URL (URL local, não expõe URL original)
@@ -186,7 +186,7 @@ export default function AuthenticatorDashboard() {
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, downloadFilename, pathInfo.bucket);
       
       if (!success) {
-        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
     } catch (err) {
       console.error('Error downloading preview:', err);
@@ -975,7 +975,7 @@ export default function AuthenticatorDashboard() {
                             if (viewUrl) {
                               window.open(viewUrl, '_blank', 'noopener,noreferrer');
                             } else {
-                              alert('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+                              alert('Não foi possível gerar link para visualização. Por favor, tente novamente.');
                             }
                           } catch (error) {
                             console.error('Error opening document:', error);
@@ -1025,12 +1025,12 @@ export default function AuthenticatorDashboard() {
                               }
                             }
                             
-                            // Usar download autenticado direto
+                            // Usar download direto
                             const filename = doc.filename ? String(doc.filename) : 'document.pdf';
                             const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
                             
                             if (!success) {
-                              alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                              alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
                             }
                           } catch (err) {
                             console.error('Error downloading file:', err);
@@ -1265,12 +1265,12 @@ export default function AuthenticatorDashboard() {
                                     }
                                   }
                                   
-                                  // Usar download autenticado direto
+                                  // Usar download direto
                                   const filename = doc.filename ? String(doc.filename) : 'document.pdf';
                                   const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
                                   
                                   if (!success) {
-                                    alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+                                    alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
                                   }
                                 } catch (err) {
                                   console.error('Error downloading file:', err);

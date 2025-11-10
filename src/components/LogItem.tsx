@@ -502,7 +502,7 @@ export const LogItem: React.FC<LogItemProps> = ({ log, onEntityClick }) => {
       const viewUrl = await db.generateViewUrl(fileUrl);
       
       if (!viewUrl) {
-        throw new Error('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+        throw new Error('Não foi possível gerar link para visualização. Por favor, tente novamente.');
       }
       
       setPreviewUrl(viewUrl);
@@ -555,12 +555,12 @@ export const LogItem: React.FC<LogItemProps> = ({ log, onEntityClick }) => {
         }
       }
       
-      // Usar download autenticado direto usando a URL original
+      // Usar download direto usando a URL original
       const { db } = await import('../lib/supabase');
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {
-        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
     } catch (err) {
       console.error('Error downloading preview:', err);

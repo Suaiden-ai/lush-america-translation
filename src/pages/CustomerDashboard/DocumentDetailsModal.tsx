@@ -84,7 +84,32 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       const viewUrl = await db.generateViewUrl(url);
       
       if (!viewUrl) {
-        throw new Error('Não foi possível gerar link para visualização. Verifique se você está autenticado.');
+        // Logar erro quando não consegue gerar URL de visualização
+        try {
+          const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+          const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+          
+          const pathInfo = extractFilePathFromUrl(url);
+          const logFilename = filename || document?.filename || 'unknown';
+          
+          await logError('view', new Error('VIEW_ERROR'), {
+            userId: document?.user_id,
+            documentId: document?.id,
+            filePath: pathInfo?.filePath,
+            filename: logFilename,
+            bucket: pathInfo?.bucket,
+            additionalInfo: {
+              operation: 'generate_view_url_failed',
+              original_url: url,
+            },
+          });
+          
+          showUserFriendlyError('VIEW_ERROR');
+        } catch (logError) {
+          console.error('Error logging view error:', logError);
+        }
+        
+        throw new Error('Não foi possível gerar link para visualização. Por favor, tente novamente.');
       }
       
       // Log de visualização do documento
@@ -128,11 +153,11 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
         return;
       }
       
-      // 2. Fazer download autenticado do arquivo
+      // 2. Fazer download do arquivo
       const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
       
       if (!blob) {
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
       
       // 3. Criar blob URL (URL local, não expõe URL original)
@@ -148,12 +173,39 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       }
     } catch (error) {
       console.error('Error opening file:', error);
-      alert((error as Error).message || 'Failed to open file.');
+      
+      // Logar erro de visualização
+      try {
+        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+        
+        // Extrair informações do arquivo para o log
+        const pathInfo = extractFilePathFromUrl(url);
+        const logFilename = filename || document?.filename || 'unknown';
+        
+        await logError('view', error instanceof Error ? error : new Error(String(error)), {
+          userId: document?.user_id,
+          documentId: document?.id,
+          filePath: pathInfo?.filePath,
+          filename: logFilename,
+          bucket: pathInfo?.bucket,
+          additionalInfo: {
+            error_code: (error as any)?.code,
+            error_name: (error as Error)?.name,
+            operation: 'view_document',
+          },
+        });
+        
+        showUserFriendlyError('VIEW_ERROR');
+      } catch (logError) {
+        console.error('Error logging view error:', logError);
+        alert((error as Error).message || 'Failed to open file.');
+      }
     }
   };
 
   // Função para download automático (incluindo PDFs)
-  // Usa download autenticado direto - URLs não podem ser compartilhadas externamente
+  // Usa download direto - bucket público
   const handleDownload = async (url: string, filename: string) => {
     try {
       // Extrair filePath e bucket da URL
@@ -213,11 +265,11 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
         }
       }
       
-      // Usar download autenticado direto
+      // Usar download direto
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
       
       // Log de download do documento

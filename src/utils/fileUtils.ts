@@ -140,6 +140,18 @@ export function extractFilePathFromUrl(url: string): { filePath: string; bucket:
       filePath = filePath.substring(bucket.length + 1);
     }
     
+    // Decodificar filePath para tratar caracteres especiais codificados (como %20, %28, %29, etc.)
+    try {
+      const decoded = decodeURIComponent(filePath);
+      // Só usar o decodificado se for diferente e válido
+      if (decoded && decoded !== filePath) {
+        filePath = decoded;
+      }
+    } catch (e) {
+      // Se a decodificação falhar, usar o filePath original
+      console.warn('Erro ao decodificar filePath, usando original:', e);
+    }
+    
     return { filePath, bucket };
   } catch (error) {
     console.error('Erro ao extrair filePath da URL:', error);

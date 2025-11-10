@@ -88,12 +88,12 @@ export default function DocumentProgress() {
         throw new Error('Não foi possível extrair informações do arquivo da URL.');
       }
       
-      // 2. Fazer download autenticado do arquivo
+      // 2. Fazer download do arquivo
       const { db } = await import('../../lib/supabase');
       const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
       
       if (!blob) {
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
       
       // 3. Criar blob URL (URL local, não expõe URL original)
@@ -110,6 +110,35 @@ export default function DocumentProgress() {
       setPreviewOpen(true);
     } catch (err) {
       console.error('❌ Erro ao abrir preview:', err);
+      
+      // Logar erro de visualização
+      try {
+        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+        
+        // Extrair informações do arquivo para o log
+        const pathInfo = doc.translated_file_url ? extractFilePathFromUrl(doc.translated_file_url) : null;
+        const filename = doc.original_filename || doc.filename || 'unknown';
+        
+        await logError('view', err instanceof Error ? err : new Error(String(err)), {
+          userId: user?.id,
+          documentId: doc.id,
+          filePath: pathInfo?.filePath,
+          filename: filename,
+          bucket: pathInfo?.bucket,
+          additionalInfo: {
+            error_code: (err as any)?.code,
+            error_name: (err as Error)?.name,
+            operation: 'view_document_progress',
+            view_type: 'progress_page_preview',
+          },
+        });
+        
+        showUserFriendlyError('VIEW_ERROR');
+      } catch (logError) {
+        console.error('Error logging view error:', logError);
+      }
+      
       setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');
       setPreviewOpen(true);
     } finally {
@@ -142,7 +171,7 @@ export default function DocumentProgress() {
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {
-        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
     } catch (err) {
       console.error('Error downloading preview:', err);
@@ -160,7 +189,7 @@ export default function DocumentProgress() {
   }, [previewBlobUrl]);
 
   // Função para download automático (incluindo PDFs)
-  // Usa download autenticado direto - URLs não podem ser compartilhadas externamente
+  // Usa download direto - bucket público
   const handleDownload = async (url: string, filename: string, documentId: string) => {
     try {
       // Log de download do documento
@@ -223,12 +252,12 @@ export default function DocumentProgress() {
         }
       }
       
-      // Usar download autenticado direto
+      // Usar download direto
       const { db } = await import('../../lib/supabase');
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {
-        alert('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
     } catch (error) {
       console.error('Erro ao baixar arquivo:', error);

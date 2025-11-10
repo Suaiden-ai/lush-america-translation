@@ -21,7 +21,7 @@ export function DocumentsList({ documents, onViewDocument }: DocumentsListProps)
   };
 
   // Função para download automático (incluindo PDFs)
-  // Usa download autenticado direto - URLs não podem ser compartilhadas externamente
+  // Usa download direto - bucket público
   const handleDownload = async (url: string, filename: string, documentId?: string) => {
     try {
       // Log de download do documento
@@ -83,11 +83,11 @@ export function DocumentsList({ documents, onViewDocument }: DocumentsListProps)
         }
       }
       
-      // Usar download autenticado direto
+      // Usar download direto
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {
-        throw new Error('Não foi possível baixar o arquivo. Verifique se você está autenticado.');
+        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
     } catch (error: any) {
       console.error('Erro no download:', error);
