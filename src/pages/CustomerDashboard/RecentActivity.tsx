@@ -184,17 +184,19 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
       setPreviewError(null);
       setPreviewDocument(doc);
       
-      // Determinar URL para visualizar
-      let urlToView = doc.translated_file_url || doc.file_url;
+      // Determinar URL para visualizar - tentar múltiplas URLs como fallback (sem bloqueios)
+      let urlToView = doc.translated_file_url || doc.file_url || doc.file_path;
       
-      // Se o documento está completed mas não tem translated_file_url, buscar na translated_documents
-      if (!urlToView && currentStatus === 'completed') {
+      // Se não encontrou URL, tentar buscar na tabela translated_documents (independente do status)
+      if (!urlToView) {
         try {
           const { data: translatedDocs } = await supabase
             .from('translated_documents')
             .select('translated_file_url, filename')
             .eq('user_id', doc.user_id)
-            .eq('filename', doc.filename);
+            .eq('filename', doc.filename)
+            .order('created_at', { ascending: false })
+            .limit(1);
           
           if (translatedDocs && translatedDocs.length > 0 && translatedDocs[0].translated_file_url) {
             urlToView = translatedDocs[0].translated_file_url;
@@ -283,7 +285,27 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
     if (!previewDocument) return;
     
     try {
-      const urlToDownload = previewDocument.translated_file_url || previewDocument.file_url;
+      // Tentar múltiplas URLs como fallback (sem bloqueios)
+      let urlToDownload = previewDocument.translated_file_url || previewDocument.file_url || previewDocument.file_path;
+      
+      // Se não encontrou URL, tentar buscar na tabela translated_documents
+      if (!urlToDownload) {
+        try {
+          const { data: translatedDocs } = await supabase
+            .from('translated_documents')
+            .select('translated_file_url, filename')
+            .eq('user_id', previewDocument.user_id)
+            .eq('filename', previewDocument.filename)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (translatedDocs && translatedDocs.length > 0 && translatedDocs[0].translated_file_url) {
+            urlToDownload = translatedDocs[0].translated_file_url;
+          }
+        } catch (error) {
+          console.error('Erro ao buscar documento traduzido:', error);
+        }
+      }
       
       if (!urlToDownload) {
         alert('URL do arquivo não disponível.');

@@ -73,7 +73,29 @@ export default function DocumentProgress() {
       setPreviewError(null);
       setPreviewDocument(doc);
       
-      if (!doc.translated_file_url) {
+      // Tentar múltiplas URLs como fallback (sem bloqueios)
+      let urlToView = doc.translated_file_url || doc.file_url || doc.file_path;
+      
+      // Se não encontrou URL, tentar buscar na tabela translated_documents
+      if (!urlToView) {
+        try {
+          const { data: translatedDocs } = await supabase
+            .from('translated_documents')
+            .select('translated_file_url, filename')
+            .eq('user_id', doc.user_id || user?.id)
+            .eq('filename', doc.filename)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (translatedDocs && translatedDocs.length > 0 && translatedDocs[0].translated_file_url) {
+            urlToView = translatedDocs[0].translated_file_url;
+          }
+        } catch (error) {
+          console.error('Erro ao buscar documento traduzido:', error);
+        }
+      }
+      
+      if (!urlToView) {
         setPreviewError('No document available to view.');
         setPreviewOpen(true);
         return;
@@ -82,7 +104,7 @@ export default function DocumentProgress() {
       // IMPORTANTE: Usar blob URL para evitar expor URL original no DOM
       // 1. Extrair filePath da URL original
       const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
-      const pathInfo = extractFilePathFromUrl(doc.translated_file_url);
+      const pathInfo = extractFilePathFromUrl(urlToView);
       
       if (!pathInfo) {
         throw new Error('Não foi possível extrair informações do arquivo da URL.');
@@ -117,7 +139,8 @@ export default function DocumentProgress() {
         const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
         
         // Extrair informações do arquivo para o log
-        const pathInfo = doc.translated_file_url ? extractFilePathFromUrl(doc.translated_file_url) : null;
+        const urlToView = doc.translated_file_url || doc.file_url || doc.file_path;
+        const pathInfo = urlToView ? extractFilePathFromUrl(urlToView) : null;
         const filename = doc.original_filename || doc.filename || 'unknown';
         
         await logError('view', err instanceof Error ? err : new Error(String(err)), {
@@ -151,7 +174,27 @@ export default function DocumentProgress() {
     if (!previewDocument) return;
     
     try {
-      const urlToDownload = previewDocument.translated_file_url;
+      // Tentar múltiplas URLs como fallback (sem bloqueios)
+      let urlToDownload = previewDocument.translated_file_url || previewDocument.file_url || previewDocument.file_path;
+      
+      // Se não encontrou URL, tentar buscar na tabela translated_documents
+      if (!urlToDownload) {
+        try {
+          const { data: translatedDocs } = await supabase
+            .from('translated_documents')
+            .select('translated_file_url, filename')
+            .eq('user_id', previewDocument.user_id || user?.id)
+            .eq('filename', previewDocument.filename)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (translatedDocs && translatedDocs.length > 0 && translatedDocs[0].translated_file_url) {
+            urlToDownload = translatedDocs[0].translated_file_url;
+          }
+        } catch (error) {
+          console.error('Erro ao buscar documento traduzido:', error);
+        }
+      }
       
       if (!urlToDownload) {
         alert('URL do arquivo não disponível.');
