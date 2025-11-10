@@ -43,11 +43,62 @@ export default function DocumentPreview() {
         const { db } = await import('../../lib/supabase');
         const viewUrl = await db.generateViewUrl(source);
         if (!viewUrl) {
+          // Logar erro quando não consegue gerar URL de visualização
+          try {
+            const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+            const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+            
+            const pathInfo = extractFilePathFromUrl(source);
+            const logFilename = filename || 'unknown';
+            
+            await logError('view', new Error('VIEW_ERROR'), {
+              documentId: id,
+              filePath: pathInfo?.filePath,
+              filename: logFilename,
+              bucket: pathInfo?.bucket,
+              additionalInfo: {
+                operation: 'generate_view_url_failed',
+                original_url: source,
+              },
+            });
+            
+            showUserFriendlyError('VIEW_ERROR');
+          } catch (logError) {
+            console.error('Error logging view error:', logError);
+          }
+          
           setError('Não foi possível gerar link para visualização. Por favor, tente novamente.');
           return;
         }
         setFileUrl(viewUrl);
       } catch (e: any) {
+        console.error('❌ Erro ao carregar documento:', e);
+        
+        // Logar erro de visualização
+        try {
+          const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+          const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+          
+          const pathInfo = source ? extractFilePathFromUrl(source) : null;
+          const logFilename = filename || 'unknown';
+          
+          await logError('view', e instanceof Error ? e : new Error(String(e)), {
+            documentId: id,
+            filePath: pathInfo?.filePath,
+            filename: logFilename,
+            bucket: pathInfo?.bucket,
+            additionalInfo: {
+              error_code: (e as any)?.code,
+              error_name: (e as Error)?.name,
+              operation: 'view_document_preview',
+            },
+          });
+          
+          showUserFriendlyError('VIEW_ERROR');
+        } catch (logError) {
+          console.error('Error logging view error:', logError);
+        }
+        
         setError(e?.message || 'Falha ao carregar documento');
       } finally {
         setLoading(false);

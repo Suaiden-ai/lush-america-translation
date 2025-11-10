@@ -302,7 +302,31 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       if (viewUrl) {
         window.open(viewUrl, '_blank', 'noopener,noreferrer');
       } else {
-        alert('Não foi possível gerar link para visualização. Por favor, tente novamente.');
+        // Logar erro quando não consegue gerar URL de visualização
+        try {
+          const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+          const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+          
+          const pathInfo = extractFilePathFromUrl(url);
+          const logFilename = document?.filename || 'unknown';
+          
+          await logError('view', new Error('VIEW_ERROR'), {
+            userId: document?.user_id,
+            documentId: document?.id,
+            filePath: pathInfo?.filePath,
+            filename: logFilename,
+            bucket: pathInfo?.bucket,
+            additionalInfo: {
+              operation: 'generate_view_url_failed',
+              original_url: url,
+            },
+          });
+          
+          showUserFriendlyError('VIEW_ERROR');
+        } catch (logError) {
+          console.error('Error logging view error:', logError);
+          alert('Não foi possível gerar link para visualização. Por favor, tente novamente.');
+        }
       }
     } else {
       console.error('❌ Nenhuma URL disponível para visualizar');

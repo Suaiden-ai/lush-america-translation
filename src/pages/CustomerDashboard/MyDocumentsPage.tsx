@@ -1013,6 +1013,35 @@ export default function MyDocumentsPage() {
                     setPreviewOpen(true);
                   } catch (error) {
                     console.error('Erro ao abrir arquivo:', error);
+                    
+                    // Logar erro de visualização
+                    try {
+                      const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+                      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+                      
+                      // Extrair informações do arquivo para o log
+                      const pathInfo = selectedFile.translated_file_url ? extractFilePathFromUrl(selectedFile.translated_file_url) : null;
+                      const logFilename = selectedFile.original_filename || selectedFile.filename || 'unknown';
+                      
+                      await logError('view', error instanceof Error ? error : new Error(String(error)), {
+                        userId: user?.id,
+                        documentId: selectedFile.id,
+                        filePath: pathInfo?.filePath,
+                        filename: logFilename,
+                        bucket: pathInfo?.bucket,
+                        additionalInfo: {
+                          error_code: (error as any)?.code,
+                          error_name: (error as Error)?.name,
+                          operation: 'view_document_my_documents',
+                          view_type: 'my_documents_preview',
+                        },
+                      });
+                      
+                      showUserFriendlyError('VIEW_ERROR');
+                    } catch (logError) {
+                      console.error('Error logging view error:', logError);
+                    }
+                    
                     setPreviewError(error instanceof Error ? error.message : 'Erro desconhecido');
                     setPreviewOpen(true);
                   } finally {

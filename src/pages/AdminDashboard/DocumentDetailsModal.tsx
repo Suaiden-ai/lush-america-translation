@@ -105,11 +105,14 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
     if (!document) return;
     console.log('🔍 Buscando documento traduzido para user_id:', document.user_id);
     try {
+      // Usar .maybeSingle() em vez de .single() para evitar erro 406 quando há múltiplos ou nenhum resultado
       const { data, error } = await supabase
         .from('translated_documents')
         .select('*')
         .eq('user_id', document.user_id)
-        .single();
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       
       console.log('✅ Resultado da busca - data:', data);
       console.log('❌ Resultado da busca - error:', error);
@@ -298,6 +301,31 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
       const viewUrl = await db.generateViewUrl(url);
       
       if (!viewUrl) {
+        // Logar erro quando não consegue gerar URL de visualização
+        try {
+          const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+          const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+          
+          const pathInfo = extractFilePathFromUrl(url);
+          const logFilename = (document as any)?.filename || 'unknown';
+          
+          await logError('view', new Error('VIEW_ERROR'), {
+            userId: (document as any)?.user_id,
+            documentId: (document as any)?.id,
+            filePath: pathInfo?.filePath,
+            filename: logFilename,
+            bucket: pathInfo?.bucket,
+            additionalInfo: {
+              operation: 'generate_view_url_failed',
+              original_url: url,
+            },
+          });
+          
+          showUserFriendlyError('VIEW_ERROR');
+        } catch (logError) {
+          console.error('Error logging view error:', logError);
+        }
+        
         throw new Error('Não foi possível gerar link para visualização. Por favor, tente novamente.');
       }
       
@@ -305,6 +333,35 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
       setPreviewType(detectPreviewType(viewUrl, (document as any)?.filename));
       setPreviewOpen(true);
     } catch (err) {
+      console.error('❌ Erro ao abrir preview:', err);
+      
+      // Logar erro de visualização
+      try {
+        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+        
+        // Extrair informações do arquivo para o log
+        const pathInfo = url ? extractFilePathFromUrl(url) : null;
+        const logFilename = (document as any)?.filename || 'unknown';
+        
+        await logError('view', err instanceof Error ? err : new Error(String(err)), {
+          userId: (document as any)?.user_id,
+          documentId: (document as any)?.id,
+          filePath: pathInfo?.filePath,
+          filename: logFilename,
+          bucket: pathInfo?.bucket,
+          additionalInfo: {
+            error_code: (err as any)?.code,
+            error_name: (err as Error)?.name,
+            operation: 'view_document_admin',
+          },
+        });
+        
+        showUserFriendlyError('VIEW_ERROR');
+      } catch (logError) {
+        console.error('Error logging view error:', logError);
+      }
+      
       setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');
       setPreviewOpen(true);
     } finally {

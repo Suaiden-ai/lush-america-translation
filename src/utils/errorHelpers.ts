@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
  */
 export const UserFriendlyMessages = {
   DOWNLOAD_ERROR: 'Não foi possível baixar o arquivo. Por favor, tente novamente.',
+  VIEW_ERROR: 'Não foi possível visualizar o arquivo. Por favor, tente novamente.',
   UPLOAD_ERROR: 'Não foi possível fazer o upload do arquivo. Por favor, tente novamente.',
   AUTH_ERROR: 'Sua sessão expirou. Por favor, faça login novamente.',
   NETWORK_ERROR: 'Problema de conexão. Verifique sua internet e tente novamente.',
@@ -32,7 +33,7 @@ export function showUserFriendlyError(
  * Loga erros no sistema de action logs para rastreamento
  */
 export async function logError(
-  errorType: 'auth' | 'download' | 'upload' | 'network' | 'generic' | 'system',
+  errorType: 'auth' | 'download' | 'view' | 'upload' | 'network' | 'generic' | 'system',
   error: Error | unknown,
   context?: {
     userId?: string;
@@ -65,6 +66,10 @@ export async function logError(
       case 'download':
         actionType = 'download_error';
         description = `Erro ao baixar arquivo: ${errorMessage}`;
+        break;
+      case 'view':
+        actionType = 'view_error';
+        description = `Erro ao visualizar arquivo: ${errorMessage}`;
         break;
       case 'upload':
         actionType = 'upload_error';

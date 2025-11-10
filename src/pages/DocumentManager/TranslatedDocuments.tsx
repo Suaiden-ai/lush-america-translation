@@ -240,12 +240,65 @@ export default function TranslatedDocuments() {
       const viewUrl = await db.generateViewUrl(doc.translated_file_url);
       
       if (!viewUrl) {
+        // Logar erro quando não consegue gerar URL de visualização
+        try {
+          const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+          const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+          
+          const pathInfo = doc.translated_file_url ? extractFilePathFromUrl(doc.translated_file_url) : null;
+          const logFilename = doc.filename || 'unknown';
+          
+          await logError('view', new Error('VIEW_ERROR'), {
+            userId: user?.id,
+            documentId: doc.id,
+            filePath: pathInfo?.filePath,
+            filename: logFilename,
+            bucket: pathInfo?.bucket,
+            additionalInfo: {
+              operation: 'generate_view_url_failed',
+              original_url: doc.translated_file_url,
+            },
+          });
+          
+          showUserFriendlyError('VIEW_ERROR');
+        } catch (logError) {
+          console.error('Error logging view error:', logError);
+        }
+        
         throw new Error('Não foi possível gerar link para visualização. Por favor, tente novamente.');
       }
       
       setPreviewUrl(viewUrl);
       setPreviewOpen(true);
     } catch (err) {
+      console.error('❌ Erro ao abrir preview:', err);
+      
+      // Logar erro de visualização
+      try {
+        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+        
+        const pathInfo = doc.translated_file_url ? extractFilePathFromUrl(doc.translated_file_url) : null;
+        const logFilename = doc.filename || 'unknown';
+        
+        await logError('view', err instanceof Error ? err : new Error(String(err)), {
+          userId: user?.id,
+          documentId: doc.id,
+          filePath: pathInfo?.filePath,
+          filename: logFilename,
+          bucket: pathInfo?.bucket,
+          additionalInfo: {
+            error_code: (err as any)?.code,
+            error_name: (err as Error)?.name,
+            operation: 'view_document_translated',
+          },
+        });
+        
+        showUserFriendlyError('VIEW_ERROR');
+      } catch (logError) {
+        console.error('Error logging view error:', logError);
+      }
+      
       setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');
       setPreviewOpen(true);
     } finally {

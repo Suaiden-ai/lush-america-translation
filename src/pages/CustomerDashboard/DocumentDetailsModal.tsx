@@ -84,6 +84,31 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       const viewUrl = await db.generateViewUrl(url);
       
       if (!viewUrl) {
+        // Logar erro quando não consegue gerar URL de visualização
+        try {
+          const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+          const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+          
+          const pathInfo = extractFilePathFromUrl(url);
+          const logFilename = filename || document?.filename || 'unknown';
+          
+          await logError('view', new Error('VIEW_ERROR'), {
+            userId: document?.user_id,
+            documentId: document?.id,
+            filePath: pathInfo?.filePath,
+            filename: logFilename,
+            bucket: pathInfo?.bucket,
+            additionalInfo: {
+              operation: 'generate_view_url_failed',
+              original_url: url,
+            },
+          });
+          
+          showUserFriendlyError('VIEW_ERROR');
+        } catch (logError) {
+          console.error('Error logging view error:', logError);
+        }
+        
         throw new Error('Não foi possível gerar link para visualização. Por favor, tente novamente.');
       }
       
@@ -148,7 +173,34 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       }
     } catch (error) {
       console.error('Error opening file:', error);
-      alert((error as Error).message || 'Failed to open file.');
+      
+      // Logar erro de visualização
+      try {
+        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+        
+        // Extrair informações do arquivo para o log
+        const pathInfo = extractFilePathFromUrl(url);
+        const logFilename = filename || document?.filename || 'unknown';
+        
+        await logError('view', error instanceof Error ? error : new Error(String(error)), {
+          userId: document?.user_id,
+          documentId: document?.id,
+          filePath: pathInfo?.filePath,
+          filename: logFilename,
+          bucket: pathInfo?.bucket,
+          additionalInfo: {
+            error_code: (error as any)?.code,
+            error_name: (error as Error)?.name,
+            operation: 'view_document',
+          },
+        });
+        
+        showUserFriendlyError('VIEW_ERROR');
+      } catch (logError) {
+        console.error('Error logging view error:', logError);
+        alert((error as Error).message || 'Failed to open file.');
+      }
     }
   };
 

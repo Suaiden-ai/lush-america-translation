@@ -307,12 +307,25 @@ export const db = {
         cleanFilePath = cleanFilePath.substring(bucket.length + 1);
       }
       
-      console.log('[downloadFile] Tentando fazer download:', { bucket, cleanFilePath });
+      // Decodificar filePath para tratar caracteres especiais
+      let decodedFilePath = cleanFilePath;
+      try {
+        const decoded = decodeURIComponent(cleanFilePath);
+        if (decoded && decoded !== cleanFilePath) {
+          decodedFilePath = decoded;
+        }
+      } catch (e) {
+        // Se a decodificação falhar, usar o filePath original
+        console.warn('[downloadFile] Erro ao decodificar filePath, usando original:', e);
+        decodedFilePath = cleanFilePath;
+      }
+      
+      console.log('[downloadFile] Tentando fazer download:', { bucket, cleanFilePath, decodedFilePath });
       
       // Tentar download direto (funciona para buckets públicos)
       const { data, error } = await supabase.storage
         .from(bucket)
-        .download(cleanFilePath);
+        .download(decodedFilePath);
       
       if (error) {
         console.error('[downloadFile] Erro ao fazer download do arquivo:', {
@@ -332,7 +345,7 @@ export const db = {
           // Gerar URL pública e fazer fetch direto
           const { data: { publicUrl } } = supabase.storage
             .from(bucket)
-            .getPublicUrl(cleanFilePath);
+            .getPublicUrl(decodedFilePath);
           
           try {
             const response = await fetch(publicUrl);
@@ -466,9 +479,22 @@ export const db = {
         cleanFilePath = cleanFilePath.substring(bucketName.length + 1);
       }
       
+      // Decodificar filePath para tratar caracteres especiais
+      let decodedFilePath = cleanFilePath;
+      try {
+        const decoded = decodeURIComponent(cleanFilePath);
+        if (decoded && decoded !== cleanFilePath) {
+          decodedFilePath = decoded;
+        }
+      } catch (e) {
+        // Se a decodificação falhar, usar o filePath original
+        console.warn('[generatePublicUrl] Erro ao decodificar filePath, usando original:', e);
+        decodedFilePath = cleanFilePath;
+      }
+      
       const { data } = await supabase.storage
         .from(bucketName)
-        .getPublicUrl(cleanFilePath);
+        .getPublicUrl(decodedFilePath);
       
       if (!data?.publicUrl) {
         console.error('[generatePublicUrl] Erro ao gerar URL pública: data ou publicUrl não disponível');
@@ -534,10 +560,24 @@ export const db = {
         return url;
       }
       
+      // Decodificar filePath para tratar caracteres especiais (como %20, parênteses, etc.)
+      let decodedFilePath = pathInfo.filePath;
+      try {
+        const decoded = decodeURIComponent(pathInfo.filePath);
+        // Só usar o decodificado se for diferente e válido
+        if (decoded && decoded !== pathInfo.filePath) {
+          decodedFilePath = decoded;
+        }
+      } catch (e) {
+        // Se a decodificação falhar, usar o filePath original
+        console.warn('[generateViewUrl] Erro ao decodificar filePath, usando original:', e);
+        decodedFilePath = pathInfo.filePath;
+      }
+      
       // Gerar URL pública permanente (não expira) para visualização
       const { data: publicUrlData } = await supabase.storage
         .from(pathInfo.bucket)
-        .getPublicUrl(pathInfo.filePath);
+        .getPublicUrl(decodedFilePath);
       
       if (publicUrlData?.publicUrl) {
         return publicUrlData.publicUrl;

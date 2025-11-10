@@ -90,6 +90,7 @@ export const ActionTypes = {
   ERROR: {
     AUTHENTICATION_ERROR: 'authentication_error',
     DOWNLOAD_ERROR: 'download_error',
+    VIEW_ERROR: 'view_error',
     UPLOAD_ERROR: 'upload_error',
     NETWORK_ERROR: 'network_error',
     SYSTEM_ERROR: 'system_error',
@@ -171,6 +172,7 @@ export const ActionTypeLabels: Record<string, string> = {
   // Errors
   [ActionTypes.ERROR.AUTHENTICATION_ERROR]: 'Authentication Error',
   [ActionTypes.ERROR.DOWNLOAD_ERROR]: 'Download Error',
+  [ActionTypes.ERROR.VIEW_ERROR]: 'View Error',
   [ActionTypes.ERROR.UPLOAD_ERROR]: 'Upload Error',
   [ActionTypes.ERROR.NETWORK_ERROR]: 'Network Error',
   [ActionTypes.ERROR.SYSTEM_ERROR]: 'System Error',

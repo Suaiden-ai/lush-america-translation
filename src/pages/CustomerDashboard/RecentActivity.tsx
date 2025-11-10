@@ -241,6 +241,36 @@ export function RecentActivity({ documents, onViewDocument }: RecentActivityProp
       setPreviewOpen(true);
     } catch (err) {
       console.error('❌ Erro ao abrir preview:', err);
+      
+      // Logar erro de visualização
+      try {
+        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
+        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+        
+        // Extrair informações do arquivo para o log
+        const urlToView = doc.translated_file_url || doc.file_url;
+        const pathInfo = urlToView ? extractFilePathFromUrl(urlToView) : null;
+        const logFilename = doc.original_filename || doc.filename || 'unknown';
+        
+        await logError('view', err instanceof Error ? err : new Error(String(err)), {
+          userId: user?.id,
+          documentId: doc.id,
+          filePath: pathInfo?.filePath,
+          filename: logFilename,
+          bucket: pathInfo?.bucket,
+          additionalInfo: {
+            error_code: (err as any)?.code,
+            error_name: (err as Error)?.name,
+            operation: 'view_document_recent_activity',
+            view_type: 'recent_activity_preview',
+          },
+        });
+        
+        showUserFriendlyError('VIEW_ERROR');
+      } catch (logError) {
+        console.error('Error logging view error:', logError);
+      }
+      
       setPreviewError(err instanceof Error ? err.message : 'Failed to open document.');
       setPreviewOpen(true);
     } finally {
