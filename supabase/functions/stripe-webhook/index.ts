@@ -279,6 +279,10 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
               payment_intent: session.payment_intent,
               document_id: session.metadata.documentId,
               amount_total: session.amount_total,
+              base_amount: session.metadata.base_amount,
+              gross_amount: session.metadata.gross_amount,
+              fee_amount: session.metadata.fee_amount,
+              markup_enabled: session.metadata.markup_enabled,
               currency: session.currency,
               customer_email: session.customer_email,
               document_filename: session.metadata.filename,
@@ -306,11 +310,16 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       isNotarized,
       isBankStatement,
       totalPrice,
+      base_amount,
+      gross_amount,
+      fee_amount,
+      markup_enabled,
       documentId
     } = session.metadata;
 
     console.log('🔍 [WEBHOOK DEBUG] Metadados da sessão:', {
-      fileId, userId, filename, pages, isCertified, isNotarized, isBankStatement, totalPrice, documentId
+      fileId, userId, filename, pages, isCertified, isNotarized, isBankStatement, 
+      totalPrice, base_amount, gross_amount, fee_amount, markup_enabled, documentId
     });
 
     // 🔍 DEBUG: Verificar se é um documento de autenticador
@@ -439,11 +448,27 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
     try {
       console.log('DEBUG: Criando registro na tabela payments');
       
+      // Usar base_amount (valor líquido) como receita, mas manter gross_amount e fee_amount para rastreamento
+      // Se base_amount não estiver disponível, usar totalPrice como fallback
+      const baseAmount = base_amount ? parseFloat(base_amount) : (totalPrice ? parseFloat(totalPrice) : 0);
+      const grossAmount = gross_amount ? parseFloat(gross_amount) : (totalPrice ? parseFloat(totalPrice) : 0);
+      const feeAmount = fee_amount ? parseFloat(fee_amount) : 0;
+      
+      console.log('🔍 [WEBHOOK DEBUG] Valores de pagamento:', {
+        base_amount: baseAmount,
+        gross_amount: grossAmount,
+        fee_amount: feeAmount,
+        markup_enabled: markup_enabled === 'true'
+      });
+      
       const paymentData = {
         document_id: documentId,
         user_id: userId,
         stripe_session_id: session.id,
-        amount: parseFloat(totalPrice || '0'),
+        amount: baseAmount, // Valor líquido (receita real)
+        base_amount: baseAmount, // Valor base (líquido desejado)
+        gross_amount: grossAmount, // Valor bruto cobrado
+        fee_amount: feeAmount, // Taxa do Stripe paga pelo usuário
         currency: 'USD',
         status: 'completed',
         payment_method: 'card',

@@ -530,12 +530,15 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          base_amount: number | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
           created_at: string | null
           currency: string | null
           document_id: string | null
+          fee_amount: number | null
+          gross_amount: number | null
           id: string
           payment_date: string | null
           payment_method: string | null
@@ -552,12 +555,15 @@ export type Database = {
         }
         Insert: {
           amount: number
+          base_amount?: number | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
           created_at?: string | null
           currency?: string | null
           document_id?: string | null
+          fee_amount?: number | null
+          gross_amount?: number | null
           id?: string
           payment_date?: string | null
           payment_method?: string | null
@@ -574,12 +580,15 @@ export type Database = {
         }
         Update: {
           amount?: number
+          base_amount?: number | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
           created_at?: string | null
           currency?: string | null
           document_id?: string | null
+          fee_amount?: number | null
+          gross_amount?: number | null
           id?: string
           payment_date?: string | null
           payment_method?: string | null
