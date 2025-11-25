@@ -4,10 +4,19 @@ import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { getResetPasswordUrl } from '../utils/urlUtils';
 import { Logger } from '../lib/loggingHelpers';
 import { ActionTypes } from '../types/actionTypes';
+import { StoredUtmAttribution } from '../types/utm';
 
 export interface CustomUser extends SupabaseUser {
   role: 'user' | 'authenticator' | 'admin' | 'finance' | 'affiliate';
   phone?: string;
+}
+
+type UserRole = 'user' | 'authenticator' | 'admin' | 'finance' | 'affiliate';
+
+interface SignUpOptions {
+  referralCode?: string;
+  role?: UserRole;
+  utm?: StoredUtmAttribution | null;
 }
 
 interface AuthContextType {
@@ -16,7 +25,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
-  signUp: (email: string, password: string, name: string, phone: string, referralCode?: string, role?: 'user' | 'authenticator') => Promise<any>;
+  signUp: (email: string, password: string, name: string, phone: string, options?: SignUpOptions) => Promise<any>;
   resetPassword: (email: string) => Promise<any>;
 }
 
@@ -29,7 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [sessionExpired, setSessionExpired] = useState(false);
 
   // Busca ou cria perfil na tabela profiles
-  const fetchOrCreateProfile = async (userId: string, email: string, name: string, role: 'user' | 'authenticator' | 'admin' | 'finance' | 'affiliate' = 'user', phone?: string, referralCode?: string) => {
+  const fetchOrCreateProfile = async (userId: string, email: string, name: string, role: UserRole = 'user', phone?: string, referralCode?: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -74,6 +83,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (err) {
       console.error('[Auth] Erro inesperado ao buscar/criar perfil:', err);
       return null;
+    }
+  };
+
+  const persistUtmAttribution = async (userId: string, email: string, utm?: StoredUtmAttribution | null) => {
+    if (!utm) return;
+    try {
+      const { error } = await supabase
+        .from('utm_attributions')
+        .insert({
+          user_id: userId,
+          email,
+          utm_source: utm.utm_source ?? null,
+          utm_medium: utm.utm_medium ?? null,
+          utm_campaign: utm.utm_campaign ?? null,
+          utm_term: utm.utm_term ?? null,
+          utm_content: utm.utm_content ?? null,
+          landing_page: utm.landing_page ?? null,
+          last_touch_page: utm.last_touch_page ?? null,
+          referrer: utm.referrer ?? null,
+          captured_at: utm.capturedAt ?? new Date().toISOString(),
+        });
+      if (error) {
+        console.warn('[Auth] Não foi possível salvar atribuição UTM', error);
+      }
+    } catch (err) {
+      console.warn('[Auth] Erro inesperado ao salvar atribuição UTM', err);
     }
   };
 
@@ -199,7 +234,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(false);
   };
 
-  const signUp = async (email: string, password: string, name: string, phone: string, referralCode?: string, role: 'user' | 'authenticator' | 'admin' | 'finance' = 'user') => {
+  const signUp = async (email: string, password: string, name: string, phone: string, options?: SignUpOptions) => {
+    const referralCode = options?.referralCode;
+    const role: UserRole = options?.role ?? 'user';
+    const utm = options?.utm ?? null;
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -217,6 +255,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               email,
               name,
               role,
+              utm_source: utm?.utm_source ?? null,
+              utm_medium: utm?.utm_medium ?? null,
+              utm_campaign: utm?.utm_campaign ?? null,
               error_type: error.name,
               error_message: error.message,
               timestamp: new Date().toISOString()
@@ -229,6 +270,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Cria perfil imediatamente após registro
       if (data.user) {
         await fetchOrCreateProfile(data.user.id, email, name, role, phone, referralCode);
+        await persistUtmAttribution(data.user.id, email, utm);
         
         // Log de sucesso no registro
         await Logger.log(
@@ -241,6 +283,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               role,
               user_id: data.user.id,
               has_referral: !!referralCode,
+              utm_source: utm?.utm_source ?? null,
+              utm_medium: utm?.utm_medium ?? null,
+              utm_campaign: utm?.utm_campaign ?? null,
               timestamp: new Date().toISOString()
             }
           }

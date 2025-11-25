@@ -3,6 +3,7 @@ import { User, Lock, Mail, UserPlus, Link } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useI18n } from '../contexts/I18nContext';
+import { clearUtmParams, getStoredUtmParams } from '../utils/utmTracker';
 
 export function Register() {
   const { signUp } = useAuth();
@@ -88,13 +89,27 @@ export function Register() {
       console.log('[Register] Tentando registrar:', formData.email);
       
       // Chamar signUp sem depender do loading do contexto
-      const result = await signUp(formData.email, formData.password, formData.name, formData.phone, formData.referralCode);
+      const utmParams = getStoredUtmParams();
+      const sanitizedReferral = formData.referralCode.trim() || undefined;
+      const result = await signUp(
+        formData.email,
+        formData.password,
+        formData.name,
+        formData.phone,
+        {
+          referralCode: sanitizedReferral,
+          utm: utmParams ?? undefined,
+        }
+      );
       
       console.log('[Register] Registro bem-sucedido:', result);
       
       // Definir sucesso imediatamente
       setSuccess(true);
       setCountdown(5);
+      if (utmParams) {
+        clearUtmParams();
+      }
       
     } catch (err: any) {
       console.error('[Register] Erro no registro:', err);

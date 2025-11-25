@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useDocuments, useAllDocuments, useTranslatedDocuments } from './hooks/useDocuments';
 import { useFolders } from './hooks/useFolders';
@@ -43,6 +43,7 @@ import AuthRedirect from './components/AuthRedirect';
 import DocumentManagerPage from './pages/DocumentManager/index';
 import AuthenticatorDashboard from './pages/DocumentManager/AuthenticatorDashboard';
 import DocumentsToAuthenticate from './pages/DocumentManager/DocumentsToAuthenticate';
+import { captureUtmFromUrl } from './utils/utmTracker';
 
 type Document = Database['public']['Tables']['documents']['Row'];
 type Folder = Database['public']['Tables']['folders']['Row'];
@@ -125,6 +126,10 @@ function App() {
   };
 
   const location = useLocation();
+
+  useEffect(() => {
+    captureUtmFromUrl();
+  }, [location.pathname, location.search]);
 
   // Bloquear loading apenas para páginas protegidas
   const protectedPages: Page[] = ['dashboard-customer', 'admin', 'upload'];
