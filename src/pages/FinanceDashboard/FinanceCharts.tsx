@@ -108,9 +108,27 @@ export function FinanceCharts({ dateRange }: FinanceChartsProps) {
       setPaymentStatusData(pieData);
 
       // 3. Dados para receita por tipo de usuário
+      // Usar dados da tabela payments para usuários regulares (apenas status 'completed')
+      // NÃO incluir receita de autenticadores pois não é lucro
+      
+      // Buscar pagamentos dentro do dateRange fornecido
+      let revenuePaymentsQuery = supabase
+        .from('payments')
+        .select('document_id, amount, status');
+      
+      if (dateRange?.startDate) {
+        revenuePaymentsQuery = revenuePaymentsQuery.gte('created_at', dateRange.startDate.toISOString());
+      }
+      if (dateRange?.endDate) {
+        revenuePaymentsQuery = revenuePaymentsQuery.lte('created_at', dateRange.endDate.toISOString());
+      }
+
+      const { data: revenuePaymentsData } = await revenuePaymentsQuery;
+
+      // Buscar documentos para identificar qual pagamento pertence a qual tipo de usuário
       let documentsQuery = supabase
         .from('documents')
-        .select('total_cost, uploaded_by, status');
+        .select('id, profiles:user_id(role)');
       
       if (dateRange?.startDate) {
         documentsQuery = documentsQuery.gte('created_at', dateRange.startDate.toISOString());
@@ -123,13 +141,16 @@ export function FinanceCharts({ dateRange }: FinanceChartsProps) {
 
       const userTypeRevenue = {
         'Regular Users': 0,
-        'Authenticators': 0
+        'Authenticators': 0 // Mantido para exibição, mas sempre será 0
       };
 
-      documentsData?.forEach(doc => {
-        if (doc.status === 'completed') {
-          const userType = doc.uploaded_by === 'authenticator' ? 'Authenticators' : 'Regular Users';
-          userTypeRevenue[userType] += doc.total_cost || 0;
+      // Calcular receita apenas de pagamentos completed de usuários regulares
+      revenuePaymentsData?.forEach(payment => {
+        if (payment.status === 'completed' && payment.document_id) {
+          const userDoc = documentsData?.find(doc => doc.id === payment.document_id);
+          if (userDoc && userDoc.profiles?.role === 'user') {
+            userTypeRevenue['Regular Users'] += payment.amount || 0;
+          }
         }
       });
 

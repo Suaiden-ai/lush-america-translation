@@ -7,6 +7,7 @@ import { DocumentUploadModal } from './DocumentUploadModal';
 import { DocumentsList } from './DocumentsList';
 import { DocumentDetailsModal } from './DocumentDetailsModal';
 import { Chatbot } from '../../components/Chatbot';
+import { DocumentUploadRetry } from '../../components/DocumentUploadRetry/DocumentUploadRetry';
 // import { DocumentManager } from './DocumentManager';
 import { Document, Folder } from '../../App';
 import { Database } from '../../lib/database.types';
@@ -130,6 +131,9 @@ export function CustomerDashboard({
         </div>
       )}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
+        {/* Alerta de documentos com upload pendente */}
+        <DocumentUploadRetry userId={user?.id} />
+        
         {/* Dashboard principal - sempre renderiza o overview */}
         <WelcomeSection user={user} onUploadClick={handleUploadClick} />
         <CustomerStatsCards documents={documents} />

@@ -51,30 +51,37 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     fetchPaymentStatuses();
   }, []);
 
-  // Buscar dados exatos para receita (payments.amount e receita de autenticador via documents)
+  // Buscar dados exatos para receita (apenas pagamentos com status 'completed')
+  // Não incluir receita de autenticador pois não é lucro (valores ficam pending e não são pagos)
   useEffect(() => {
     const fetchRevenueData = async () => {
       try {
-        const [authDocsRes, paysRes] = await Promise.all([
-          supabase
-            .from('documents')
-            .select('total_cost, status, profiles!documents_user_id_fkey(role)'),
-          supabase.from('payments').select('amount, status')
-        ]);
-        let authRev = 0;
-        (authDocsRes.data || []).forEach((d: any) => {
-          if (d?.profiles?.role === 'authenticator' && (d?.status || '') !== 'draft') {
-            authRev += Number(d?.total_cost || 0);
-          }
-        });
+        const { data: paysRes } = await supabase
+          .from('payments')
+          .select('id, document_id, amount, status, user_id');
+        
         let userRev = 0;
-        (paysRes.data || []).forEach((p: any) => {
-          const st = (p?.status || '').toLowerCase();
-          if (!['pending', 'cancelled', 'refunded'].includes(st)) {
+        const completedPayments: any[] = [];
+        
+        (paysRes || []).forEach((p: any) => {
+          // Considerar apenas pagamentos com status 'completed' (pagamentos realmente pagos)
+          if (p?.status === 'completed') {
             userRev += Number(p?.amount || 0);
+            completedPayments.push({
+              id: p.id,
+              document_id: p.document_id,
+              user_id: p.user_id,
+              amount: p.amount,
+              status: p.status
+            });
           }
         });
-        setOverrideRevenue(authRev + userRev);
+        
+        console.log('🔍 ADMIN DASHBOARD - Total completed payments:', completedPayments.length);
+        console.log('🔍 ADMIN DASHBOARD - Total revenue (sum of all completed):', userRev.toFixed(2));
+        console.log('🔍 ADMIN DASHBOARD - Completed payments details:', completedPayments);
+        
+        setOverrideRevenue(userRev);
       } catch (e) {
         console.warn('Revenue fetch failed, fallback to doc-based', e);
         setOverrideRevenue(null);
@@ -104,9 +111,11 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
         }
 
         // 1) Buscar documentos da tabela documents (mesma query da DocumentsTable)
+        // Excluir documentos de uso pessoal (is_internal_use = true) das estatísticas
         let query = supabase
           .from('documents')
-          .select('id, status, profiles!documents_user_id_fkey(role)')
+          .select('id, status, is_internal_use, profiles!documents_user_id_fkey(role)')
+          .or('is_internal_use.is.null,is_internal_use.eq.false')
           .order('created_at', { ascending: false });
 
         if (startDateParam) {
@@ -123,10 +132,12 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
           return;
         }
 
-        // 2) Filtrar documentos válidos (mesma lógica: excluir drafts e cancelled/refunded)
+        // 2) Filtrar documentos válidos (mesma lógica: excluir drafts, cancelled/refunded e uso pessoal)
         const documentIds = documentsData?.map(d => d.id) || [];
         const validDocs = (documentsData || []).filter(doc => {
           if ((doc.status || '') === 'draft') return false;
+          // Excluir documentos de uso pessoal
+          if (doc.is_internal_use === true) return false;
           const payStatus = paymentStatuses.get(doc.id);
           if (!payStatus) return true;
           return payStatus !== 'cancelled' && payStatus !== 'refunded';
@@ -144,7 +155,6 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
           .in('original_document_id', documentIds);
         
         const dtbvIds = (dtbvData || []).map(d => d.id);
-        const dtbvIdToDocId = new Map((dtbvData || []).map(d => [d.id, d.original_document_id]));
 
         let translatedDocsData: any[] = [];
         if (dtbvIds.length > 0) {
@@ -218,7 +228,7 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     console.log('[StatsCards] Valid documents (no drafts/cancelled/refunded):', validDocuments.length);
     console.log('[StatsCards] Doc-based revenue:', totalRevenueDoc.toFixed(2));
     if (overrideRevenue !== null) {
-      console.log('[StatsCards] Override revenue (payments + authenticator dtbv):', overrideRevenue.toFixed(2));
+      console.log('[StatsCards] Override revenue (only completed payments):', overrideRevenue.toFixed(2));
     }
   } catch {}
   const completedDocuments = validDocuments.filter(doc => doc.status === 'completed').length;
@@ -239,7 +249,9 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     try {
       // Buscar estatísticas de todas as tabelas relevantes
       const [documentsResult, verifiedResult, translatedResult, profilesResult] = await Promise.all([
-        supabase.from('documents').select('id, status, total_cost, user_id, filename, profiles!inner(role)'),
+        supabase.from('documents')
+          .select('id, status, total_cost, user_id, filename, is_internal_use, profiles!inner(role)')
+          .or('is_internal_use.is.null,is_internal_use.eq.false'),
         supabase.from('documents_to_be_verified').select('id, status, user_id, filename'),
         supabase.from('translated_documents').select('status, user_id, is_authenticated'),
         supabase.from('profiles').select('id, role, created_at')

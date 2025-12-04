@@ -114,18 +114,20 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
         const approvedTranslated = (translatedDocs || []).filter((doc: any) => (doc.is_authenticated === true) || ((doc.status || '').toLowerCase() === 'completed'));
         approvedDocs = approvedTranslated.length;
         rejectedDocs = allDocuments?.filter(doc => doc.status === 'rejected').length || 0;
-        // Receita de uploads de autenticador (gratuitos): somar mesmo com payment pending (excluir apenas drafts)
-        const authenticatorDocs = (allDocuments || []).filter((doc: any) => doc.profiles?.role === 'authenticator' && doc.status !== 'draft');
-        const authenticatorRevenue = authenticatorDocs.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
-
-        // Receita de usuários regulares: somar apenas pagamentos não pending/cancelled/refunded
+        // Receita de autenticador NÃO é incluída no Total Revenue
+        // pois não é lucro (valores ficam pending e não são pagos)
+        
+        // Receita de usuários regulares: considerar apenas pagamentos com status 'completed'
         const regularPaymentsRevenue = (payments || []).reduce((sum, p) => {
           if (!p) return sum;
-          if (p.status === 'pending' || p.status === 'cancelled' || p.status === 'refunded') return sum;
-          return sum + (p.amount || 0);
+          // Considerar apenas pagamentos com status 'completed' (pagamentos realmente pagos)
+          if (p.status === 'completed') {
+            return sum + (p.amount || 0);
+          }
+          return sum;
         }, 0);
 
-        totalValue = authenticatorRevenue + regularPaymentsRevenue;
+        totalValue = regularPaymentsRevenue;
         totalPages = (allDocuments?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0) +
                     (translatedDocs?.reduce((sum, doc) => sum + (doc.pages || 0), 0) || 0);
       } else {

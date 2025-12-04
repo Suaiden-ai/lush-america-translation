@@ -29,7 +29,7 @@ import DocumentManager from './pages/DocumentManager';
 import { PaymentSuccess } from './pages/PaymentSuccess';
 import { PaymentCancelled } from './pages/PaymentCancelled';
 import { ZelleCheckout } from './pages/ZelleCheckout';
-import { Home as HomeIcon, FileText, Search, User as UserIcon, Shield, LogIn, UserPlus, LogOut, Upload as UploadIcon, Menu, X, Users, UserCheck, Folder, User, CheckCircle } from 'lucide-react';
+import { Home as HomeIcon, FileText, Search, User as UserIcon, Shield, LogIn, UserPlus, LogOut, Upload as UploadIcon, Menu, X, Users, UserCheck, Folder, User, CheckCircle, AlertCircle } from 'lucide-react';
 
 import { Page } from './types/Page';
 import { Database } from './lib/database.types';
@@ -38,11 +38,14 @@ import DocumentProgress from './pages/CustomerDashboard/DocumentProgress';
 import ProfilePage from './pages/CustomerDashboard/ProfilePage';
 import UploadDocument from './pages/CustomerDashboard/UploadDocument';
 import MyDocumentsPage from './pages/CustomerDashboard/MyDocumentsPage';
+import DocumentRetryUpload from './pages/CustomerDashboard/DocumentRetryUpload';
+import DocumentsRetryList from './pages/CustomerDashboard/DocumentsRetryList';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AuthRedirect from './components/AuthRedirect';
 import DocumentManagerPage from './pages/DocumentManager/index';
 import AuthenticatorDashboard from './pages/DocumentManager/AuthenticatorDashboard';
 import DocumentsToAuthenticate from './pages/DocumentManager/DocumentsToAuthenticate';
+import AuthenticatorFailedUploads from './pages/DocumentManager/AuthenticatorFailedUploads';
 import { captureUtmFromUrl } from './utils/utmTracker';
 
 type Document = Database['public']['Tables']['documents']['Row'];
@@ -190,6 +193,7 @@ function App() {
         const items = [
           { id: 'authenticator-dashboard', label: 'Authenticator Dashboard', icon: Shield, page: '/authenticator' },
           { id: 'documents', label: 'Documents to Authenticate', icon: FileText, page: '/documents' },
+          { id: 'failed-uploads', label: 'Failed Uploads', icon: AlertCircle, page: '/authenticator/failed-uploads' },
         ];
         return items;
       }
@@ -410,6 +414,8 @@ function App() {
                   <Route path="/documents" element={<MyDocumentsPage />} />
                   <Route path="/progress" element={<DocumentProgress />} />
                   <Route path="/upload" element={<UploadDocument />} />
+                  <Route path="/retry-upload" element={<DocumentsRetryList />} />
+                  <Route path="/retry-upload/single/:documentId" element={<DocumentRetryUpload />} />
                 </Routes>
               </main>
             </div>

@@ -108,36 +108,44 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       
       // Calcular revenue corretamente:
       // User Uploads: usar dados da tabela payments
-      // Authenticator Uploads: usar dados da tabela documents
+      // NÃO incluir receita de autenticador pois não é lucro (valores ficam pending e não são pagos)
       
       // Revenue de usuários regulares (User Uploads) - usar tabela payments
-      // Excluir pagamentos cancelados ou reembolsados
+      // MESMA LÓGICA DO ADMIN DASHBOARD: somar TODOS os pagamentos completed
+      // (não apenas os de role='user', pois podem haver outros roles válidos como 'finance')
       const regularRevenue = paymentsData?.reduce((sum, payment) => {
-        // Verificar se o pagamento é de um usuário regular (não autenticador)
-        const userDoc = documentsData?.find(doc => doc.id === payment.document_id);
-        if (userDoc && userDoc.profiles?.role === 'user') {
-          // Excluir pagamentos cancelados ou reembolsados
-          if (payment.status === 'cancelled' || payment.status === 'refunded') {
-            return sum;
-          }
+        // Considerar apenas pagamentos com status 'completed' (pagamentos realmente pagos)
+        // NÃO filtrar por role, igual ao Admin Dashboard
+        if (payment.status === 'completed') {
           return sum + (payment.amount || 0);
         }
         return sum;
       }, 0) || 0;
       
-      // Revenue de autenticadores (Authenticator Uploads) - usar tabela documents
+      // 🔍 LOG COMPARATIVO (agora regularRevenue = allCompletedAmount, pois não filtramos por role)
+      const allCompletedPayments = paymentsData?.filter(p => p.status === 'completed') || [];
+      const allCompletedAmount = allCompletedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      
+      console.log('🔍 FINANCE DASHBOARD - All completed payments:', allCompletedPayments.length);
+      console.log('🔍 FINANCE DASHBOARD - All completed amount:', allCompletedAmount.toFixed(2));
+      console.log('🔍 FINANCE DASHBOARD - Regular revenue (all completed, no role filter):', regularRevenue.toFixed(2));
+      
+      // Revenue de autenticadores não é incluída no Total Revenue
+      // pois não é lucro (valores ficam pending e não são pagos)
+      // Excluir documentos de uso pessoal (is_internal_use = true)
       const authenticatorRevenue = documentsData?.reduce((sum, doc) => {
-        if (doc.profiles?.role === 'authenticator') {
+        if (doc.profiles?.role === 'authenticator' && !doc.is_internal_use) {
           return sum + (doc.total_cost || 0);
         }
         return sum;
       }, 0) || 0;
       
-      const totalRevenue = authenticatorRevenue + regularRevenue;
+      // Total Revenue: apenas pagamentos completed de usuários regulares
+      const totalRevenue = regularRevenue;
       
-      console.log('🔍 Debug - StatsCards total_revenue:', totalRevenue);
-      console.log('🔍 Debug - User Uploads revenue (from payments table):', regularRevenue);
-      console.log('🔍 Debug - Authenticator Uploads revenue (from documents table):', authenticatorRevenue);
+      console.log('🔍 Debug - StatsCards total_revenue (only completed payments):', totalRevenue);
+      console.log('🔍 Debug - User Uploads revenue (from payments table, status=completed):', regularRevenue);
+      console.log('🔍 Debug - Authenticator Uploads revenue (excluded from total):', authenticatorRevenue);
       
       // Estatísticas de tradução calculadas mas não utilizadas no momento
       // const calculatedTranslationStats = {
@@ -148,25 +156,26 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       // };
       
       // Separar por tipo de usuário
-      const userDocs = allDocs.filter(d => d.profiles?.role === 'user');
-      const authenticatorDocs = allDocs.filter(d => d.profiles?.role === 'authenticator');
+      // Excluir documentos de uso pessoal (is_internal_use = true)
+      const userDocs = allDocs.filter(d => d.profiles?.role === 'user' && !d.is_internal_use);
+      const authenticatorDocs = allDocs.filter(d => d.profiles?.role === 'authenticator' && !d.is_internal_use);
       
       // Estatísticas aprimoradas com separação por tipo de usuário
       const calculatedEnhancedStats = {
         total_documents: allDocs.length,
-        total_revenue: totalRevenue, // Usar o totalRevenue calculado com a nova lógica
+        total_revenue: totalRevenue, // Apenas pagamentos completed de usuários regulares
         
         // User uploads
         user_uploads_total: userDocs.length,
         user_uploads_completed: userDocs.filter(d => d.status === 'completed').length,
         user_uploads_pending: userDocs.filter(d => d.status === 'pending').length,
-        user_uploads_revenue: regularRevenue, // Revenue de usuários regulares (tabela payments)
+        user_uploads_revenue: regularRevenue, // Revenue de usuários regulares (tabela payments, status=completed)
         
         // Authenticator uploads  
         authenticator_uploads_total: authenticatorDocs.length,
         authenticator_uploads_completed: authenticatorDocs.filter(d => d.status === 'completed').length,
         authenticator_uploads_pending: authenticatorDocs.filter(d => d.status === 'pending').length,
-        authenticator_uploads_revenue: authenticatorRevenue, // Revenue de autenticadores (tabela documents)
+        authenticator_uploads_revenue: authenticatorRevenue, // Revenue de autenticadores (não incluída no total)
         
         // Status breakdown
         total_completed: allDocs.filter(d => d.status === 'completed').length,
@@ -207,9 +216,9 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       // Debug dos valores calculados
       console.log('🔍 Enhanced Stats:', calculatedEnhancedStats);
       console.log('🔍 Payment Stats:', calculatedPaymentStats);
-      console.log('🔍 User Uploads Revenue (from payments table):', regularRevenue);
-      console.log('🔍 Authenticator Uploads Revenue (from documents table):', authenticatorRevenue);
-      console.log('🔍 Total Revenue (corrected):', totalRevenue);
+      console.log('🔍 User Uploads Revenue (from payments table, status=completed):', regularRevenue);
+      console.log('🔍 Authenticator Uploads Revenue (excluded from total):', authenticatorRevenue);
+      console.log('🔍 Total Revenue (only completed payments):', totalRevenue);
 
     } catch (error) {
       console.error('💥 Erro geral ao carregar estatísticas:', error);

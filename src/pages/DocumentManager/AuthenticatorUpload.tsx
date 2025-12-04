@@ -19,6 +19,7 @@ export default function AuthenticatorUpload() {
   const [idiomaRaiz, setIdiomaRaiz] = useState('Portuguese');
   const [idiomaDestino, setIdiomaDestino] = useState('English');
   const [clientName, setClientName] = useState('');
+  const [uploadType, setUploadType] = useState<'client' | 'personal'>('client');
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptFileUrl, setReceiptFileUrl] = useState<string | null>(null);
@@ -183,7 +184,9 @@ export default function AuthenticatorUpload() {
       }
 
       if (!clientName.trim()) {
-        throw new Error('Client name is required');
+        if (uploadType === 'client') {
+          throw new Error('Client name is required');
+        }
       }
 
       const metadata = {
@@ -195,7 +198,7 @@ export default function AuthenticatorUpload() {
         originalLanguage: idiomaRaiz,
         targetLanguage: idiomaDestino,
         userId: user?.id,
-        clientName: clientName.trim(),
+        clientName: uploadType === 'client' ? clientName.trim() : null,
         paymentMethod: paymentMethod,
         ...(isExtrato && {
           sourceCurrency: sourceCurrency,
@@ -271,9 +274,10 @@ export default function AuthenticatorUpload() {
             is_bank_statement: isExtrato,
             file_url: publicUrl,
             verification_code: `AUTH${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
-            client_name: clientName.trim(),
+            client_name: uploadType === 'client' ? clientName.trim() : null,
             payment_method: paymentMethod,
             receipt_url: customPayload?.receiptPath ? supabase.storage.from('documents').getPublicUrl(customPayload.receiptPath).data.publicUrl : null,
+            is_internal_use: uploadType === 'personal',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             ...(isExtrato && {
@@ -389,9 +393,9 @@ export default function AuthenticatorUpload() {
       return;
     }
     
-    if (!clientName.trim()) {
-      console.log('DEBUG: Upload bloqueado - Client Name é obrigatório');
-      setError('Client name is required. Please enter the client\'s full name.');
+    if (uploadType === 'client' && !clientName.trim()) {
+      console.log('DEBUG: Upload bloqueado - Client Name é obrigatório para uploads de cliente');
+      setError('Client name is required when uploading for a client. Please enter the client\'s full name.');
       return;
     }
     
@@ -617,23 +621,48 @@ export default function AuthenticatorUpload() {
                   />
                 </section>
 
+                {/* Upload Type */}
+                <section>
+                  <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="upload-type">
+                    3. Upload Type
+                  </label>
+                  <select
+                    id="upload-type"
+                    value={uploadType}
+                    onChange={e => setUploadType(e.target.value as 'client' | 'personal')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base"
+                    aria-label="Upload type"
+                  >
+                    <option value="client">For Client</option>
+                    <option value="personal">Personal Use</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {uploadType === 'client' 
+                      ? 'This document is for a client who paid for translation services.'
+                      : 'This document is for your personal use and will not be counted in statistics.'}
+                  </p>
+                </section>
+
                 {/* Client Name */}
                 <section>
                   <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="client-name">
-                    3. Client Name
+                    4. Client Name {uploadType === 'personal' && <span className="text-gray-400">(Optional)</span>}
                   </label>
                   <input
                     id="client-name"
                     type="text"
                     value={clientName}
                     onChange={e => setClientName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base"
-                    placeholder="Enter client's full name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    placeholder={uploadType === 'personal' ? "Optional: Enter your name or leave blank" : "Enter client's full name"}
                     aria-label="Client name"
-                    required
+                    required={uploadType === 'client'}
+                    disabled={uploadType === 'personal'}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Enter the full name of the client for whom this document is being translated.
+                    {uploadType === 'client'
+                      ? 'Enter the full name of the client for whom this document is being translated.'
+                      : 'This field is optional for personal use documents.'}
                   </p>
                 </section>
 
@@ -641,7 +670,7 @@ export default function AuthenticatorUpload() {
                 <section className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="translation-type">
-                      4. Translation Type
+                      5. Translation Type
                     </label>
                     <select
                       id="translation-type"
@@ -658,7 +687,7 @@ export default function AuthenticatorUpload() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="is-bank-statement">
-                      5. Is it a bank statement?
+                      6. Is it a bank statement?
                     </label>
                     <select
                       id="is-bank-statement"
@@ -677,7 +706,7 @@ export default function AuthenticatorUpload() {
                     <>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="source-currency">
-                          5.1. Source Currency (Original Document)
+                          6.1. Source Currency (Original Document)
                         </label>
                         <select
                           id="source-currency"
@@ -694,7 +723,7 @@ export default function AuthenticatorUpload() {
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="target-currency">
-                          5.2. Target Currency (Translation To)
+                          6.2. Target Currency (Translation To)
                         </label>
                         <select
                           id="target-currency"
@@ -713,7 +742,7 @@ export default function AuthenticatorUpload() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="original-language">
-                      6. Original Document Language
+                      7. Original Document Language
                     </label>
                     <select
                       id="original-language"
@@ -730,7 +759,7 @@ export default function AuthenticatorUpload() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="target-language">
-                      7. Target Language (Translation To)
+                      8. Target Language (Translation To)
                     </label>
                     <select
                       id="target-language"
@@ -749,7 +778,7 @@ export default function AuthenticatorUpload() {
                 {/* Payment Method */}
                 <section>
                   <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="payment-method">
-                    8. Payment Method
+                    9. Payment Method {uploadType === 'personal' && <span className="text-gray-400">(Optional)</span>}
                   </label>
                   <select
                     id="payment-method"
@@ -770,7 +799,7 @@ export default function AuthenticatorUpload() {
                 {/* Receipt Upload */}
                 <section>
                   <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="receipt-upload">
-                    9. Payment Receipt (Optional)
+                    10. Payment Receipt (Optional)
                   </label>
                   <div
                     className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer flex flex-col items-center justify-center ${receiptFile ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-green-400'}`}
@@ -849,7 +878,7 @@ export default function AuthenticatorUpload() {
                         handleUpload();
                       }
                     }}
-                    disabled={!selectedFile || !clientName.trim() || isUploading}
+                    disabled={!selectedFile || (uploadType === 'client' && !clientName.trim()) || isUploading}
                     className="w-full bg-gradient-to-r from-tfe-blue-950 to-tfe-red-950 text-white py-4 rounded-xl font-bold shadow-lg hover:from-blue-800 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-lg transition-all"
                   >
                     {isUploading ? 'Uploading...' : 'Upload Document (Free for Authenticators)'}

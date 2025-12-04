@@ -210,7 +210,6 @@ export default function AuthenticatorDashboard() {
   const [modalDocumentId, setModalDocumentId] = useState('');
   const [modalDocumentName, setModalDocumentName] = useState('');
   
-  
   // Estatísticas separadas
   const [stats, setStats] = useState({
     pending: 0,
@@ -1468,6 +1467,7 @@ export default function AuthenticatorDashboard() {
             </div>
           )}
         </div>
+
       </div>
 
       {/* Modal de confirmação de aprovação */}

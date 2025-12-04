@@ -8,6 +8,7 @@ import { supabase, db } from '../../lib/supabase';
 import { formatDateTime } from '../../utils/dateUtils';
 import { Logger } from '../../lib/loggingHelpers';
 import { ActionTypes } from '../../types/actionTypes';
+import { DocumentUploadRetry } from '../../components/DocumentUploadRetry/DocumentUploadRetry';
 
 export default function MyDocumentsPage() {
   const { user } = useAuth();
@@ -303,8 +304,12 @@ export default function MyDocumentsPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto mt-4 sm:mt-10 bg-white rounded-xl shadow p-4 sm:p-8 min-h-[70vh]">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-4">
+    <div className="max-w-5xl mx-auto mt-4 sm:mt-10">
+      {/* Alerta de documentos com upload pendente */}
+      <DocumentUploadRetry userId={user?.id} />
+      
+      <div className="bg-white rounded-xl shadow p-4 sm:p-8 min-h-[70vh]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-4">
         <div className="flex items-center gap-2 min-w-0">
           {currentFolderId && (
             <button onClick={handleGoBack} className="p-2 rounded hover:bg-gray-100" title="Go back">
@@ -1451,6 +1456,7 @@ export default function MyDocumentsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 } 
