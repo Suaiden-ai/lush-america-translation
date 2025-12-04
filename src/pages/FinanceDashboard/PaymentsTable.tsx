@@ -132,9 +132,11 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       console.log('🔍 Date filter params:', { startDateParam, endDateParam });
 
       // Buscar todos os documentos da tabela principal (como no Admin Dashboard)
+      // Excluir documentos de uso pessoal (is_internal_use = true) das estatísticas
       let mainDocumentsQuery = supabase
         .from('documents')
         .select('*, profiles:profiles!documents_user_id_fkey(name, email, phone, role)')
+        .or('is_internal_use.is.null,is_internal_use.eq.false')
         .order('created_at', { ascending: false });
 
       // Aplicar filtros de data
@@ -153,9 +155,10 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       }
 
       // Buscar documentos da tabela documents_to_be_verified
+      // IMPORTANTE: Incluir original_document_id para poder buscar o pagamento correto
       let verifiedDocumentsQuery = supabase
         .from('documents_to_be_verified')
-        .select('*, profiles:profiles!documents_to_be_verified_user_id_fkey(name, email, phone, role)')
+        .select('*, original_document_id, profiles:profiles!documents_to_be_verified_user_id_fkey(name, email, phone, role)')
         .order('created_at', { ascending: false });
 
       // Aplicar filtros de data
@@ -170,6 +173,23 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
 
       if (verifiedDocError) {
         console.error('Error loading verified documents:', verifiedDocError);
+      }
+
+      // Buscar todos os documentos (incluindo os de uso pessoal) para verificar is_internal_use
+      // Isso é necessário porque mainDocuments já está filtrado
+      let allDocumentsForCheck: Array<{ id: string; filename: string; is_internal_use: boolean | null }> = [];
+      if (verifiedDocuments && verifiedDocuments.length > 0) {
+        const filenames = verifiedDocuments.map(vd => vd.filename);
+        const { data: allDocs, error: allDocsError } = await supabase
+          .from('documents')
+          .select('id, filename, is_internal_use')
+          .in('filename', filenames);
+        
+        if (allDocsError) {
+          console.error('Error loading all documents for check:', allDocsError);
+        } else {
+          allDocumentsForCheck = allDocs || [];
+        }
       }
 
       // ✅ BUSCAR DADOS DE AUTENTICAÇÃO DE translated_documents
@@ -243,7 +263,28 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
 
       // Processar documentos de autenticadores (documents_to_be_verified)
       // Para autenticadores, o payment_method está na tabela documents
-      const authenticatorPayments: MappedPayment[] = verifiedDocuments?.map(verifiedDoc => {
+      // Filtrar documentos de uso pessoal (is_internal_use = true)
+      const authenticatorPayments: MappedPayment[] = verifiedDocuments?.filter(verifiedDoc => {
+        // Verificar se o documento original é de uso pessoal
+        // Primeiro tentar pelo original_document_id, depois pelo filename
+        let originalDoc = null;
+        if (verifiedDoc.original_document_id) {
+          // Buscar no allDocumentsForCheck (que inclui todos os documentos)
+          originalDoc = allDocumentsForCheck.find(doc => doc.id === verifiedDoc.original_document_id);
+          // Se não encontrar, tentar no mainDocuments
+          if (!originalDoc) {
+            originalDoc = mainDocuments?.find(doc => doc.id === verifiedDoc.original_document_id);
+          }
+        } else {
+          // Se não tiver original_document_id, buscar pelo filename no allDocumentsForCheck
+          originalDoc = allDocumentsForCheck.find(doc => doc.filename === verifiedDoc.filename);
+        }
+        
+        if (originalDoc?.is_internal_use === true) {
+          return false; // Excluir documentos de uso pessoal
+        }
+        return true; // Incluir todos os outros documentos
+      }).map(verifiedDoc => {
         // 🔍 LOG PARA RASTREAR PROCESSAMENTO DO DOCUMENTO REFUNDED COMO AUTENTICADOR
         if (verifiedDoc.filename === 'relatorio-suaiden-ai_PS7V00.pdf') {
           console.log('🔍 DEBUG - Processing refunded document as authenticator:', {
@@ -257,19 +298,76 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         const mainDoc = mainDocuments?.find(doc => doc.filename === verifiedDoc.filename);
         
         // 🔍 BUSCAR STATUS REAL DA TABELA PAYMENTS PARA AUTENTICADORES
+        // IMPORTANTE: verifiedDoc.id é o ID de documents_to_be_verified
+        // O pagamento está vinculado ao document_id original (documents.id), não ao dtbv.id
+        // MESMA LÓGICA DO ADMIN DASHBOARD: buscar apenas pelo original_document_id (sem fallback)
         let realStatus = 'completed'; // Default para autenticadores
-        const paymentForAuth = paymentsData?.find(payment => 
-          payment.document_id === verifiedDoc.id || 
-          (payment.user_id === verifiedDoc.user_id && payment.amount === verifiedDoc.total_cost)
-        );
+        let paymentForAuth = null;
+        
+        // Buscar APENAS pelo original_document_id (sem fallback, igual ao AdminDashboard)
+        if (verifiedDoc.original_document_id) {
+          paymentForAuth = paymentsData?.find(payment => 
+            payment.document_id === verifiedDoc.original_document_id
+          );
+          
+          // 🔍 LOG ESPECÍFICO PARA O DOCUMENTO DA KARINA
+          if (verifiedDoc.filename?.includes('0UUWX0') || verifiedDoc.filename?.includes('certidao_de_casamento')) {
+            console.log('🔍 DEBUG KARINA - Buscando pagamento:', {
+              original_document_id: verifiedDoc.original_document_id,
+              dtbv_id: verifiedDoc.id,
+              filename: verifiedDoc.filename,
+              payments_checked: paymentsData?.filter(p => p.document_id === verifiedDoc.original_document_id).map(p => ({
+                id: p.id,
+                document_id: p.document_id,
+                status: p.status,
+                amount: p.amount
+              })),
+              payment_found: paymentForAuth ? {
+                id: paymentForAuth.id,
+                document_id: paymentForAuth.document_id,
+                status: paymentForAuth.status,
+                amount: paymentForAuth.amount
+              } : null
+            });
+          }
+        }
+        
+        // 🔍 LOG ESPECÍFICO PARA O DOCUMENTO DA KARINA
+        if (verifiedDoc.filename?.includes('0UUWX0') || verifiedDoc.filename?.includes('certidao_de_casamento')) {
+          console.log('🔍 DEBUG KARINA - Processing document:', {
+            dtbv_id: verifiedDoc.id,
+            original_document_id: verifiedDoc.original_document_id,
+            filename: verifiedDoc.filename,
+            user_id: verifiedDoc.user_id,
+            total_cost: verifiedDoc.total_cost,
+            payment_found: !!paymentForAuth,
+            payment_status: paymentForAuth?.status,
+            all_payments_for_user: paymentsData?.filter(p => p.user_id === verifiedDoc.user_id).map(p => ({
+              id: p.id,
+              document_id: p.document_id,
+              status: p.status,
+              amount: p.amount
+            }))
+          });
+        }
         
         if (paymentForAuth) {
           realStatus = paymentForAuth.status;
           console.log('🔍 DEBUG - Found payment for authenticator document:', {
-            document_id: verifiedDoc.id,
+            dtbv_id: verifiedDoc.id,
+            original_document_id: verifiedDoc.original_document_id,
             payment_id: paymentForAuth.id,
+            payment_document_id: paymentForAuth.document_id,
             real_status: paymentForAuth.status,
             amount: paymentForAuth.amount
+          });
+        } else {
+          console.log('🔍 DEBUG - No payment found for authenticator document:', {
+            dtbv_id: verifiedDoc.id,
+            original_document_id: verifiedDoc.original_document_id,
+            user_id: verifiedDoc.user_id,
+            total_cost: verifiedDoc.total_cost,
+            filename: verifiedDoc.filename
           });
         }
         
@@ -302,7 +400,8 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
           
           // Dados do documento
           document_filename: verifiedDoc.filename,
-          document_status: verifiedDoc.status,
+          // Para autenticadores, usar status 'completed' se foi autenticado (igual ao AdminDashboard)
+          document_status: (verifiedDoc.authenticated_by_name || verifiedDoc.status === 'completed') ? 'completed' : verifiedDoc.status,
           client_name: verifiedDoc.client_name,
           idioma_raiz: verifiedDoc.source_language,
           tipo_trad: verifiedDoc.target_language,
@@ -347,6 +446,11 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       
       if (mainDocuments) {
         for (const doc of mainDocuments) {
+          // Excluir documentos de uso pessoal (is_internal_use = true)
+          if (doc.is_internal_use === true) {
+            continue;
+          }
+          
           // 🔍 LOG PARA RASTREAR PROCESSAMENTO DO DOCUMENTO REFUNDED
           if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e') {
             console.log('🔍 DEBUG - Processing refunded document in loop:', {

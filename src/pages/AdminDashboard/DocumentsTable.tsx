@@ -72,6 +72,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       }
 
       // ✅ QUERY CORRIGIDA PARA INCLUIR DADOS DE DOCUMENTS_TO_BE_VERIFIED
+      // Excluir documentos de uso pessoal (is_internal_use = true) das estatísticas
       let query = supabase
         .from('documents')
         .select(`
@@ -79,6 +80,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           profiles!documents_user_id_fkey(name, email, phone, role),
           payments!payments_document_id_fkey(payment_method, status, amount, currency)
         `)
+        .or('is_internal_use.is.null,is_internal_use.eq.false')
         .order('created_at', { ascending: false });
 
       // Aplicar filtros de data
@@ -302,21 +304,20 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
   // Total dinâmico baseado nos filtros atuais
   const totalAmountFiltered = useMemo(() => {
-    // Regra solicitada: pagos de fato (users) + autenticador; excluir drafts
-    let authSum = 0;
+    // Regra: apenas pagamentos com status 'completed' de usuários regulares
+    // NÃO incluir receita de autenticador pois não é lucro (valores ficam pending e não são pagos)
     let userSum = 0;
     const total = filteredDocuments
       .filter(doc => (doc.status || '') !== 'draft')
       .reduce((sum, doc) => {
         const isAuthenticator = (doc.user_role || 'user') === 'authenticator';
+        // Não somar receita de autenticador
         if (isAuthenticator) {
-          const v = (doc.total_cost || 0);
-          authSum += v;
-          return sum + v;
+          return sum;
         }
+        // Considerar apenas pagamentos com status 'completed'
         const payment = (doc.payment_status || '').toLowerCase();
-        const isPaid = !['pending', 'cancelled', 'refunded'].includes(payment) || (doc.payment_amount_total || 0) > 0;
-        if (isPaid) {
+        if (payment === 'completed') {
           // Somar todos os pagamentos confirmados quando disponível; fallback para total_cost
           const amount = typeof doc.payment_amount_total === 'number' && (doc.payment_amount_total || 0) > 0
             ? (doc.payment_amount_total as number)
@@ -328,9 +329,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       }, 0);
     try {
       console.log('[DocumentsTable] Filtered docs:', filteredDocuments.length);
-      console.log('[DocumentsTable] Authenticator sum (total_cost):', authSum.toFixed(2));
-      console.log('[DocumentsTable] Users paid sum (payments.amount total or fallback):', userSum.toFixed(2));
-      console.log('[DocumentsTable] Total (auth + users):', total.toFixed(2));
+      console.log('[DocumentsTable] Users paid sum (status=completed only):', userSum.toFixed(2));
+      console.log('[DocumentsTable] Total (only completed payments):', total.toFixed(2));
       const samples = filteredDocuments.slice(0, 10).map(d => ({
         id: d.id,
         filename: d.filename,

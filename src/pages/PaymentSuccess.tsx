@@ -6,6 +6,46 @@ import { fileStorage } from '../utils/fileStorage';
 import { generateUniqueFileName } from '../utils/fileUtils';
 import { Logger } from '../lib/loggingHelpers';
 import { ActionTypes } from '../types/actionTypes';
+import { isUploadErrorSimulationActive } from '../utils/uploadSimulation';
+
+// Função helper para marcar documento como falhado
+async function markDocumentUploadFailed(documentId: string) {
+  try {
+    // Buscar userId do documento primeiro
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .select('user_id')
+      .eq('id', documentId)
+      .single();
+
+    if (docError || !document) {
+      console.error('Error fetching document for markUploadFailed:', docError);
+      return;
+    }
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/update-document`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || ''}`
+      },
+      body: JSON.stringify({
+        documentId,
+        userId: document.user_id,
+        markUploadFailed: true
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Failed to mark document as upload failed');
+    }
+  } catch (err) {
+    console.error('Error marking document as upload failed:', err);
+  }
+}
 
 export function PaymentSuccess() {
   const [searchParams] = useSearchParams();
@@ -118,6 +158,19 @@ export function PaymentSuccess() {
               });
             }, 200);
 
+            // Verificar se deve simular erro (apenas em desenvolvimento)
+            const shouldSimulate = isUploadErrorSimulationActive();
+            if (shouldSimulate && documentId) {
+              console.log('DEBUG: Simulação de erro de upload ativada');
+              clearInterval(progressInterval);
+              setUploadProgress(0);
+              // Marcar documento como falhado
+              await markDocumentUploadFailed(documentId);
+              setError('Upload failed: Simulated error for testing');
+              navigate(`/dashboard/retry-upload?documentId=${documentId}&from=payment`);
+              return;
+            }
+
             const { data: uploadData, error: uploadError } = await supabase.storage
               .from('documents')
           .upload(uploadPath, file, {
@@ -131,6 +184,11 @@ export function PaymentSuccess() {
             if (uploadError) {
               console.error('ERROR: Erro no upload:', uploadError);
               console.error('ERROR: Detalhes do erro:', JSON.stringify(uploadError, null, 2));
+              // Marcar documento como falhado se tiver documentId
+              if (documentId) {
+                await markDocumentUploadFailed(documentId);
+                navigate(`/dashboard/retry-upload?documentId=${documentId}&from=payment`);
+              }
               setError(`Upload failed: ${uploadError.message}`);
               return;
             }
@@ -262,6 +320,11 @@ export function PaymentSuccess() {
                   localStorage.removeItem(fileId);
                 } else {
                   console.log('DEBUG: Arquivo NÃO encontrado nem no IndexedDB nem no localStorage');
+                  // Marcar documento como falhado se tiver documentId
+                  if (documentId) {
+                    await markDocumentUploadFailed(documentId);
+                    navigate(`/dashboard/retry-upload?documentId=${documentId}&from=payment`);
+                  }
                   setError('File not found in local storage. Please try uploading again.');
                   return;
                 }
@@ -273,6 +336,11 @@ export function PaymentSuccess() {
             }
           } catch (indexedDBError) {
             console.error('ERROR: Arquivo não encontrado nem no Storage nem no IndexedDB');
+            // Marcar documento como falhado se tiver documentId
+            if (documentId) {
+              await markDocumentUploadFailed(documentId);
+              navigate(`/dashboard/retry-upload?documentId=${documentId}&from=payment`);
+            }
             setError('File not found in storage. Please try uploading again.');
             return;
           }
@@ -295,6 +363,11 @@ export function PaymentSuccess() {
             // Fazer upload do arquivo para o Supabase Storage
             const uploadResult = await uploadFileToStorage(documentData.file);
             if (!uploadResult) {
+              // Marcar documento como falhado se tiver documentId
+              if (documentId) {
+                await markDocumentUploadFailed(documentId);
+                navigate(`/dashboard/retry-upload?documentId=${documentId}&from=payment`);
+              }
               setError('Upload failed. Please try again.');
               return;
             }
@@ -326,6 +399,11 @@ export function PaymentSuccess() {
 
         if (!documentData) {
           console.error('ERROR: Documento não encontrado após todas as tentativas');
+          // Marcar documento como falhado se tiver documentId
+          if (documentId) {
+            await markDocumentUploadFailed(documentId);
+            navigate(`/dashboard/retry-upload?documentId=${documentId}&from=payment`);
+          }
           setError('Document not found after multiple attempts. Please contact support.');
           return;
         }

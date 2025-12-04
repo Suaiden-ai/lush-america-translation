@@ -4,8 +4,9 @@ import { DocumentsTable } from './DocumentsTable';
 import { DocumentDetailsModal } from './DocumentDetailsModal';
 import { ZelleReceiptsAdmin } from '../../components/ZelleReceiptsAdmin';
 import DraftCleanupApproval from './DraftCleanupApproval';
+import { UploadSimulationPanel } from './UploadSimulationPanel';
 import { Document } from '../../App';
-import { Home, Receipt, FileText, Trash2 } from 'lucide-react';
+import { Home, Receipt, FileText, Trash2, TestTube } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { DateRange } from '../../components/DateRangeFilter';
 import { useI18n } from '../../contexts/I18nContext';
@@ -17,7 +18,7 @@ interface AdminDashboardProps {
 export function AdminDashboard({ documents }: AdminDashboardProps) {
   const { t } = useI18n();
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'zelle-receipts' | 'draft-cleanup'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'zelle-receipts' | 'draft-cleanup' | 'test-tools'>('overview');
   const [dateRange, setDateRange] = useState<DateRange>({
     startDate: null,
     endDate: null,
@@ -32,6 +33,8 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
       setActiveTab('zelle-receipts');
     } else if (location.hash === '#draft-cleanup') {
       setActiveTab('draft-cleanup');
+    } else if (location.hash === '#test-tools') {
+      setActiveTab('test-tools');
     } else {
       setActiveTab('overview');
     }
@@ -45,7 +48,7 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
     setSelectedDocument(null);
   };
 
-  const handleTabChange = (tab: 'overview' | 'zelle-receipts' | 'draft-cleanup') => {
+  const handleTabChange = (tab: 'overview' | 'zelle-receipts' | 'draft-cleanup' | 'test-tools') => {
     setActiveTab(tab);
     // Atualizar a URL para refletir a aba ativa
     if (tab === 'overview') {
@@ -59,6 +62,7 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
     { id: 'overview', label: t('admin.dashboard.tabs.overview'), icon: Home },
     { id: 'zelle-receipts', label: t('admin.dashboard.tabs.zelleReceipts'), icon: Receipt },
     { id: 'draft-cleanup', label: 'Draft Cleanup', icon: Trash2 },
+    { id: 'test-tools', label: 'Test Tools', icon: TestTube },
   ];
 
   return (
@@ -75,7 +79,7 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
           <div className="sm:hidden">
             <select
               value={activeTab}
-              onChange={(e) => handleTabChange(e.target.value as 'overview' | 'zelle-receipts' | 'draft-cleanup')}
+              onChange={(e) => handleTabChange(e.target.value as 'overview' | 'zelle-receipts' | 'draft-cleanup' | 'test-tools')}
               className="block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-tfe-blue-500 focus:outline-none focus:ring-tfe-blue-500"
             >
               {tabs.map((tab) => (
@@ -93,7 +97,7 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => handleTabChange(tab.id as 'overview' | 'zelle-receipts')}
+                  onClick={() => handleTabChange(tab.id as 'overview' | 'zelle-receipts' | 'draft-cleanup' | 'test-tools')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap ${
                     activeTab === tab.id
                       ? 'border-tfe-blue-500 text-tfe-blue-600'
@@ -133,6 +137,12 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
           {activeTab === 'draft-cleanup' && (
             <div className="space-y-4 sm:space-y-6 w-full">
               <DraftCleanupApproval />
+            </div>
+          )}
+
+          {activeTab === 'test-tools' && (
+            <div className="space-y-4 sm:space-y-6 w-full">
+              <UploadSimulationPanel />
             </div>
           )}
 

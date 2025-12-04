@@ -205,6 +205,7 @@ export type Database = {
           idioma_raiz: string | null
           is_authenticated: boolean | null
           is_bank_statement: boolean | null
+          is_internal_use: boolean | null
           original_filename: string | null
           pages: number | null
           payment_method: string | null
@@ -233,6 +234,7 @@ export type Database = {
           idioma_raiz?: string | null
           is_authenticated?: boolean | null
           is_bank_statement?: boolean | null
+          is_internal_use?: boolean | null
           original_filename?: string | null
           pages?: number | null
           payment_method?: string | null
@@ -261,6 +263,7 @@ export type Database = {
           idioma_raiz?: string | null
           is_authenticated?: boolean | null
           is_bank_statement?: boolean | null
+          is_internal_use?: boolean | null
           original_filename?: string | null
           pages?: number | null
           payment_method?: string | null

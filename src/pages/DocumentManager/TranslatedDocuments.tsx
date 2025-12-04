@@ -30,6 +30,8 @@ interface TranslatedDocument {
   // Dados do usuário
   user_name?: string | null;
   user_email?: string | null;
+  // Campo para identificar uso pessoal
+  is_internal_use?: boolean | null;
 }
 
 interface UserProfile {
@@ -98,11 +100,56 @@ export default function TranslatedDocuments() {
           console.error('[TranslatedDocuments] Error fetching documents:', error);
           setError(error.message);
         } else {
-          const documentsWithUserData = (data as any[] || []).map(doc => ({
-            ...doc,
-            user_name: doc.profiles?.name || null,
-            user_email: doc.profiles?.email || null
-          })) as TranslatedDocument[];
+          // Buscar documentos originais para obter is_internal_use
+          const originalDocIds = (data as any[] || [])
+            .map(doc => doc.original_document_id)
+            .filter((id): id is string => !!id);
+          
+          let originalDocsMap = new Map<string, { is_internal_use?: boolean | null }>();
+          
+          if (originalDocIds.length > 0) {
+            // Buscar documentos originais através de documents_to_be_verified
+            const { data: verifiedDocs } = await supabase
+              .from('documents_to_be_verified')
+              .select('id, original_document_id')
+              .in('id', originalDocIds);
+            
+            if (verifiedDocs && verifiedDocs.length > 0) {
+              const originalDocIdsFromVerified = verifiedDocs
+                .map(v => v.original_document_id)
+                .filter((id): id is string => !!id);
+              
+              if (originalDocIdsFromVerified.length > 0) {
+                const { data: originalDocs } = await supabase
+                  .from('documents')
+                  .select('id, is_internal_use')
+                  .in('id', originalDocIdsFromVerified);
+                
+                if (originalDocs) {
+                  originalDocs.forEach(doc => {
+                    originalDocsMap.set(doc.id, { is_internal_use: doc.is_internal_use });
+                  });
+                  
+                  // Mapear verified docs para original docs
+                  verifiedDocs.forEach(verified => {
+                    if (verified.original_document_id && originalDocsMap.has(verified.original_document_id)) {
+                      originalDocsMap.set(verified.id, originalDocsMap.get(verified.original_document_id)!);
+                    }
+                  });
+                }
+              }
+            }
+          }
+          
+          const documentsWithUserData = (data as any[] || []).map(doc => {
+            const originalDoc = originalDocsMap.get(doc.original_document_id);
+            return {
+              ...doc,
+              user_name: doc.profiles?.name || null,
+              user_email: doc.profiles?.email || null,
+              is_internal_use: originalDoc?.is_internal_use || false
+            };
+          }) as TranslatedDocument[];
           setDocuments(documentsWithUserData);
           console.log('[TranslatedDocuments] Found documents:', documentsWithUserData.length);
         }
@@ -431,10 +478,15 @@ export default function TranslatedDocuments() {
               <div key={doc.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <div className="space-y-3">
                   {/* Document Name */}
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="text-gray-900 font-medium text-sm">
                       {doc.filename}
                     </span>
+                    {doc.is_internal_use && (
+                      <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                        Personal Use
+                      </span>
+                    )}
                   </div>
 
 
@@ -519,10 +571,15 @@ export default function TranslatedDocuments() {
                   return (
                     <tr key={doc.id} className="border-t hover:bg-tfe-blue-50 transition-colors">
                       <td className="px-4 py-3">
-                        <div>
+                        <div className="flex items-center gap-2">
                           <span className="text-gray-900 font-medium text-sm">
                             {doc.filename}
                           </span>
+                          {doc.is_internal_use && (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                              Personal Use
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3">

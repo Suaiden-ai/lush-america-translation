@@ -41,11 +41,36 @@ Deno.serve(async (req) => {
       isBankStatement,
       sourceLanguage,
       targetLanguage,
-      clientName
+      clientName,
+      sourceCurrency,
+      targetCurrency,
+      markUploadFailed,
+      clearUploadFailed
     } = await req.json();
 
-    if (!documentId || !fileUrl || !userId) {
-      throw new Error('Missing required parameters: documentId, fileUrl, userId');
+    // Validar parâmetros obrigatórios
+    if (!documentId) {
+      throw new Error('Missing required parameter: documentId');
+    }
+    
+    // userId é obrigatório, mas se não fornecido, buscar do documento
+    let finalUserId = userId;
+    if (!finalUserId) {
+      const { data: doc, error: docError } = await supabase
+        .from('documents')
+        .select('user_id')
+        .eq('id', documentId)
+        .single();
+      
+      if (docError || !doc) {
+        throw new Error('Missing required parameter: userId (and could not fetch from document)');
+      }
+      finalUserId = doc.user_id;
+    }
+    
+    // fileUrl é obrigatório apenas se não for para marcar upload como falhado
+    if (!markUploadFailed && !fileUrl) {
+      throw new Error('Missing required parameter: fileUrl (unless markUploadFailed is true)');
     }
 
     console.log('DEBUG: Atualizando documento:', { 
@@ -59,15 +84,50 @@ Deno.serve(async (req) => {
       isBankStatement,
       sourceLanguage,
       targetLanguage,
-      clientName
+      clientName,
+      markUploadFailed,
+      clearUploadFailed
     });
 
     // Preparar dados para atualização
     const updateData: any = {
-      file_url: fileUrl,
-      status: 'processing',
       updated_at: new Date().toISOString()
     };
+
+    // Se marcar upload como falhado
+    if (markUploadFailed) {
+      // Buscar documento atual para obter retry_count
+      const { data: currentDoc } = await supabase
+        .from('documents')
+        .select('upload_retry_count')
+        .eq('id', documentId)
+        .single();
+      
+      updateData.upload_failed_at = new Date().toISOString();
+      // Manter o retry_count atual ou 0 se não existir
+      if (currentDoc?.upload_retry_count !== undefined) {
+        updateData.upload_retry_count = currentDoc.upload_retry_count;
+      }
+    }
+
+    // Se limpar upload falhado (upload bem-sucedido)
+    if (clearUploadFailed) {
+      // Buscar documento atual para incrementar retry_count
+      const { data: currentDoc } = await supabase
+        .from('documents')
+        .select('upload_retry_count')
+        .eq('id', documentId)
+        .single();
+      
+      updateData.upload_failed_at = null;
+      updateData.upload_retry_count = (currentDoc?.upload_retry_count || 0) + 1;
+    }
+
+    // Se fileUrl fornecido, atualizar arquivo
+    if (fileUrl) {
+      updateData.file_url = fileUrl;
+      updateData.status = 'pending';
+    }
 
     // Adicionar campos opcionais se fornecidos
     if (filename) updateData.filename = filename;
@@ -78,16 +138,20 @@ Deno.serve(async (req) => {
     if (sourceLanguage) updateData.idioma_raiz = sourceLanguage;
     if (targetLanguage) updateData.idioma_destino = targetLanguage;
     if (clientName) updateData.client_name = clientName;
+    if (sourceCurrency) updateData.source_currency = sourceCurrency;
+    if (targetCurrency) updateData.target_currency = targetCurrency;
     
-    // ✅ SEMPRE definir status como pending para evitar erro NULL
-    updateData.status = 'pending';
+    // ✅ SEMPRE definir status como pending se fileUrl fornecido
+    if (fileUrl) {
+      updateData.status = 'pending';
+    }
 
     // Atualizar documento na tabela documents
     const { data: updateResult, error: updateError } = await supabase
       .from('documents')
       .update(updateData)
       .eq('id', documentId)
-      .eq('user_id', userId)
+      .eq('user_id', finalUserId)
       .select()
       .single();
 
