@@ -89,6 +89,49 @@ export default function AuthenticatorUpload() {
   }
   const valor = calcularValor(pages);
 
+  // Função helper para calcular a numeração dinâmica dos campos
+  const getFieldNumber = (baseNumber: number): number | null => {
+    // Campos sempre visíveis: 1, 2, 3
+    if (baseNumber <= 3) return baseNumber;
+    
+    // Campo 4 (Client Name) - só aparece se for client
+    if (baseNumber === 4) {
+      return uploadType === 'client' ? 4 : null;
+    }
+    
+    // Campo 5 (Translation Type) - sempre visível
+    if (baseNumber === 5) {
+      return uploadType === 'client' ? 5 : 4; // Se não for client, vira 4
+    }
+    
+    // Campo 6 (Bank Statement) - sempre visível
+    if (baseNumber === 6) {
+      return uploadType === 'client' ? 6 : 5; // Se não for client, vira 5
+    }
+    
+    // Campo 7 (Original Language) - sempre visível
+    if (baseNumber === 7) {
+      return uploadType === 'client' ? 7 : 6; // Se não for client, vira 6
+    }
+    
+    // Campo 8 (Target Language) - sempre visível
+    if (baseNumber === 8) {
+      return uploadType === 'client' ? 8 : 7; // Se não for client, vira 7
+    }
+    
+    // Campo 9 (Payment Method) - só aparece se for client
+    if (baseNumber === 9) {
+      return uploadType === 'client' ? 9 : null;
+    }
+    
+    // Campo 10 (Receipt) - só aparece se for client
+    if (baseNumber === 10) {
+      return uploadType === 'client' ? 10 : null;
+    }
+    
+    return baseNumber;
+  };
+
   // PDF page count
   let pdfjsLib: any = null;
   let pdfjsWorkerSrc: string | undefined = undefined;
@@ -223,11 +266,13 @@ export default function AuthenticatorUpload() {
         userId: user?.id,
         userEmail: user?.email,
         filename: uniqueFileName, // Usar nome único com código aleatório
-        clientName: clientName.trim(),
+        ...(uploadType === 'client' && {
+          clientName: clientName.trim(),
+          paymentMethod: paymentMethod,
+        }),
         originalLanguage: idiomaRaiz,
         targetLanguage: idiomaDestino,
         documentType: 'Certificado',
-        paymentMethod: paymentMethod,
         ...(isExtrato && {
           sourceCurrency: sourceCurrency,
           targetCurrency: targetCurrency
@@ -274,9 +319,11 @@ export default function AuthenticatorUpload() {
             is_bank_statement: isExtrato,
             file_url: publicUrl,
             verification_code: `AUTH${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
-            client_name: uploadType === 'client' ? clientName.trim() : null,
-            payment_method: paymentMethod,
-            receipt_url: customPayload?.receiptPath ? supabase.storage.from('documents').getPublicUrl(customPayload.receiptPath).data.publicUrl : null,
+            ...(uploadType === 'client' && {
+              client_name: clientName.trim(),
+              payment_method: paymentMethod,
+              receipt_url: customPayload?.receiptPath ? supabase.storage.from('documents').getPublicUrl(customPayload.receiptPath).data.publicUrl : null,
+            }),
             is_internal_use: uploadType === 'personal',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -305,13 +352,15 @@ export default function AuthenticatorUpload() {
         paginas: pages,
         valor: valor,
         is_bank_statement: isExtrato,
-        client_name: clientName.trim(),
+        ...(uploadType === 'client' && {
+          client_name: clientName.trim(),
+          payment_method: paymentMethod,
+        }),
         idioma_raiz: idiomaRaiz,
         idioma_destino: idiomaDestino,
         tipo_trad: tipoTrad,
         mimetype: selectedFile?.type,
         size: selectedFile?.size,
-        payment_method: paymentMethod,
         ...(isExtrato && {
           source_currency: sourceCurrency,
           target_currency: targetCurrency
@@ -415,9 +464,9 @@ export default function AuthenticatorUpload() {
       
       const { data, error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
 
-      // Upload do comprovante de pagamento se existir
+      // Upload do comprovante de pagamento se existir e for para cliente
       let receiptPath = null;
-      if (receiptFile) {
+      if (uploadType === 'client' && receiptFile) {
         try {
           const receiptFilePath = generateUniqueFileName(`receipt_${receiptFile.name}`);
           const { data: receiptData, error: receiptError } = await supabase.storage
@@ -465,13 +514,15 @@ export default function AuthenticatorUpload() {
         userId: user.id,
         userEmail: user.email,
         filename: uniqueFileName, // Usar nome único com código aleatório
-        clientName: clientName.trim(),
+        ...(uploadType === 'client' && {
+          clientName: clientName.trim(),
+          paymentMethod: paymentMethod,
+          receiptPath: receiptPath,
+        }),
         originalLanguage: idiomaRaiz,
         targetLanguage: idiomaDestino,
         documentType: 'Certificado',
         isMobile: isMobile,
-        paymentMethod: paymentMethod,
-        receiptPath: receiptPath,
         ...(isExtrato && {
           sourceCurrency: sourceCurrency,
           targetCurrency: targetCurrency
@@ -629,7 +680,17 @@ export default function AuthenticatorUpload() {
                   <select
                     id="upload-type"
                     value={uploadType}
-                    onChange={e => setUploadType(e.target.value as 'client' | 'personal')}
+                    onChange={e => {
+                      const newType = e.target.value as 'client' | 'personal';
+                      setUploadType(newType);
+                      // Limpar campos quando mudar para personal use
+                      if (newType === 'personal') {
+                        setClientName('');
+                        setPaymentMethod('card');
+                        setReceiptFile(null);
+                        setReceiptFileUrl(null);
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base"
                     aria-label="Upload type"
                   >
@@ -643,34 +704,33 @@ export default function AuthenticatorUpload() {
                   </p>
                 </section>
 
-                {/* Client Name */}
-                <section>
-                  <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="client-name">
-                    4. Client Name {uploadType === 'personal' && <span className="text-gray-400">(Optional)</span>}
-                  </label>
-                  <input
-                    id="client-name"
-                    type="text"
-                    value={clientName}
-                    onChange={e => setClientName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    placeholder={uploadType === 'personal' ? "Optional: Enter your name or leave blank" : "Enter client's full name"}
-                    aria-label="Client name"
-                    required={uploadType === 'client'}
-                    disabled={uploadType === 'personal'}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    {uploadType === 'client'
-                      ? 'Enter the full name of the client for whom this document is being translated.'
-                      : 'This field is optional for personal use documents.'}
-                  </p>
-                </section>
+                {/* Client Name - Only show for client uploads */}
+                {uploadType === 'client' && (
+                  <section>
+                    <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="client-name">
+                      {getFieldNumber(4) !== null && `${getFieldNumber(4)}. `}Client Name
+                    </label>
+                    <input
+                      id="client-name"
+                      type="text"
+                      value={clientName}
+                      onChange={e => setClientName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base"
+                      placeholder="Enter client's full name"
+                      aria-label="Client name"
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Enter the full name of the client for whom this document is being translated.
+                    </p>
+                  </section>
+                )}
 
                 {/* Translation Details */}
                 <section className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="translation-type">
-                      5. Translation Type
+                      {getFieldNumber(5) !== null && `${getFieldNumber(5)}. `}Translation Type
                     </label>
                     <select
                       id="translation-type"
@@ -687,7 +747,7 @@ export default function AuthenticatorUpload() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="is-bank-statement">
-                      6. Is it a bank statement?
+                      {getFieldNumber(6) !== null && `${getFieldNumber(6)}. `}Is it a bank statement?
                     </label>
                     <select
                       id="is-bank-statement"
@@ -706,7 +766,7 @@ export default function AuthenticatorUpload() {
                     <>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="source-currency">
-                          6.1. Source Currency (Original Document)
+                          {getFieldNumber(6) !== null && `${getFieldNumber(6)}.1. `}Source Currency (Original Document)
                         </label>
                         <select
                           id="source-currency"
@@ -723,7 +783,7 @@ export default function AuthenticatorUpload() {
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="target-currency">
-                          6.2. Target Currency (Translation To)
+                          {getFieldNumber(6) !== null && `${getFieldNumber(6)}.2. `}Target Currency (Translation To)
                         </label>
                         <select
                           id="target-currency"
@@ -742,7 +802,7 @@ export default function AuthenticatorUpload() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="original-language">
-                      7. Original Document Language
+                      {getFieldNumber(7) !== null && `${getFieldNumber(7)}. `}Original Document Language
                     </label>
                     <select
                       id="original-language"
@@ -759,7 +819,7 @@ export default function AuthenticatorUpload() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="target-language">
-                      8. Target Language (Translation To)
+                      {getFieldNumber(8) !== null && `${getFieldNumber(8)}. `}Target Language (Translation To)
                     </label>
                     <select
                       id="target-language"
@@ -775,84 +835,88 @@ export default function AuthenticatorUpload() {
                   </div>
                 </section>
 
-                {/* Payment Method */}
-                <section>
-                  <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="payment-method">
-                    9. Payment Method {uploadType === 'personal' && <span className="text-gray-400">(Optional)</span>}
-                  </label>
-                  <select
-                    id="payment-method"
-                    value={paymentMethod}
-                    onChange={e => setPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base"
-                    aria-label="Payment method"
-                  >
-                    {paymentMethods.map(method => (
-                      <option key={method.value} value={method.value}>{method.label}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Select the payment method used by the client for this translation service.
-                  </p>
-                </section>
+                {/* Payment Method - Only show for client uploads */}
+                {uploadType === 'client' && (
+                  <section>
+                    <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="payment-method">
+                      {getFieldNumber(9) !== null && `${getFieldNumber(9)}. `}Payment Method
+                    </label>
+                    <select
+                      id="payment-method"
+                      value={paymentMethod}
+                      onChange={e => setPaymentMethod(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base"
+                      aria-label="Payment method"
+                    >
+                      {paymentMethods.map(method => (
+                        <option key={method.value} value={method.value}>{method.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Select the payment method used by the client for this translation service.
+                    </p>
+                  </section>
+                )}
 
-                {/* Receipt Upload */}
-                <section>
-                  <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="receipt-upload">
-                    10. Payment Receipt (Optional)
-                  </label>
-                  <div
-                    className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer flex flex-col items-center justify-center ${receiptFile ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-green-400'}`}
-                    onClick={() => receiptInputRef.current?.click()}
-                    style={{ minHeight: 120 }}
-                    aria-label="Upload receipt area"
-                  >
-                    <input
-                      type="file"
-                      ref={receiptInputRef}
-                      onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (file) handleReceiptFileChange(file);
-                      }}
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      className="hidden"
-                      id="receipt-upload"
-                      aria-label="Upload receipt file input"
-                      title="Select a receipt file to upload"
-                    />
-                    {receiptFile ? (
-                      <div className="flex flex-col items-center gap-2">
-                        <Receipt className="w-8 h-8 text-green-500 mb-1" />
-                        <span className="text-gray-800 font-medium text-sm">{receiptFile.name}</span>
-                        <span className="text-xs text-gray-500">{(receiptFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                        <button
-                          className="mt-1 text-xs text-tfe-red-500 hover:underline"
-                          onClick={e => { 
-                            e.stopPropagation(); 
-                            setReceiptFile(null); 
-                            setReceiptFileUrl(null);
-                          }}
-                        >Remove receipt</button>
-                        {receiptFile && receiptFileUrl && receiptFile.type.startsWith('image/') && (
-                          <img src={receiptFileUrl} alt="Receipt Preview" className="max-h-24 rounded shadow mt-2" />
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2">
-                        <Receipt className="w-8 h-8 text-gray-400 mb-1" />
-                        <p className="text-sm text-gray-600 font-medium">
-                          Click to upload receipt or drag and drop
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          PDF, JPG, PNG up to 5MB
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Upload a copy of the payment receipt for record keeping purposes. This is optional.
-                  </p>
-                </section>
+                {/* Receipt Upload - Only show for client uploads */}
+                {uploadType === 'client' && (
+                  <section>
+                    <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="receipt-upload">
+                      {getFieldNumber(10) !== null && `${getFieldNumber(10)}. `}Payment Receipt (Optional)
+                    </label>
+                    <div
+                      className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer flex flex-col items-center justify-center ${receiptFile ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-green-400'}`}
+                      onClick={() => receiptInputRef.current?.click()}
+                      style={{ minHeight: 120 }}
+                      aria-label="Upload receipt area"
+                    >
+                      <input
+                        type="file"
+                        ref={receiptInputRef}
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleReceiptFileChange(file);
+                        }}
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className="hidden"
+                        id="receipt-upload"
+                        aria-label="Upload receipt file input"
+                        title="Select a receipt file to upload"
+                      />
+                      {receiptFile ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <Receipt className="w-8 h-8 text-green-500 mb-1" />
+                          <span className="text-gray-800 font-medium text-sm">{receiptFile.name}</span>
+                          <span className="text-xs text-gray-500">{(receiptFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                          <button
+                            className="mt-1 text-xs text-tfe-red-500 hover:underline"
+                            onClick={e => { 
+                              e.stopPropagation(); 
+                              setReceiptFile(null); 
+                              setReceiptFileUrl(null);
+                            }}
+                          >Remove receipt</button>
+                          {receiptFile && receiptFileUrl && receiptFile.type.startsWith('image/') && (
+                            <img src={receiptFileUrl} alt="Receipt Preview" className="max-h-24 rounded shadow mt-2" />
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <Receipt className="w-8 h-8 text-gray-400 mb-1" />
+                          <p className="text-sm text-gray-600 font-medium">
+                            Click to upload receipt or drag and drop
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            PDF, JPG, PNG up to 5MB
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Upload a copy of the payment receipt for record keeping purposes. This is optional.
+                    </p>
+                  </section>
+                )}
 
                 {/* Error/Success Messages */}
                 {error && (
