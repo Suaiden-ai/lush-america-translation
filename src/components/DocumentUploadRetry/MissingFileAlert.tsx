@@ -20,14 +20,14 @@ export function MissingFileAlert({ count, onViewDocuments }: MissingFileAlertPro
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-medium text-amber-800">
-                Atenção: Documentos com pagamento confirmado mas sem arquivo
+                Attention: Documents with confirmed payment but no file
               </h3>
               <div className="mt-2 text-sm text-amber-700">
                 <p>
-                  Você tem <strong>{count}</strong> {count === 1 ? 'documento' : 'documentos'} que {count === 1 ? 'foi' : 'foram'} pago{count > 1 ? 's' : ''} mas {count === 1 ? 'não foi' : 'não foram'} enviado{count > 1 ? 's' : ''} corretamente.
+                  You have <strong>{count}</strong> {count === 1 ? 'document' : 'documents'} that {count === 1 ? 'was' : 'were'} paid but {count === 1 ? 'was not' : 'were not'} uploaded correctly.
                 </p>
                 <p className="mt-1">
-                  Por favor, reenvie {count === 1 ? 'o arquivo' : 'os arquivos'} para que possamos processar {count === 1 ? 'sua tradução' : 'suas traduções'}.
+                  Please resend {count === 1 ? 'the file' : 'the files'} so we can process {count === 1 ? 'your translation' : 'your translations'}.
                 </p>
               </div>
             </div>
@@ -36,7 +36,7 @@ export function MissingFileAlert({ count, onViewDocuments }: MissingFileAlertPro
               className="ml-4 flex items-center px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors"
             >
               <FileText className="h-4 w-4 mr-2" />
-              Ver Documentos
+              View Documents
               <ChevronRight className="h-4 w-4 ml-1" />
             </button>
           </div>

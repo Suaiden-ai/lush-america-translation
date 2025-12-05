@@ -33,7 +33,8 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
       setActiveTab('zelle-receipts');
     } else if (location.hash === '#draft-cleanup') {
       setActiveTab('draft-cleanup');
-    } else if (location.hash === '#test-tools') {
+    } else if (location.hash === '#test-tools' && SHOW_TEST_TOOLS) {
+      // Só permite ativar test-tools se a flag estiver habilitada
       setActiveTab('test-tools');
     } else {
       setActiveTab('overview');
@@ -58,12 +59,18 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
     }
   };
 
-  const tabs = [
+  // Aba Test Tools oculta temporariamente - código mantido para uso futuro
+  const SHOW_TEST_TOOLS = false; // Altere para true para reativar a aba
+  
+  const allTabs = [
     { id: 'overview', label: t('admin.dashboard.tabs.overview'), icon: Home },
     { id: 'zelle-receipts', label: t('admin.dashboard.tabs.zelleReceipts'), icon: Receipt },
     { id: 'draft-cleanup', label: 'Draft Cleanup', icon: Trash2 },
     { id: 'test-tools', label: 'Test Tools', icon: TestTube },
   ];
+  
+  // Filtrar tabs para ocultar Test Tools se necessário
+  const tabs = allTabs.filter(tab => tab.id !== 'test-tools' || SHOW_TEST_TOOLS);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -140,7 +147,8 @@ export function AdminDashboard({ documents }: AdminDashboardProps) {
             </div>
           )}
 
-          {activeTab === 'test-tools' && (
+          {/* Test Tools - Oculto temporariamente, código mantido para uso futuro */}
+          {SHOW_TEST_TOOLS && activeTab === 'test-tools' && (
             <div className="space-y-4 sm:space-y-6 w-full">
               <UploadSimulationPanel />
             </div>

@@ -117,11 +117,11 @@ export default function DocumentRetryUpload() {
                 <AlertCircle className="h-5 w-5 text-amber-600 mr-3 flex-shrink-0 mt-0.5" />
                 <div>
                   <h3 className="text-sm font-medium text-amber-800 mb-1">
-                    Pagamento confirmado, mas arquivo não encontrado
+                    Payment confirmed, but file not found
                   </h3>
                   <p className="text-sm text-amber-700">
-                    Seu pagamento foi processado com sucesso, mas o arquivo não pôde ser enviado automaticamente. 
-                    Por favor, reenvie o arquivo abaixo para que possamos processar sua tradução.
+                    Your payment was processed successfully, but the file could not be uploaded automatically. 
+                    Please resend the file below so we can process your translation.
                   </p>
                 </div>
               </div>
