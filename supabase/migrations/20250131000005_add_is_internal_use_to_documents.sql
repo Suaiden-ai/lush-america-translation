@@ -19,3 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_is_internal_use ON documents(is_interna
 COMMENT ON COLUMN documents.is_internal_use IS 'Indicates if document is for authenticator personal use (true) or for a client (false). Personal use documents should not be counted in financial/admin statistics.';
 
 
+
+
+
+

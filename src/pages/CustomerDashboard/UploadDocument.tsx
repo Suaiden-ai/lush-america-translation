@@ -24,7 +24,7 @@ export default function UploadDocument() {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [tipoTrad, setTipoTrad] = useState<'Certified'>('Certified');
-  const [isExtrato, setIsExtrato] = useState(false);
+  const [isExtrato, setIsExtrato] = useState<boolean | null>(null);
   const [idiomaRaiz, setIdiomaRaiz] = useState('Portuguese');
   const [idiomaDestino, setIdiomaDestino] = useState('English');
   const [sourceCurrency, setSourceCurrency] = useState('USD');
@@ -147,7 +147,8 @@ export default function UploadDocument() {
     'CHF',
   ];
   
-  function calcularValor(pages: number, extrato: boolean) {
+  function calcularValor(pages: number, extrato: boolean | null) {
+    if (extrato === null) return 0; // Retornar 0 se não foi selecionado
     return extrato ? pages * 25 : pages * 20; // $20 base + $5 bank statement fee
   }
   const valor = calcularValor(pages, isExtrato);
@@ -306,6 +307,13 @@ export default function UploadDocument() {
 
   const handleUpload = async () => {
     if (!selectedFile || !user) return;
+    
+    // Validação: verificar se o campo bank statement foi preenchido
+    if (isExtrato === null) {
+      setError('Por favor, selecione se o documento é um extrato bancário ou não.');
+      return;
+    }
+    
     setError(null);
     setSuccess(null);
     setIsUploading(true);
@@ -790,15 +798,17 @@ export default function UploadDocument() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="is-bank-statement">
-                      {t('upload.form.isBankStatement')}
+                      {t('upload.form.isBankStatement')} <span className="text-red-500">*</span>
                     </label>
                     <select
                       id="is-bank-statement"
-                      value={isExtrato ? 'yes' : 'no'}
-                      onChange={e => setIsExtrato(e.target.value === 'yes')}
+                      value={isExtrato === null ? '' : (isExtrato ? 'yes' : 'no')}
+                      onChange={e => setIsExtrato(e.target.value === '' ? null : e.target.value === 'yes')}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-tfe-blue-500 focus:border-tfe-blue-500 text-base"
                       aria-label="Is it a bank statement"
+                      required
                     >
+                      <option value="">{t('upload.form.selectOptions.select')}</option>
                       <option value="no">{t('upload.form.selectOptions.no')}</option>
                       <option value="yes">{t('upload.form.selectOptions.yes')}</option>
                     </select>

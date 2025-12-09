@@ -740,7 +740,8 @@
       "targetLanguage": "6. Idioma de Destino (Traducir A)",
       "selectOptions": {
         "yes": "Sí",
-        "no": "No"
+        "no": "No",
+        "select": "Seleccione una opción..."
       }
     },
     "summary": {

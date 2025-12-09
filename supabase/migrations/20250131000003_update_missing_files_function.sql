@@ -65,3 +65,7 @@ COMMENT ON FUNCTION get_documents_with_missing_files(UUID) IS
 'Retorna documentos que têm pagamento confirmado mas não têm arquivo no Storage. Inclui pages, payment_gross_amount e payment_fee_amount. Útil para identificar casos que precisam de reenvio.';
 
 
+
+
+
+
