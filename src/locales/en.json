@@ -904,6 +904,8 @@
         "showing": "Showing {{filtered}} of {{total}} documents",
         "total": "Total",
         "exportCsv": "Export CSV",
+        "exportExcel": "Export Excel",
+        "noDataToExport": "No data to export",
         "searchPlaceholder": "Search by name, email, filename, client...",
         "filters": {
           "allStatus": "All Status",

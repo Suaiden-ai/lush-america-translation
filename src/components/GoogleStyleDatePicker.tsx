@@ -123,8 +123,19 @@ export function GoogleStyleDatePicker({
   };
 
   const handleCustomDateApply = () => {
-    const startDate = tempStartDate ? new Date(tempStartDate) : null;
-    const endDate = tempEndDate ? new Date(tempEndDate) : null;
+    // Criar datas no timezone local para evitar problemas de conversão UTC
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+
+    if (tempStartDate) {
+      const [year, month, day] = tempStartDate.split('-').map(Number);
+      startDate = new Date(year, month - 1, day, 0, 0, 0, 0); // Criar no timezone local
+    }
+
+    if (tempEndDate) {
+      const [year, month, day] = tempEndDate.split('-').map(Number);
+      endDate = new Date(year, month - 1, day, 23, 59, 59, 999); // Fim do dia no timezone local
+    }
 
     // Validar datas
     if (startDate && endDate && startDate > endDate) {
@@ -154,11 +165,30 @@ export function GoogleStyleDatePicker({
   const formatDateRange = () => {
     if (dateRange.preset === 'custom') {
       if (dateRange.startDate && dateRange.endDate) {
-        return `${dateRange.startDate.toLocaleDateString('en-US')} - ${dateRange.endDate.toLocaleDateString('en-US')}`;
+        // Formatar datas corretamente no formato MM/DD/YYYY sem problemas de timezone
+        const formatDate = (date: Date) => {
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${month}/${day}/${year}`;
+        };
+        return `${formatDate(dateRange.startDate)} - ${formatDate(dateRange.endDate)}`;
       } else if (dateRange.startDate) {
-        return `From ${dateRange.startDate.toLocaleDateString('en-US')}`;
+        const formatDate = (date: Date) => {
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${month}/${day}/${year}`;
+        };
+        return `From ${formatDate(dateRange.startDate)}`;
       } else if (dateRange.endDate) {
-        return `Until ${dateRange.endDate.toLocaleDateString('en-US')}`;
+        const formatDate = (date: Date) => {
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${month}/${day}/${year}`;
+        };
+        return `Until ${formatDate(dateRange.endDate)}`;
       }
     }
     
