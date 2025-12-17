@@ -351,3 +351,4 @@ Essa abordagem garante que o Total Revenue reflita apenas a receita real da empr
 
 
 
+
