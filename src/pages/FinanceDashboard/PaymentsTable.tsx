@@ -6,6 +6,8 @@ import { Eye, Download, Filter, RefreshCw } from 'lucide-react';
 import { DateRange } from '../../components/DateRangeFilter'; // Assuming this path is correct
 import { GoogleStyleDatePicker } from '../../components/GoogleStyleDatePicker';
 import { DocumentDetailsModal } from './DocumentDetailsModal'; // Assuming this path is correct
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
   // Extended Document interface for the modal
   export interface Document {
@@ -193,7 +195,8 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       }
 
       // ✅ BUSCAR DADOS DE AUTENTICAÇÃO DE translated_documents
-      let translatedDocsMap = new Map();
+      // 1. Para autenticadores: buscar usando os IDs dos dtbv diretamente
+      let translatedDocsMap = new Map(); // Mapa: dtbv.id -> dados de autenticação
       if (verifiedDocuments && verifiedDocuments.length > 0) {
         const dtbvIds = verifiedDocuments.map(vd => vd.id);
         const { data: translatedDocs, error: tdError } = await supabase
@@ -217,6 +220,49 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         }
       }
 
+      // 2. Para documentos regulares: buscar dtbv que referenciam documents.id
+      let regularDocsAuthMap = new Map(); // Mapa: documents.id -> dados de autenticação
+      if (mainDocuments && mainDocuments.length > 0) {
+        const regularDocIds = mainDocuments.map(doc => doc.id);
+        
+        // Buscar documents_to_be_verified que referenciam os documentos regulares
+        const { data: dtbvForRegularDocs, error: dtbvRegularError } = await supabase
+          .from('documents_to_be_verified')
+          .select('id, original_document_id')
+          .in('original_document_id', regularDocIds);
+        
+        if (!dtbvRegularError && dtbvForRegularDocs && dtbvForRegularDocs.length > 0) {
+          const dtbvIdsForRegular = dtbvForRegularDocs.map(d => d.id);
+          
+          // Buscar translated_documents usando os IDs dos dtbv
+          const { data: translatedDocsForRegular, error: tdRegularError } = await supabase
+            .from('translated_documents')
+            .select('original_document_id, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated, status')
+            .in('original_document_id', dtbvIdsForRegular);
+          
+          if (!tdRegularError && translatedDocsForRegular) {
+            // Criar mapa auxiliar: dtbv.id -> documents.id
+            const dtbvToDocMap = new Map(dtbvForRegularDocs.map(d => [d.id, d.original_document_id]));
+            
+            // Mapear dados de autenticação: documents.id -> dados de autenticação
+            translatedDocsForRegular.forEach(td => {
+              const dtbvId = td.original_document_id; // ID do documents_to_be_verified
+              const originalDocId = dtbvToDocMap.get(dtbvId); // ID do documento original (documents.id)
+              
+              if (originalDocId) {
+                regularDocsAuthMap.set(originalDocId, {
+                  authenticated_by_name: td.authenticated_by_name,
+                  authenticated_by_email: td.authenticated_by_email,
+                  authentication_date: td.authentication_date,
+                  is_authenticated: td.is_authenticated,
+                  status: td.status
+                });
+              }
+            });
+          }
+        }
+      }
+
       // Buscar dados de pagamentos
       let paymentsQuery = supabase
         .from('payments')
@@ -237,28 +283,15 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
         console.error('Error loading payments data:', paymentsError);
       }
 
-      // 🔍 LOG ESPECÍFICO PARA RASTREAR STATUS REFUNDED
-      console.log('🔍 DEBUG - Total payments loaded:', paymentsData?.length || 0);
-      
-      // Verificar especificamente por status refunded
+      // Logs removidos para reduzir poluição
       const refundedPayments = paymentsData?.filter(p => p.status === 'refunded');
-      console.log('🔍 DEBUG - Refunded payments found:', refundedPayments?.length || 0);
       
       if (refundedPayments && refundedPayments.length > 0) {
-        console.log('🔍 DEBUG - Refunded payment details:', refundedPayments.map(p => ({
-          id: p.id,
-          document_id: p.document_id,
-          user_id: p.user_id,
-          status: p.status,
-          amount: p.amount,
-          created_at: p.created_at,
-          updated_at: p.updated_at
-        })));
+        // Log removido
       }
       
       // Verificar todos os status únicos
-      const uniqueStatuses = [...new Set(paymentsData?.map(p => p.status) || [])];
-      console.log('🔍 DEBUG - All unique payment statuses:', uniqueStatuses);
+      // Log removido
 
 
       // Processar documentos de autenticadores (documents_to_be_verified)
@@ -362,13 +395,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
             amount: paymentForAuth.amount
           });
         } else {
-          console.log('🔍 DEBUG - No payment found for authenticator document:', {
-            dtbv_id: verifiedDoc.id,
-            original_document_id: verifiedDoc.original_document_id,
-            user_id: verifiedDoc.user_id,
-            total_cost: verifiedDoc.total_cost,
-            filename: verifiedDoc.filename
-          });
+          // Log removido para reduzir poluição
         }
         
         // 🔍 LOG PARA VERIFICAR SE O DOCUMENTO REFUNDED ESTÁ SENDO PROCESSADO COM STATUS CORRETO
@@ -464,9 +491,7 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
           // Verificar se já foi processado como autenticador
           const alreadyProcessed = authenticatorPayments.some(auth => auth.document_filename === doc.filename);
           if (alreadyProcessed) {
-            if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e') {
-              console.log('🔍 DEBUG - Refunded document already processed as authenticator, skipping');
-            }
+            // Log removido
             continue;
           }
 
@@ -532,10 +557,12 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
             idioma_raiz: doc.idioma_raiz,
             tipo_trad: doc.tipo_trad,
             
-            // Dados de autenticação (não aplicável para documentos regulares)
-            authenticated_by_name: null,
-            authenticated_by_email: null,
-            authentication_date: null,
+            // ✅ DADOS DE AUTENTICAÇÃO PARA DOCUMENTOS REGULARES
+            // Primeiro tentar do regularDocsAuthMap (via translated_documents)
+            // Se não encontrar, verificar se há dados diretamente na tabela documents (marcado manualmente)
+            authenticated_by_name: regularDocsAuthMap.get(doc.id)?.authenticated_by_name || doc.authenticated_by_name || null,
+            authenticated_by_email: regularDocsAuthMap.get(doc.id)?.authenticated_by_email || doc.authenticated_by_email || null,
+            authentication_date: regularDocsAuthMap.get(doc.id)?.authentication_date || doc.authentication_date || null,
             source_language: doc.idioma_raiz,
             target_language: doc.tipo_trad,
             
@@ -556,35 +583,14 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
       // Combinar ambos os tipos de pagamentos
       const documentsWithFinancialData: MappedPayment[] = [...authenticatorPayments, ...regularPayments];
 
-      // 🔍 LOG FINAL PARA VERIFICAR STATUS NA TABELA
+      // Log removido
       const refundedInFinalData = documentsWithFinancialData.filter(p => p.status === 'refunded');
-      console.log('🔍 DEBUG - Refunded payments in final table data:', refundedInFinalData.length);
       
       if (refundedInFinalData.length > 0) {
-        console.log('🔍 DEBUG - Refunded payments details in final data:', refundedInFinalData.map(p => ({
-          id: p.id,
-          document_id: p.document_id,
-          status: p.status,
-          amount: p.amount,
-          document_filename: p.document_filename
-        })));
+        // Log removido
       }
       
-      // 🔍 LOG PARA RASTREAR ONDE O PAGAMENTO REFUNDED ESTÁ SENDO PERDIDO
-      console.log('🔍 DEBUG - Authenticator payments count:', authenticatorPayments.length);
-      console.log('🔍 DEBUG - Regular payments count:', regularPayments.length);
-      
-      // Verificar se o pagamento refunded está nos regularPayments
-      const refundedInRegular = regularPayments.filter(p => p.status === 'refunded');
-      console.log('🔍 DEBUG - Refunded in regular payments:', refundedInRegular.length);
-      
-      if (refundedInRegular.length > 0) {
-        console.log('🔍 DEBUG - Refunded regular payment details:', refundedInRegular);
-      }
-      
-      // Verificar se o pagamento refunded está nos authenticatorPayments
-      const refundedInAuth = authenticatorPayments.filter(p => p.status === 'refunded');
-      console.log('🔍 DEBUG - Refunded in authenticator payments:', refundedInAuth.length);
+      // Logs removidos
       
       setPayments(documentsWithFinancialData);
 
@@ -821,44 +827,785 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
     }
   };
 
-  const downloadPaymentsReport = useCallback(() => {
-    const csvContent = [
-      ['User/Client Name', 'User Email', 'Document ID', 'Document Filename', 'Amount', 'Currency', 'Payment Method', 'Payment ID', 'Session ID', 'Payment Status', 'Document Status', 'Authenticator Name', 'Authenticator Email', 'Authentication Date', 'Payment Date', 'Created At'],
-      ...filteredPayments.map(payment => [
-        payment.user_role === 'authenticator' && payment.client_name && payment.client_name !== 'Cliente Padrão'
-          ? `${payment.client_name} (${payment.user_name})`
-          : payment.authenticated_by_name && payment.client_name && payment.client_name !== 'Cliente Padrão'
-          ? `${payment.client_name} (${payment.authenticated_by_name})`
-          : payment.user_name || '',
-        payment.user_email || '',
-        payment.document_id,
-        payment.document_filename || '',
-        payment.amount.toFixed(2), // Format amount directly
-        payment.currency,
-        payment.payment_method || '',
-        payment.id,
-        payment.stripe_session_id || '',
-        payment.status, // payment status
-        payment.document_status, // document status
-        payment.authenticated_by_name || '',
-        payment.authenticated_by_email || '',
+  const downloadPaymentsReport = useCallback(async () => {
+    // Log básico mantido
 
-        payment.authentication_date ? new Date(payment.authentication_date).toLocaleDateString() : '',
-        payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : '',
-        new Date(payment.created_at).toLocaleDateString() // Assuming created_at is always present
-      ])
-    ].map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n'); // Proper CSV escaping
+    if (filteredPayments.length === 0) {
+      alert('Nenhum pagamento encontrado para exportar.');
+      return;
+    }
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `payments-report-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a); // Append to body to ensure it's visible in DOM for click
-    a.click();
-    document.body.removeChild(a); // Clean up
-    window.URL.revokeObjectURL(url);
-  }, [filteredPayments]); // Depend on filteredPayments to export current view
+    try {
+      // Buscar documentos completos para obter total_cost, payment_amount, pages e dados de autenticação
+      // Coletar TODOS os documentIds possíveis (incluindo original_document_id quando aplicável)
+      const allDocumentIds = new Set<string>();
+      filteredPayments.forEach(payment => {
+        if (payment.document_id) {
+          allDocumentIds.add(payment.document_id);
+        }
+      });
+      
+      // Buscar documents_to_be_verified para obter original_document_id quando necessário
+      const { data: allVerifiedDocs, error: allVerifiedError } = await supabase
+        .from('documents_to_be_verified')
+        .select('id, original_document_id')
+        .in('id', Array.from(allDocumentIds));
+      
+      if (!allVerifiedError && allVerifiedDocs) {
+        allVerifiedDocs.forEach(dtbv => {
+          if (dtbv.original_document_id) {
+            allDocumentIds.add(dtbv.original_document_id);
+          }
+        });
+      }
+      
+      const documentIds = Array.from(allDocumentIds);
+      let documentsMap = new Map(); // Mapa: document_id -> { total_cost, pages, original_document_id? }
+      let paymentsMap = new Map(); // Mapa: document_id -> payment_amount (valor líquido)
+      let authenticationMap = new Map(); // Mapa: document_id -> { authenticated_by_name, authenticated_by_email, authentication_date }
+      let verifiedDocsDataForLookup: any[] = []; // Armazenar para uso no lookup
+      
+      // Log removido - apenas para documentos específicos
+      
+      if (documentIds.length > 0) {
+        // Buscar da tabela documents (incluindo dados de autenticação que podem ter sido marcados manualmente)
+        const { data: documentsData, error: docsError } = await supabase
+          .from('documents')
+          .select('id, total_cost, pages, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated')
+          .in('id', documentIds);
+        
+        if (!docsError && documentsData) {
+          documentsData.forEach(doc => {
+            documentsMap.set(doc.id, doc);
+            
+            // Se o documento tem dados de autenticação diretamente na tabela documents (marcado manualmente)
+            // Adicionar ao authenticationMap também
+            if (doc.authenticated_by_name || doc.authenticated_by_email || doc.is_authenticated) {
+              authenticationMap.set(doc.id, {
+                authenticated_by_name: doc.authenticated_by_name,
+                authenticated_by_email: doc.authenticated_by_email,
+                authentication_date: doc.authentication_date,
+                is_authenticated: doc.is_authenticated,
+                status: doc.is_authenticated ? 'completed' : null
+              });
+              
+              // Log para documentos específicos
+              if (doc.id === 'ba6aaaf4-ea21-4429-b455-a64ae8b27ccd' || doc.id === '0bf7fa13-89a9-431d-8540-8a6cf2b8ef2b') {
+                console.log('✅ [GC2GNN/HZBDQR] Dados de autenticação encontrados diretamente na tabela documents:', {
+                  document_id: doc.id,
+                  authenticated_by_name: doc.authenticated_by_name,
+                  authenticated_by_email: doc.authenticated_by_email,
+                  authentication_date: doc.authentication_date
+                });
+              }
+            }
+          });
+        }
+
+        // Buscar também de documents_to_be_verified (para autenticadores)
+        // Buscar onde id IN documentIds (quando document_id é dtbv.id)
+        const { data: verifiedDocsData, error: verifiedDocsError } = await supabase
+          .from('documents_to_be_verified')
+          .select('id, total_cost, pages, original_document_id')
+          .in('id', documentIds);
+        
+        if (!verifiedDocsError && verifiedDocsData) {
+          verifiedDocsDataForLookup = verifiedDocsData; // Armazenar para uso no lookup
+          verifiedDocsData.forEach(doc => {
+            documentsMap.set(doc.id, doc);
+          });
+          
+          // Buscar documentos originais para obter total_cost se necessário
+          const originalDocIds = verifiedDocsData
+            .map(doc => doc.original_document_id)
+            .filter(Boolean);
+          
+          if (originalDocIds.length > 0) {
+            const { data: originalDocsData, error: originalDocsError } = await supabase
+              .from('documents')
+              .select('id, total_cost, pages')
+              .in('id', originalDocIds);
+            
+            if (!originalDocsError && originalDocsData) {
+              originalDocsData.forEach(doc => {
+                documentsMap.set(doc.id, doc);
+              });
+            }
+          }
+        }
+
+        // ✅ BUSCAR DADOS DE AUTENTICAÇÃO DE translated_documents (EXATAMENTE IGUAL AO ADMIN DASHBOARD)
+        // Primeiro, buscar os IDs de documents_to_be_verified correspondentes aos documentos
+        // Isso busca dtbv que referenciam os documentIds (que podem ser documents.id)
+        
+        // Log para documentos específicos ANTES da busca
+        const specificDocIds = ['ba6aaaf4-ea21-4429-b455-a64ae8b27ccd', '0bf7fa13-89a9-431d-8540-8a6cf2b8ef2b'];
+        const specificDocsInList = specificDocIds.filter(id => documentIds.includes(id));
+        if (specificDocsInList.length > 0) {
+          console.log('🔍 [GC2GNN/HZBDQR] ANTES da busca - documentIds na lista:', specificDocsInList);
+        }
+        
+        const { data: dtbvFullData, error: dtbvFullError } = await supabase
+          .from('documents_to_be_verified')
+          .select('id, original_document_id')
+          .in('original_document_id', documentIds);
+        
+        // Log para documentos específicos APÓS a busca
+        if (specificDocsInList.length > 0 && dtbvFullData) {
+          const dtbvForSpecific = dtbvFullData.filter(d => specificDocsInList.includes(d.original_document_id));
+          console.log('🔍 [GC2GNN/HZBDQR] dtbv encontrados para esses documentIds:', dtbvForSpecific);
+        }
+        
+        if (!dtbvFullError && dtbvFullData && dtbvFullData.length > 0) {
+          // Agora buscar translated_documents usando os IDs de documents_to_be_verified
+          const dtbvIds = dtbvFullData.map(d => d.id);
+          
+          const { data: translatedDocsData, error: translatedDocsError } = await supabase
+            .from('translated_documents')
+            .select('original_document_id, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated, status')
+            .in('original_document_id', dtbvIds);
+          
+          if (!translatedDocsError && translatedDocsData) {
+            // Criar um mapa auxiliar para relacionar dtbv.id -> dtbv.original_document_id
+            const dtbvMap = new Map(dtbvFullData.map(d => [d.id, d.original_document_id]));
+            
+            // Mapear dados de autenticação: key = document_id (de documents) - IGUAL AO ADMIN DASHBOARD
+            translatedDocsData.forEach(td => {
+              const dtbvId = td.original_document_id; // ID do documents_to_be_verified
+              const originalDocId = dtbvMap.get(dtbvId); // ID do documento original (documents.id)
+              
+              const authData = {
+                authenticated_by_name: td.authenticated_by_name,
+                authenticated_by_email: td.authenticated_by_email,
+                authentication_date: td.authentication_date,
+                is_authenticated: td.is_authenticated,
+                status: td.status
+              };
+              
+              // Mapear pelo original_document_id (documents.id) - IGUAL AO ADMIN DASHBOARD
+              if (originalDocId) {
+                authenticationMap.set(originalDocId, authData);
+                // Log para documentos específicos
+                if (specificDocsInList.includes(originalDocId)) {
+                  console.log('✅ [GC2GNN/HZBDQR] Mapeado authData para documents.id:', originalDocId, '->', authData.authenticated_by_name);
+                }
+              }
+            });
+          }
+        }
+
+        // ✅ TAMBÉM BUSCAR PARA AUTENTICADORES (quando document_id é o ID do dtbv)
+        // Se alguns documentIds são IDs de documents_to_be_verified, buscar diretamente
+        if (verifiedDocsData && verifiedDocsData.length > 0) {
+          const dtbvIdsFromVerified = verifiedDocsData.map(d => d.id);
+          
+          if (dtbvIdsFromVerified.length > 0) {
+            const { data: translatedDocsForAuth, error: tdForAuthError } = await supabase
+              .from('translated_documents')
+              .select('original_document_id, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated, status')
+              .in('original_document_id', dtbvIdsFromVerified);
+            
+            if (!tdForAuthError && translatedDocsForAuth) {
+              // Criar mapa auxiliar
+              const dtbvMapForAuth = new Map(verifiedDocsData.map(d => [d.id, d.original_document_id]));
+              
+              translatedDocsForAuth.forEach(td => {
+                const dtbvId = td.original_document_id;
+                const originalDocId = dtbvMapForAuth.get(dtbvId);
+                
+                const authData = {
+                  authenticated_by_name: td.authenticated_by_name,
+                  authenticated_by_email: td.authenticated_by_email,
+                  authentication_date: td.authentication_date,
+                  is_authenticated: td.is_authenticated,
+                  status: td.status
+                };
+                
+                // Mapear pelo dtbv.id (para autenticadores) e pelo original_document_id
+                if (dtbvId) {
+                  authenticationMap.set(dtbvId, authData);
+                }
+                if (originalDocId) {
+                  authenticationMap.set(originalDocId, authData);
+                }
+              });
+            }
+          }
+        }
+        
+        // Log removido - apenas para documentos específicos
+
+        // Buscar payment_amount da tabela payments (sem filtrar por status para pegar todos)
+        const { data: paymentsData, error: paymentsError } = await supabase
+          .from('payments')
+          .select('document_id, amount')
+          .in('document_id', documentIds);
+        
+        if (!paymentsError && paymentsData) {
+          paymentsData.forEach(payment => {
+            paymentsMap.set(payment.document_id, payment.amount); // Valor líquido recebido
+          });
+        }
+
+        // Para autenticadores, buscar pagamentos pelo original_document_id
+        if (verifiedDocsData) {
+          const originalDocIds = verifiedDocsData
+            .map(doc => doc.original_document_id)
+            .filter(Boolean);
+          
+          if (originalDocIds.length > 0) {
+            const { data: authPaymentsData, error: authPaymentsError } = await supabase
+              .from('payments')
+              .select('document_id, amount')
+              .in('document_id', originalDocIds);
+            
+            if (!authPaymentsError && authPaymentsData) {
+              authPaymentsData.forEach(payment => {
+                // Mapear pelo original_document_id
+                paymentsMap.set(payment.document_id, payment.amount);
+                // Também mapear pelo ID do dtbv para facilitar lookup
+                verifiedDocsData.forEach(dtbvDoc => {
+                  if (dtbvDoc.original_document_id === payment.document_id) {
+                    paymentsMap.set(dtbvDoc.id, payment.amount);
+                  }
+                });
+              });
+            }
+          }
+        }
+      }
+
+      // Filtrar pagamentos: excluir refunded/failed, e excluir Luiz como usuário
+      // IMPORTANTE: Não filtrar por 'completed' aqui - usar os filtros já aplicados na UI
+      const paymentsToExport = filteredPayments.filter(payment => {
+        // 1. Excluir pagamentos REFUNDED (reembolsados - não são receita real)
+        const paymentStatus = (payment.status || '').toLowerCase();
+        if (paymentStatus === 'refunded') {
+          return false; // Excluir pagamentos reembolsados
+        }
+        
+        // 2. Excluir pagamentos FAILED
+        if (paymentStatus === 'failed') {
+          return false; // Excluir pagamentos falhados
+        }
+
+        // 3. Excluir apenas documentos onde o Luiz é o USUÁRIO (não o autenticador)
+        // O Luiz pode autenticar documentos de outros usuários, isso é permitido
+        const userEmail = (payment.user_email || '').toLowerCase();
+        const userName = (payment.user_name || '').toLowerCase();
+
+        const isLuizUser = 
+          userEmail.includes('luizeduardomcsantos') ||
+          userEmail.includes('luizeduardogouveia7') ||
+          userName.includes('luiz eduardo');
+
+        // Excluir apenas se o Luiz for o usuário (não o autenticador)
+        return !isLuizUser;
+      });
+
+      // Log removido - apenas para documentos específicos
+
+      if (paymentsToExport.length === 0) {
+        alert('Nenhum pagamento encontrado para exportar.\n\nA exportação exclui:\n• Pagamentos REFUNDED (reembolsados)\n• Pagamentos FAILED (falhados)\n• Pagamentos onde o Luiz é o usuário (não o autenticador)\n\nVerifique os filtros aplicados.');
+        return;
+      }
+
+      // Obter informações do período de data para incluir no arquivo
+      const formatDateForFileName = (date: Date | null) => {
+        if (!date) return null;
+        const d = new Date(date);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
+
+      const startDateStr = formatDateForFileName(dateFilter?.startDate);
+      const endDateStr = formatDateForFileName(dateFilter?.endDate);
+      const hasDateFilter = startDateStr || endDateStr;
+
+      // Criar um novo workbook
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Payments');
+
+      // Adicionar informações do período exportado como primeira linha (antes dos cabeçalhos)
+      if (hasDateFilter) {
+        const periodInfo = startDateStr && endDateStr
+          ? `Período: ${startDateStr} até ${endDateStr}`
+          : startDateStr
+          ? `A partir de: ${startDateStr}`
+          : `Até: ${endDateStr}`;
+        
+        worksheet.insertRow(1, [periodInfo]);
+        const infoRow = worksheet.getRow(1);
+        infoRow.font = { bold: true, size: 12, color: { argb: 'FF4472C4' } };
+        infoRow.height = 20;
+        
+        // Adicionar linha em branco
+        worksheet.insertRow(2, []);
+      }
+
+      // Definir colunas com larguras e formatação (apenas as colunas necessárias - EXATAMENTE IGUAL AO ADMIN)
+      worksheet.columns = [
+        { header: 'Document Name', key: 'documentName', width: 30 },
+        { header: 'User Name', key: 'userName', width: 20 },
+        { header: 'User Email', key: 'userEmail', width: 25 },
+        { header: 'Translation Status', key: 'translationStatus', width: 18 },
+        { header: 'Pages', key: 'pages', width: 8 },
+        { header: 'Amount', key: 'amount', width: 12 },
+        { header: 'Tax', key: 'tax', width: 12 },
+        { header: 'Net Value', key: 'netValue', width: 12 },
+        { header: 'Payment Method', key: 'paymentMethod', width: 15 },
+        { header: 'Payment Status', key: 'paymentStatus', width: 15 },
+        { header: 'Authenticator Name', key: 'authenticatorName', width: 20 },
+        { header: 'Authentication Date', key: 'authenticationDate', width: 20 },
+        { header: 'Payment Date', key: 'paymentDate', width: 20 },
+      ];
+
+      // Mesclar células da linha de informações de período (se existir)
+      if (hasDateFilter) {
+        const infoRow = worksheet.getRow(1);
+        // Mesclar todas as 13 colunas
+        worksheet.mergeCells(1, 1, 1, 13);
+        infoRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+      }
+
+      // Estilizar cabeçalhos (ajustar número da linha se tiver informações de período)
+      const headerRowNumber = hasDateFilter ? 3 : 1;
+      const headerRow = worksheet.getRow(headerRowNumber);
+      
+      // Garantir que os cabeçalhos estejam explicitamente definidos
+      const headers = [
+        'Document Name', 'User Name', 'User Email', 'Translation Status', 'Pages',
+        'Amount', 'Tax', 'Net Value',
+        'Payment Method', 'Payment Status',
+        'Authenticator Name', 'Authentication Date', 'Payment Date'
+      ];
+      headers.forEach((header, index) => {
+        const cell = headerRow.getCell(index + 1);
+        cell.value = header;
+      });
+      
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4472C4' } // Azul
+      };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      headerRow.height = 25; // Altura maior para melhor legibilidade
+
+      // Função auxiliar para formatar datas de forma segura
+      const formatDateSafely = (dateValue: string | Date | null | undefined): string => {
+        if (!dateValue) return '';
+        try {
+          const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+          if (isNaN(date.getTime())) return ''; // Data inválida
+          return date.toLocaleString('pt-BR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+        } catch (error) {
+          console.warn('Erro ao formatar data:', dateValue, error);
+          return '';
+        }
+      };
+
+      // Função auxiliar para garantir valores numéricos válidos
+      const safeNumber = (value: any, defaultValue: number = 0): number => {
+        if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
+          return value;
+        }
+        return defaultValue;
+      };
+
+      // Adicionar dados (já filtrados, sem registros do Luiz)
+      paymentsToExport.forEach((payment) => {
+        // Buscar dados do documento para obter total_cost, payment_amount e pages
+        const docData = documentsMap.get(payment.document_id);
+        
+        // Para autenticadores: payment.document_id é o ID do dtbv
+        // O pagamento está vinculado ao original_document_id (tabela documents)
+        let totalCost = docData?.total_cost || 0;
+        let netValue = 0;
+        
+        // Buscar payment_amount da tabela payments
+        // Primeiro tentar pelo document_id direto (para usuários regulares)
+        netValue = paymentsMap.get(payment.document_id) || 0;
+        
+        // Se não encontrou, pode ser autenticador - buscar pelo original_document_id
+        if (netValue === 0 && docData?.original_document_id) {
+          netValue = paymentsMap.get(docData.original_document_id) || 0;
+          // Se encontrou pelo original_document_id, buscar total_cost do documento original também
+          if (netValue > 0) {
+            const originalDocData = documentsMap.get(docData.original_document_id);
+            if (originalDocData?.total_cost) {
+              totalCost = originalDocData.total_cost;
+            }
+          }
+        }
+        
+        // Se ainda não encontrou netValue, usar o amount do payment como fallback
+        if (netValue === 0) {
+          netValue = payment.amount || 0;
+        }
+        
+        // Se total_cost não foi encontrado, usar netValue como fallback
+        // (para pagamentos sem taxa Stripe, total_cost = netValue)
+        if (totalCost === 0) {
+          totalCost = netValue || payment.amount || 0;
+        }
+        
+        // Calcular valores: Amount (bruto), Tax (taxa Stripe), Net Value (líquido)
+        // EXATAMENTE IGUAL AO ADMIN DASHBOARD
+        const amount = totalCost; // Valor bruto que o cliente pagou
+        const netValueFinal = netValue; // Valor líquido recebido
+        const tax = amount - netValueFinal; // Taxa do Stripe
+        
+        const pages = docData?.pages || 0;
+
+        // Determinar translation_status (usar document_status como base)
+        const translationStatus = payment.document_status || 'pending';
+
+        // ✅ BUSCAR DADOS DE AUTENTICAÇÃO (EXATAMENTE IGUAL AO ADMIN DASHBOARD)
+        // Buscar diretamente usando o ID do documento (já mapeado corretamente)
+        // No admin dashboard: authenticationMap.get(doc.id) onde doc.id é documents.id
+        let authData = null;
+        
+        // Tentar múltiplas chaves para garantir que encontramos os dados
+        // 1. Tentar pelo document_id direto (pode ser documents.id ou dtbv.id)
+        authData = authenticationMap.get(payment.document_id);
+        
+        // 2. Se não encontrou e temos original_document_id, tentar por ele (documents.id)
+        if (!authData && docData?.original_document_id) {
+          authData = authenticationMap.get(docData.original_document_id);
+        }
+        
+        // 3. Se ainda não encontrou, pode ser que payment.document_id seja dtbv.id
+        // Nesse caso, precisamos buscar o original_document_id do dtbv
+        if (!authData && verifiedDocsDataForLookup.length > 0) {
+          const dtbvDoc = verifiedDocsDataForLookup.find(d => d.id === payment.document_id);
+          if (dtbvDoc?.original_document_id) {
+            authData = authenticationMap.get(dtbvDoc.original_document_id);
+          }
+        }
+        
+        // 4. Se ainda não encontrou, verificar se há dados diretamente na tabela documents (marcado manualmente)
+        // Isso é para documentos que foram autenticados fora da plataforma mas têm dados marcados manualmente
+        if (!authData && docData && (docData.authenticated_by_name || docData.authenticated_by_email || docData.is_authenticated)) {
+          authData = {
+            authenticated_by_name: docData.authenticated_by_name,
+            authenticated_by_email: docData.authenticated_by_email,
+            authentication_date: docData.authentication_date,
+            is_authenticated: docData.is_authenticated,
+            status: docData.is_authenticated ? 'completed' : null
+          };
+          
+          // Log para documentos específicos
+          if (payment.document_filename && (payment.document_filename.includes('GC2GNN') || payment.document_filename.includes('HZBDQR'))) {
+            console.log('✅ [GC2GNN/HZBDQR] Dados de autenticação encontrados diretamente na tabela documents (marcado manualmente):', authData);
+          }
+        }
+        
+        // Debug detalhado para os dois documentos específicos
+        if (payment.document_filename && (payment.document_filename.includes('GC2GNN') || payment.document_filename.includes('HZBDQR'))) {
+          const dtbvDocForDebug = verifiedDocsDataForLookup.find(d => d.id === payment.document_id);
+          const authFromPaymentDocId = authenticationMap.get(payment.document_id);
+          const authFromDocDataOriginal = docData?.original_document_id ? authenticationMap.get(docData.original_document_id) : null;
+          const authFromDtbvOriginal = dtbvDocForDebug?.original_document_id 
+            ? authenticationMap.get(dtbvDocForDebug.original_document_id) 
+            : null;
+          
+          // Verificar se o document_id está na lista de documentIds coletados
+          const isInDocumentIds = documentIds.includes(payment.document_id);
+          
+          console.log('🔍 [GC2GNN/HZBDQR] ===== DEBUG COMPLETO =====');
+          console.log('📄 Document:', payment.document_filename);
+          console.log('🆔 payment.document_id:', payment.document_id);
+          console.log('❓ document_id está na lista de documentIds coletados?', isInDocumentIds);
+          console.log('📋 docData:', docData ? { id: docData.id, original_document_id: docData.original_document_id } : 'null');
+          console.log('📋 dtbvDocForDebug:', dtbvDocForDebug ? { id: dtbvDocForDebug.id, original_document_id: dtbvDocForDebug.original_document_id } : 'null');
+          console.log('🔑 Tentativa 1 - authData_from_payment.document_id:', authFromPaymentDocId);
+          console.log('🔑 Tentativa 2 - authData_from_docData.original_document_id:', authFromDocDataOriginal);
+          console.log('🔑 Tentativa 3 - authData_from_dtbv.original_document_id:', authFromDtbvOriginal);
+          console.log('💾 payment.authenticated_by_name:', payment.authenticated_by_name);
+          console.log('💾 payment.authenticated_by_email:', payment.authenticated_by_email);
+          console.log('💾 payment.authentication_date:', payment.authentication_date);
+          console.log('📋 docData.authenticated_by_name (direto da tabela):', docData?.authenticated_by_name);
+          console.log('📋 docData.authenticated_by_email (direto da tabela):', docData?.authenticated_by_email);
+          console.log('📋 docData.authentication_date (direto da tabela):', docData?.authentication_date);
+          console.log('✅ authData encontrado ANTES do fallback:', authData);
+          console.log('📊 authenticationMap tem', authenticationMap.size, 'chaves');
+          console.log('🔍 [GC2GNN/HZBDQR] ===== FIM DEBUG =====');
+        }
+        
+        // 4. Se ainda não encontrou, usar dados do payment (pode ter vindo do loadPayments)
+        if (!authData && (payment.authenticated_by_name || payment.authenticated_by_email)) {
+          authData = {
+            authenticated_by_name: payment.authenticated_by_name,
+            authenticated_by_email: payment.authenticated_by_email,
+            authentication_date: payment.authentication_date
+          };
+          
+          // Log para documentos específicos quando usa dados do payment
+          if (payment.document_filename && (payment.document_filename.includes('GC2GNN') || payment.document_filename.includes('HZBDQR'))) {
+            console.log('✅ [GC2GNN/HZBDQR] Usando dados do payment (fallback):');
+            console.log('  - authenticated_by_name:', payment.authenticated_by_name);
+            console.log('  - authenticated_by_email:', payment.authenticated_by_email);
+            console.log('  - authentication_date:', payment.authentication_date);
+            console.log('✅ authData FINAL após fallback:', authData);
+          }
+        }
+        
+        const authenticatedByName = authData?.authenticated_by_name || '';
+        const authenticatedByEmail = authData?.authenticated_by_email || '';
+        const authenticationDate = authData?.authentication_date || null;
+
+        // Log final para documentos específicos
+        if (payment.document_filename && (payment.document_filename.includes('GC2GNN') || payment.document_filename.includes('HZBDQR'))) {
+          console.log('📝 [GC2GNN/HZBDQR] Dados FINAIS que serão exportados:');
+          console.log('  - authenticatorName:', authenticatedByName);
+          console.log('  - authenticatorEmail:', authenticatedByEmail);
+          console.log('  - authenticationDate:', authenticationDate);
+        }
+
+        worksheet.addRow({
+          documentName: String(payment.document_filename || ''),
+          userName: String(payment.user_name || ''),
+          userEmail: String(payment.user_email || ''),
+          translationStatus: String(translationStatus),
+          pages: safeNumber(pages, 0),
+          amount: safeNumber(amount, 0), // Amount - Valor total que o cliente pagou
+          tax: safeNumber(tax, 0), // Tax - Taxa do Stripe
+          netValue: safeNumber(netValueFinal, 0), // Net Value - Valor líquido recebido
+          paymentMethod: String(payment.payment_method || ''),
+          paymentStatus: String(payment.status || ''),
+          authenticatorName: String(authenticatedByName),
+          authenticationDate: formatDateSafely(authenticationDate),
+          paymentDate: formatDateSafely(payment.payment_date || payment.created_at) // Usar created_at como fallback se payment_date não existir
+        });
+      });
+
+      // Formatar colunas numéricas
+      const amountColumn = worksheet.getColumn('amount');
+      const taxColumn = worksheet.getColumn('tax');
+      const netValueColumn = worksheet.getColumn('netValue');
+      const pagesColumn = worksheet.getColumn('pages');
+
+      amountColumn.numFmt = '$#,##0.00';
+      taxColumn.numFmt = '$#,##0.00';
+      netValueColumn.numFmt = '$#,##0.00';
+      pagesColumn.numFmt = '0';
+
+      // Aplicar formatação condicional para status de pagamento e melhorar espaçamento
+      const dataStartRow = hasDateFilter ? 4 : 2; // Linha onde começam os dados (após período, linha em branco e cabeçalho)
+      worksheet.eachRow((row, rowNumber) => {
+        // Pular linhas de informação de período, linha em branco e cabeçalho
+        if (rowNumber < dataStartRow) return;
+
+        // Definir altura mínima das linhas para melhor legibilidade
+        row.height = 18;
+
+        const paymentStatusCell = row.getCell('paymentStatus');
+        const paymentStatus = paymentStatusCell.value?.toString().toLowerCase();
+
+        // Colorir células de status de pagamento
+        if (paymentStatus === 'completed') {
+          paymentStatusCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFC6EFCE' } // Verde claro
+          };
+        } else if (paymentStatus === 'pending' || paymentStatus === 'pending_verification') {
+          paymentStatusCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFEB9C' } // Amarelo claro
+          };
+        } else if (paymentStatus === 'failed') {
+          paymentStatusCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFC7CE' } // Vermelho claro
+          };
+        } else if (paymentStatus === 'refunded') {
+          paymentStatusCell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE0E0E0' } // Cinza claro
+          };
+        }
+
+        // Configurar alinhamento e wrap text para todas as células
+        row.eachCell((cell) => {
+          const columnKey = cell.column?.key || '';
+          
+          // Alinhamento específico por tipo de coluna
+          if (columnKey === 'pages') {
+            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+          } else if (columnKey === 'amount' || columnKey === 'tax' || columnKey === 'netValue') {
+            cell.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
+          } else {
+            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+          }
+        });
+      });
+
+      // Congelar linha do cabeçalho (ajustar se tiver informações de período)
+      const freezeRow = hasDateFilter ? 3 : 1;
+      worksheet.views = [{ state: 'frozen', ySplit: freezeRow }];
+
+      // Adicionar filtros automáticos (ajustar linha do cabeçalho)
+      worksheet.autoFilter = {
+        from: { row: freezeRow, column: 1 },
+        to: { row: freezeRow, column: 13 } // 13 colunas no total
+      };
+
+      // Função para calcular largura automática das colunas baseada no conteúdo
+      const calculateColumnWidth = (column: ExcelJS.Column, minWidth: number = 10, maxWidth: number = 60) => {
+        let maxLength = 0;
+        
+        // Verificar largura do cabeçalho (ajustar se tiver informações de período)
+        const headerRowNumber = hasDateFilter ? 3 : 1;
+        const headerCell = worksheet.getRow(headerRowNumber).getCell(column.number);
+        if (headerCell.value) {
+          const headerLength = String(headerCell.value).length;
+          maxLength = Math.max(maxLength, headerLength);
+        }
+
+        // Verificar largura de todas as células da coluna
+        worksheet.eachRow((row, rowNumber) => {
+          const dataStartRow = hasDateFilter ? 4 : 2; // Ajustar para pular período, linha em branco e cabeçalho
+          if (rowNumber < dataStartRow) return;
+          
+          try {
+            const cell = row.getCell(column.number);
+            if (cell && cell.value !== null && cell.value !== undefined) {
+              let cellLength = 0;
+              
+              // Calcular comprimento baseado no tipo de dado
+              if (typeof cell.value === 'number') {
+                // Para números, considerar o formato (ex: $1,234.56)
+                if (isNaN(cell.value) || !isFinite(cell.value)) {
+                  cellLength = 10; // Valor padrão para NaN/Infinity
+                } else {
+                  cellLength = String(cell.value).length + 3;
+                }
+              } else if (cell.value instanceof Date) {
+                // Para datas, considerar formato brasileiro
+                if (isNaN(cell.value.getTime())) {
+                  cellLength = 10; // Data inválida
+                } else {
+                  cellLength = cell.value.toLocaleString('pt-BR').length;
+                }
+              } else {
+                // Para strings, usar o comprimento direto
+                cellLength = String(cell.value).length;
+              }
+              
+              maxLength = Math.max(maxLength, cellLength);
+            }
+          } catch (error) {
+            console.warn(`Erro ao calcular largura da coluna ${column.number}, linha ${rowNumber}:`, error);
+          }
+        });
+
+        // Aplicar padding extra (1.2x para espaçamento) e limitar entre min e max
+        const calculatedWidth = Math.min(Math.max(maxLength * 1.2, minWidth), maxWidth);
+        column.width = calculatedWidth;
+      };
+
+      // Aplicar auto-ajuste para todas as colunas
+      worksheet.columns.forEach((column) => {
+        if (column && column.number) {
+          // Definir larguras mínimas e máximas específicas por tipo de coluna
+          let minWidth = 10;
+          let maxWidth = 60;
+
+          // Ajustar limites baseado no tipo de coluna
+          const columnKey = column.key || '';
+          if (columnKey === 'documentName' || columnKey === 'documentId') {
+            minWidth = 20;
+            maxWidth = 80; // Nomes de arquivos podem ser longos
+          } else if (columnKey === 'userEmail' || columnKey === 'authenticatorEmail') {
+            minWidth = 25;
+            maxWidth = 50; // Emails podem ser longos
+          } else if (columnKey === 'userName' || columnKey === 'authenticatorName' || columnKey === 'clientName') {
+            minWidth = 15;
+            maxWidth = 40; // Nomes podem variar
+          } else if (columnKey === 'authenticationDate' || columnKey === 'paymentDate') {
+            minWidth = 18;
+            maxWidth = 25; // Datas têm tamanho fixo
+          } else if (columnKey === 'amount' || columnKey === 'tax' || columnKey === 'netValue') {
+            minWidth = 12;
+            maxWidth = 18; // Valores monetários
+          } else if (columnKey === 'pages') {
+            minWidth = 8;
+            maxWidth = 10; // Números pequenos
+          }
+
+          calculateColumnWidth(column, minWidth, maxWidth);
+        }
+      });
+
+      // Ajustar padding das células e adicionar bordas para melhor separação visual
+      const borderStartRow = hasDateFilter ? 4 : 2; // Linha onde começam os dados
+      worksheet.eachRow((row, rowNumber) => {
+        // Pular linhas de informação de período, linha em branco e cabeçalho
+        if (rowNumber < borderStartRow) return;
+
+        row.eachCell((cell) => {
+          try {
+            // Garantir que todas as células tenham wrapText e alinhamento vertical
+            if (cell.alignment) {
+              cell.alignment = { ...cell.alignment, vertical: 'middle', wrapText: true };
+            } else {
+              cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+            }
+
+            // Adicionar bordas sutis para melhor separação
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+              right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
+            };
+          } catch (error) {
+            console.warn(`Erro ao formatar célula na linha ${rowNumber}:`, error);
+          }
+        });
+      });
+
+      // Gerar buffer e fazer download
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+
+      // Gerar nome do arquivo com período de data (se aplicável)
+      let fileName = 'payments-report';
+      if (hasDateFilter) {
+        if (startDateStr && endDateStr) {
+          fileName = `payments-report-${startDateStr}_to_${endDateStr}`;
+        } else if (startDateStr) {
+          fileName = `payments-report-from-${startDateStr}`;
+        } else if (endDateStr) {
+          fileName = `payments-report-until-${endDateStr}`;
+        }
+      } else {
+        fileName = `payments-report-${new Date().toISOString().split('T')[0]}`;
+      }
+      fileName += '.xlsx';
+
+      saveAs(blob, fileName);
+
+      // Log silencioso (sem alerta de confirmação)
+      console.log(`✅ Exportação concluída! ${paymentsToExport.length} pagamento(s) exportado(s). Arquivo: ${fileName}`);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert('Erro ao exportar para Excel. Por favor, tente novamente.');
+    }
+  }, [filteredPayments, dateFilter, searchTerm, filterStatus, filterRole]); // Depend on filteredPayments and filters to export current view
 
   return (
     <div className="bg-white rounded-lg shadow w-full">
@@ -881,10 +1628,10 @@ export function PaymentsTable({ initialDateRange }: PaymentsTableProps) {
             <button
               onClick={downloadPaymentsReport}
               className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" // Changed ring color
-              aria-label="Export Payments to CSV"
+              aria-label="Export Payments to Excel"
             >
               <Download className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Export CSV</span>
+              <span className="hidden sm:inline">Export Excel</span>
               <span className="sm:hidden">Export</span>
             </button>
           </div>
