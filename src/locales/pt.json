@@ -740,7 +740,8 @@
       "targetLanguage": "6. Target Language (Translation To)",
       "selectOptions": {
         "yes": "Yes",
-        "no": "No"
+        "no": "No",
+        "select": "Selecione uma opção..."
       }
     },
     "summary": {
@@ -903,6 +904,8 @@
         "showing": "Mostrando {{filtered}} de {{total}} documentos",
         "total": "Total",
         "exportCsv": "Export CSV",
+        "exportExcel": "Exportar Excel",
+        "noDataToExport": "Nenhum dado para exportar",
         "searchPlaceholder": "Search by name, email, filename, client...",
         "filters": {
           "allStatus": "All Status",

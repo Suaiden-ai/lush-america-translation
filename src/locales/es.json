@@ -740,7 +740,8 @@
       "targetLanguage": "6. Idioma de Destino (Traducir A)",
       "selectOptions": {
         "yes": "Sí",
-        "no": "No"
+        "no": "No",
+        "select": "Seleccione una opción..."
       }
     },
     "summary": {
@@ -902,6 +903,8 @@
         "showing": "Mostrando {{filtered}} de {{total}} documentos",
         "total": "Total",
         "exportCsv": "Exportar CSV",
+        "exportExcel": "Exportar Excel",
+        "noDataToExport": "No hay datos para exportar",
         "searchPlaceholder": "Buscar por nombre, email, archivo, cliente...",
         "filters": {
           "allStatus": "Todos los Estados",
