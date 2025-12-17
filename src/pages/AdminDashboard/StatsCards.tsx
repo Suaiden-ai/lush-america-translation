@@ -51,35 +51,38 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     fetchPaymentStatuses();
   }, []);
 
-  // Buscar dados exatos para receita (apenas pagamentos com status 'completed')
+  // Buscar dados exatos para receita (apenas pagamentos com status 'completed', excluindo refunded)
+  // IMPORTANTE: Usar campo 'amount' da tabela payments (valor LÍQUIDO - sem taxa Stripe)
   // Não incluir receita de autenticador pois não é lucro (valores ficam pending e não são pagos)
   useEffect(() => {
     const fetchRevenueData = async () => {
       try {
         const { data: paysRes } = await supabase
           .from('payments')
-          .select('id, document_id, amount, status, user_id');
+          .select('id, document_id, amount, status, user_id')
+          .eq('status', 'completed'); // Apenas completed (refunded tem status diferente)
         
         let userRev = 0;
         const completedPayments: any[] = [];
         
         (paysRes || []).forEach((p: any) => {
-          // Considerar apenas pagamentos com status 'completed' (pagamentos realmente pagos)
-          if (p?.status === 'completed') {
+          // Garantir que não seja refunded (filtro adicional de segurança)
+          if (p?.status === 'completed' && p?.status !== 'refunded') {
+            // amount = valor LÍQUIDO (sem taxa Stripe) - correto para receita real
             userRev += Number(p?.amount || 0);
             completedPayments.push({
               id: p.id,
               document_id: p.document_id,
               user_id: p.user_id,
-              amount: p.amount,
+              amount: p.amount, // Valor líquido
               status: p.status
             });
           }
         });
         
-        console.log('🔍 ADMIN DASHBOARD - Total completed payments:', completedPayments.length);
-        console.log('🔍 ADMIN DASHBOARD - Total revenue (sum of all completed):', userRev.toFixed(2));
-        console.log('🔍 ADMIN DASHBOARD - Completed payments details:', completedPayments);
+        console.log('💰 [StatsCards Revenue] Total completed payments (sem refunded):', completedPayments.length);
+        console.log('💰 [StatsCards Revenue] Total revenue (valor LÍQUIDO):', userRev.toFixed(2));
+        console.log('💰 [StatsCards Revenue] Completed payments details:', completedPayments);
         
         setOverrideRevenue(userRev);
       } catch (e) {
@@ -220,16 +223,24 @@ export function StatsCards({ documents, dateRange }: StatsCardsProps) {
     })));
   }
   
+  // Fallback: calcular usando total_cost dos documentos (valor BRUTO - menos preciso)
+  // NOTA: Este fallback só é usado se a query de payments falhar
+  // O ideal é sempre usar overrideRevenue (valor LÍQUIDO da tabela payments)
   const totalRevenueDoc = validDocuments.reduce((sum, doc) => sum + (doc.total_cost || 0), 0);
   const totalRevenue = overrideRevenue ?? totalRevenueDoc;
 
   // Debug detalhado para reconciliar valores
   try {
-    console.log('[StatsCards] Valid documents (no drafts/cancelled/refunded):', validDocuments.length);
-    console.log('[StatsCards] Doc-based revenue:', totalRevenueDoc.toFixed(2));
+    console.log('💰 [StatsCards] Análise do cálculo de receita:');
+    console.log(`  - Documentos válidos (sem drafts/cancelled/refunded): ${validDocuments.length}`);
     if (overrideRevenue !== null) {
-      console.log('[StatsCards] Override revenue (only completed payments):', overrideRevenue.toFixed(2));
+      console.log(`  - ✅ Usando valor da tabela payments (LÍQUIDO): $${overrideRevenue.toFixed(2)}`);
+      console.log(`  - ⚠️ Fallback (valor BRUTO dos docs): $${totalRevenueDoc.toFixed(2)} (não usado)`);
+    } else {
+      console.log(`  - ⚠️ ATENÇÃO: Usando fallback (valor BRUTO dos docs): $${totalRevenueDoc.toFixed(2)}`);
+      console.log(`  - ⚠️ Isso significa que a query de payments falhou ou não retornou dados`);
     }
+    console.log(`  - Total Revenue final: $${totalRevenue.toFixed(2)}`);
   } catch {}
   const completedDocuments = validDocuments.filter(doc => doc.status === 'completed').length;
   const pendingDocuments = validDocuments.filter(doc => doc.status === 'pending').length;

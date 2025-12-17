@@ -24,6 +24,7 @@ interface ExtendedDocument extends Omit<Document, 'client_name' | 'payment_metho
   payment_status?: string | null;
   payment_amount?: number | null;
   payment_amount_total?: number | null;
+  payment_date?: string | null;
   translation_status?: string | null; // ✅ NOVO CAMPO para status da tradução
   client_name?: string | null;
   display_name?: string | null; // Nome formatado para exibição na coluna USER/CLIENT
@@ -179,6 +180,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         const paymentMethod = doc.payments?.[0]?.payment_method || doc.payment_method || null;
         const paymentStatus = doc.payments?.[0]?.status || 'pending';
         const paymentAmount = typeof doc.payments?.[0]?.amount === 'number' ? doc.payments?.[0]?.amount : null;
+        const paymentDate = doc.payments?.[0]?.payment_date || null;
         const paymentAmountTotal = Array.isArray((doc as any).payments)
           ? (doc as any).payments.reduce((sum: number, p: any) => {
               const st = (p?.status || '').toLowerCase();
@@ -209,6 +211,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           payment_status: paymentStatus,
           payment_amount: paymentAmount,
           payment_amount_total: paymentAmountTotal,
+          payment_date: paymentDate,
           translation_status: translationStatus,
           // ✅ DADOS DE AUTENTICAÇÃO VINDOS DE translated_documents
           authenticated_by_name: authData?.authenticated_by_name || doc.authenticated_by_name || null,
@@ -293,44 +296,13 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         matchesPaymentMethod = docPaymentMethod === paymentMethodFilter.toLowerCase();
       }
 
-      // Excluir documentos REFUNDED (reembolsados - não são receita real)
-      // #region agent log
-      const paymentStatus = (doc.payment_status || '').toLowerCase();
-      const isRefunded = paymentStatus === 'refunded';
-      if (isRefunded) { fetch('http://127.0.0.1:7244/ingest/1897647a-757c-4a13-bfe6-76896b5e19aa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsTable.tsx:300',message:'REFUNDED doc excluded from table',data:{filename:doc.filename,payment_status:doc.payment_status,status:doc.status,cost:doc.total_cost},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{}); }
-      // #endregion
-
-      return matchesSearch && matchesStatus && matchesRole && matchesPaymentStatus && matchesPaymentMethod && !isRefunded;
+      return matchesSearch && matchesStatus && matchesRole && matchesPaymentStatus && matchesPaymentMethod;
     });
     
     // Debug log para mostrar quantos documentos foram filtrados
     if (roleFilter === 'user') {
       console.log(`[Role Filter Debug] Total documents: ${extendedDocuments.length}, Filtered for 'user': ${filtered.length}`);
     }
-    
-    // Debug: contar documentos refunded no resultado e mostrar status do october_2025_statement
-    // #region agent log
-    const refundedCount = extendedDocuments.filter(doc => {
-      const paymentStatus = (doc.payment_status || '').toLowerCase();
-      return paymentStatus === 'refunded';
-    }).length;
-    fetch('http://127.0.0.1:7244/ingest/1897647a-757c-4a13-bfe6-76896b5e19aa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsTable.tsx:325',message:'Refunded count',data:{refundedCount,totalDocs:extendedDocuments.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
-    // #endregion
-    
-    // Debug específico para o documento october_2025_statement
-    const octoberDoc = extendedDocuments.find(doc => doc.filename?.includes('october_2025_statement'));
-    if (octoberDoc) {
-      console.log('🔍 [DEBUG] october_2025_statement document found:', {
-        filename: octoberDoc.filename,
-        status: octoberDoc.status,
-        payment_status: octoberDoc.payment_status,
-        payment_method: octoberDoc.payment_method,
-        total_cost: octoberDoc.total_cost,
-        translation_status: octoberDoc.translation_status
-      });
-    }
-    
-    console.log(`🔍 [Filter Debug] Total docs: ${extendedDocuments.length}, After filter: ${filtered.length}, Refunded excluded: ${refundedCount}`);
     
     return filtered;
   }, [extendedDocuments, searchTerm, statusFilter, roleFilter, paymentStatusFilter, paymentMethodFilter]);
@@ -345,11 +317,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         // Excluir drafts
         if ((doc.status || '') === 'draft') return false;
         // Excluir documentos REFUNDED (reembolsados - não são receita real)
-        // #region agent log
         const paymentStatus = (doc.payment_status || '').toLowerCase();
-        const isRefunded = paymentStatus === 'refunded';
-        if (isRefunded) { fetch('http://127.0.0.1:7244/ingest/1897647a-757c-4a13-bfe6-76896b5e19aa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsTable.tsx:340',message:'REFUNDED doc excluded from total calc',data:{filename:doc.filename,payment_status:doc.payment_status,cost:doc.total_cost},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{}); return false; }
-        // #endregion
+        if (paymentStatus === 'refunded') return false;
         return true;
       })
       .reduce((sum, doc) => {
@@ -361,36 +330,46 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         // Considerar apenas pagamentos com status 'completed'
         const payment = (doc.payment_status || '').toLowerCase();
         if (payment === 'completed') {
-          // Somar todos os pagamentos confirmados quando disponível; fallback para total_cost
-          const amount = typeof doc.payment_amount_total === 'number' && (doc.payment_amount_total || 0) > 0
-            ? (doc.payment_amount_total as number)
-            : (typeof doc.payment_amount === 'number' ? doc.payment_amount : (doc.total_cost || 0));
-          // #region agent log
-          if (doc.filename?.includes('october') || amount === 80) { fetch('http://127.0.0.1:7244/ingest/1897647a-757c-4a13-bfe6-76896b5e19aa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsTable.tsx:368',message:'Doc ADDED to total (payment=completed)',data:{filename:doc.filename,payment_status:doc.payment_status,status:doc.status,amount,total_cost:doc.total_cost},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{}); }
-          // #endregion
+          // IMPORTANTE: Usar SEMPRE payment_amount (valor LÍQUIDO - sem taxa Stripe)
+          // O site deve mostrar o valor líquido recebido, não o valor bruto pago pelo cliente
+          // payment_amount = valor líquido (ex: $50.00)
+          // total_cost = valor bruto (ex: $52.34, inclui taxa Stripe de $2.34)
+          const amount = typeof doc.payment_amount === 'number' && doc.payment_amount > 0
+            ? doc.payment_amount
+            : (doc.total_cost || 0); // Fallback apenas se payment_amount não existir
           userSum += amount;
           return sum + amount;
         }
         return sum;
       }, 0);
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/1897647a-757c-4a13-bfe6-76896b5e19aa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsTable.tsx:380',message:'Total calculation result',data:{filteredDocsCount:filteredDocuments.length,userSum,total},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
-      console.log('[DocumentsTable] Filtered docs:', filteredDocuments.length);
-      console.log('[DocumentsTable] Users paid sum (status=completed only):', userSum.toFixed(2));
-      console.log('[DocumentsTable] Total (only completed payments):', total.toFixed(2));
-      const samples = filteredDocuments.slice(0, 10).map(d => ({
-        id: d.id,
-        filename: d.filename,
-        role: d.user_role,
-        status: d.status,
-        payment_status: d.payment_status,
-        payment_amount_total: d.payment_amount_total,
-        payment_amount: d.payment_amount,
-        total_cost: d.total_cost
-      }));
-      console.log('[DocumentsTable] Sample rows:', samples);
+      // Log detalhado para análise
+      const refundedCount = filteredDocuments.filter(d => (d.payment_status || '').toLowerCase() === 'refunded').length;
+      const completedDocs = filteredDocuments.filter(d => {
+        const paymentStatus = (d.payment_status || '').toLowerCase();
+        return paymentStatus === 'completed' && (d.user_role || 'user') !== 'authenticator';
+      });
+      
+      console.log('💰 [Site Total] Análise do cálculo:');
+      console.log(`  - Total documentos filtrados: ${filteredDocuments.length}`);
+      console.log(`  - Documentos refunded (excluídos): ${refundedCount}`);
+      console.log(`  - Documentos completed incluídos: ${completedDocs.length}`);
+      console.log(`  - Total calculado (valor LÍQUIDO): $${total.toFixed(2)}`);
+      console.log(`  - Soma dos usuários (valor LÍQUIDO): $${userSum.toFixed(2)}`);
+      
+      // Mostrar amostra de valores para verificar se está usando payment_amount
+      const samples = completedDocs.slice(0, 5).map(d => {
+        const paymentAmount = d.payment_amount || 0;
+        const totalCost = d.total_cost || 0;
+        const difference = totalCost - paymentAmount;
+        return {
+          filename: d.filename,
+          payment_amount: paymentAmount.toFixed(2), // Valor LÍQUIDO usado no cálculo
+          total_cost: totalCost.toFixed(2), // Valor BRUTO (não usado)
+          stripe_fee: difference > 0 ? difference.toFixed(2) : '0.00'
+        };
+      });
+      console.log('💰 [Site Total] Amostra de valores (primeiros 5):', samples);
     } catch {}
     return total;
   }, [filteredDocuments]);
@@ -433,33 +412,16 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
   // Gera e inicia o download de um relatório Excel dos documentos filtrados
   const downloadDocumentsReport = useCallback(async () => {
-      console.log('📊 [Export] Iniciando exportação...');
-      console.log('📊 [Export] Total de documentos filtrados:', filteredDocuments.length);
-      console.log('📊 [Export] Filtros ativos:', {
-        searchTerm,
-        statusFilter,
-        roleFilter,
-        paymentStatusFilter,
-        paymentMethodFilter,
-        dateRange: internalDateRange
-      });
-      
-      // Debug: verificar payment_status dos documentos filtrados
-      const paymentStatusCount = filteredDocuments.reduce((acc, doc) => {
-        const status = (doc.payment_status || 'null').toLowerCase();
-        acc[status] = (acc[status] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-      console.log('📊 [Export] Distribuição de payment_status nos documentos filtrados:', paymentStatusCount);
-      
-      // Debug: mostrar alguns exemplos de documentos com payment_status
-      console.log('📊 [Export] Exemplos de documentos filtrados:', filteredDocuments.slice(0, 5).map(d => ({
-        filename: d.filename,
-        user_name: d.user_name,
-        payment_status: d.payment_status,
-        payment_method: d.payment_method,
-        authenticated_by_name: d.authenticated_by_name
-      })));
+    console.log('📊 [Export] Iniciando exportação...');
+    console.log('📊 [Export] Total de documentos filtrados:', filteredDocuments.length);
+    console.log('📊 [Export] Filtros ativos:', {
+      searchTerm,
+      statusFilter,
+      roleFilter,
+      paymentStatusFilter,
+      paymentMethodFilter,
+      dateRange: internalDateRange
+    });
 
     if (filteredDocuments.length === 0) {
       alert(t('admin.documents.table.noDataToExport') || 'No data to export');
@@ -467,19 +429,15 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
     }
 
     try {
-      // Filtrar documentos: apenas pagos (completed) e excluir Luiz como USUÁRIO (não como autenticador)
+      // Filtrar documentos: apenas pagos (completed), excluir refunded/failed, e excluir Luiz
       const documentsToExport = filteredDocuments.filter(doc => {
-        // 1. Filtrar apenas documentos com pagamento completed (mas não refunded)
+        // 1. Excluir documentos REFUNDED (reembolsados - não são receita real)
         const paymentStatus = (doc.payment_status || '').toLowerCase();
-        
-        // #region agent log
-        // 2. Excluir documentos REFUNDED (reembolsados - não são receita real)
         if (paymentStatus === 'refunded') {
-          fetch('http://127.0.0.1:7244/ingest/1897647a-757c-4a13-bfe6-76896b5e19aa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsTable.tsx:450',message:'REFUNDED doc excluded from export',data:{filename:doc.filename,payment_status:doc.payment_status,cost:doc.total_cost},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
           return false; // Excluir documentos reembolsados
         }
-        // #endregion
         
+        // 2. Filtrar apenas documentos com pagamento completed (excluir failed, pending, etc)
         if (paymentStatus !== 'completed') {
           return false; // Excluir se não for 'completed'
         }
@@ -498,42 +456,17 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         return !isLuizUser;
       });
 
-      console.log('📊 [Export] Documentos após filtrar (apenas pagos e sem Luiz como usuário):', documentsToExport.length);
-      console.log('📊 [Export] Total de documentos filtrados antes:', filteredDocuments.length);
-      console.log('📊 [Export] Amostra de documentos a exportar:', documentsToExport.slice(0, 5).map(d => ({
+      console.log('📊 [Export] Documentos após filtrar (completed, sem refunded/failed, sem Luiz como usuário):', documentsToExport.length);
+      console.log('📊 [Export] Amostra de documentos a exportar:', documentsToExport.slice(0, 3).map(d => ({
         filename: d.filename,
         user_name: d.user_name,
-        user_email: d.user_email,
         payment_status: d.payment_status,
         authenticated_by_name: d.authenticated_by_name,
         status: d.status
       })));
-      
-      // Debug: mostrar documentos que foram excluídos
-      const excludedByPayment = filteredDocuments.filter(doc => {
-        const paymentStatus = (doc.payment_status || '').toLowerCase();
-        return paymentStatus !== 'completed';
-      });
-      const excludedByRefund = filteredDocuments.filter(doc => {
-        const paymentStatus = (doc.payment_status || '').toLowerCase();
-        return paymentStatus === 'refunded';
-      });
-      const excludedByLuiz = filteredDocuments.filter(doc => {
-        const paymentStatus = (doc.payment_status || '').toLowerCase();
-        if (paymentStatus !== 'completed') return false;
-        if (paymentStatus === 'refunded') return false;
-        const userEmail = (doc.user_email || '').toLowerCase();
-        const userName = (doc.user_name || '').toLowerCase();
-        return userEmail.includes('luizeduardomcsantos') ||
-               userEmail.includes('luizeduardogouveia7') ||
-               userName.includes('luiz eduardo');
-      });
-      console.log('📊 [Export] Excluídos por não serem "completed":', excludedByPayment.length);
-      console.log('📊 [Export] Excluídos por serem REFUNDED (reembolsados):', excludedByRefund.length, excludedByRefund.map(d => d.filename));
-      console.log('📊 [Export] Excluídos por serem do Luiz (como usuário):', excludedByLuiz.length);
 
       if (documentsToExport.length === 0) {
-        alert('Nenhum documento pago encontrado para exportar.\n\nA exportação inclui apenas documentos com pagamento "completed" e exclui:\n• Documentos REFUNDED (reembolsados)\n• Documentos onde o Luiz é o usuário (não o autenticador)\n\nVerifique os filtros aplicados e os logs no console para mais detalhes.');
+        alert('Nenhum documento pago encontrado para exportar.\n\nA exportação inclui apenas documentos com pagamento "completed" e exclui:\n• Documentos REFUNDED (reembolsados)\n• Documentos FAILED (falhados)\n• Documentos onde o Luiz é o usuário (não o autenticador)\n\nVerifique os filtros aplicados.');
         return;
       }
 
@@ -552,7 +485,24 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Documents');
 
-      // PRIMEIRO: Definir colunas com larguras e formatação (ANTES de inserir linhas)
+      // Adicionar informações do período exportado como primeira linha (antes dos cabeçalhos)
+      if (hasDateFilter) {
+        const periodInfo = startDateStr && endDateStr
+          ? `Período: ${startDateStr} até ${endDateStr}`
+          : startDateStr
+          ? `A partir de: ${startDateStr}`
+          : `Até: ${endDateStr}`;
+        
+        worksheet.insertRow(1, [periodInfo]);
+        const infoRow = worksheet.getRow(1);
+        infoRow.font = { bold: true, size: 12, color: { argb: 'FF4472C4' } };
+        infoRow.height = 20;
+        
+        // Adicionar linha em branco
+        worksheet.insertRow(2, []);
+      }
+
+      // Definir colunas com larguras e formatação (apenas as colunas necessárias)
       worksheet.columns = [
         { header: 'Document Name', key: 'documentName', width: 30 },
         { header: 'User Name', key: 'userName', width: 20 },
@@ -566,11 +516,33 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         { header: 'Payment Status', key: 'paymentStatus', width: 15 },
         { header: 'Authenticator Name', key: 'authenticatorName', width: 20 },
         { header: 'Authentication Date', key: 'authenticationDate', width: 20 },
-        { header: 'Created At', key: 'createdAt', width: 20 },
+        { header: 'Payment Date', key: 'paymentDate', width: 20 },
       ];
 
-      // Estilizar cabeçalhos na linha 1 (será movido depois quando inserirmos informações)
-      const headerRow = worksheet.getRow(1);
+      // Mesclar células da linha de informações de período (se existir)
+      if (hasDateFilter) {
+        const infoRow = worksheet.getRow(1);
+        // Mesclar todas as 13 colunas
+        worksheet.mergeCells(1, 1, 1, 13);
+        infoRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+      }
+
+      // Estilizar cabeçalhos (ajustar número da linha se tiver informações de período)
+      const headerRowNumber = hasDateFilter ? 3 : 1;
+      const headerRow = worksheet.getRow(headerRowNumber);
+      
+      // Garantir que os cabeçalhos estejam explicitamente definidos
+      const headers = [
+        'Document Name', 'User Name', 'User Email', 'Translation Status', 'Pages',
+        'Amount', 'Tax', 'Net Value',
+        'Payment Method', 'Payment Status',
+        'Authenticator Name', 'Authentication Date', 'Payment Date'
+      ];
+      headers.forEach((header, index) => {
+        const cell = headerRow.getCell(index + 1);
+        cell.value = header;
+      });
+      
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
       headerRow.fill = {
         type: 'pattern',
@@ -608,21 +580,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         return defaultValue;
       };
 
-      // Calcular totais enquanto adiciona os dados
-      let totalAmount = 0;
-      let totalTax = 0;
-      let totalNetValue = 0;
-
       documentsToExport.forEach((doc) => {
-        const amount = doc.total_cost || 0;
-        const netValue = doc.payment_amount || 0;
-        const tax = amount - netValue;
+        // Calcular valores: Amount (bruto), Tax (taxa Stripe), Net Value (líquido)
+        const amount = doc.total_cost || 0; // Valor bruto que o cliente pagou
+        const netValue = doc.payment_amount || 0; // Valor líquido recebido
+        const tax = amount - netValue; // Taxa do Stripe
 
-        totalAmount += amount;
-        totalTax += tax;
-        totalNetValue += netValue;
-
-        // IMPORTANTE: A ordem e os campos devem corresponder EXATAMENTE às colunas definidas
         worksheet.addRow({
           documentName: String(doc.filename || ''),
           userName: String(doc.user_name || ''),
@@ -636,60 +599,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           paymentStatus: String(doc.payment_status || ''),
           authenticatorName: String(doc.authenticated_by_name || ''),
           authenticationDate: formatDateSafely(doc.authentication_date),
-          createdAt: formatDateSafely(doc.created_at)
+          paymentDate: formatDateSafely(doc.payment_date || doc.created_at) // Usar created_at como fallback se payment_date não existir
         });
-      });
-
-      // Log dos totais calculados
-      console.log('💰 [Export] TOTAIS CALCULADOS:');
-      console.log('💰 [Export] Total Amount (bruto):', `$${totalAmount.toFixed(2)}`);
-      console.log('💰 [Export] Total Tax:', `$${totalTax.toFixed(2)}`);
-      console.log('💰 [Export] Total Net Value (líquido):', `$${totalNetValue.toFixed(2)}`);
-      console.log('💰 [Export] Número de documentos:', documentsToExport.length);
-
-      // Adicionar linha de totais
-      const totalRow = worksheet.addRow({
-        documentName: '',
-        userName: '',
-        userEmail: '',
-        translationStatus: '',
-        pages: 'TOTAL:',
-        amount: totalAmount,
-        tax: totalTax,
-        netValue: totalNetValue,
-        paymentMethod: '',
-        paymentStatus: '',
-        authenticatorName: '',
-        authenticationDate: '',
-        createdAt: ''
-      });
-
-      // Estilizar linha de totais
-      totalRow.font = { bold: true, size: 12 };
-      totalRow.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE7E6E6' } // Cinza claro
-      };
-      totalRow.alignment = { horizontal: 'right', vertical: 'middle' };
-      totalRow.height = 25;
-      
-      // Formatar as células de valor como moeda
-      totalRow.getCell('amount').numFmt = '$#,##0.00';
-      totalRow.getCell('tax').numFmt = '$#,##0.00';
-      totalRow.getCell('netValue').numFmt = '$#,##0.00';
-      
-      // Alinhar "TOTAL:" à direita
-      totalRow.getCell('pages').alignment = { horizontal: 'right', vertical: 'middle' };
-      
-      // Adicionar bordas mais grossas na linha de totais
-      totalRow.eachCell({ includeEmpty: true }, (cell) => {
-        cell.border = {
-          top: { style: 'medium', color: { argb: 'FF000000' } },
-          bottom: { style: 'medium', color: { argb: 'FF000000' } },
-          left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
-          right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
-        };
       });
 
       // Formatar colunas numéricas
@@ -703,67 +614,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       netValueColumn.numFmt = '$#,##0.00';
       pagesColumn.numFmt = '0';
 
-      // AGORA inserir linhas de informação no topo (isso vai empurrar cabeçalhos e dados para baixo)
-      let infoRows = 0;
-      
-      // Linha 1: Informação sobre filtros aplicados
-      const filterInfo = '⚠️ Esta exportação contém APENAS documentos com pagamento "completed" (pagos). Documentos pending, failed, refunded (reembolsados) ou outros status foram excluídos.';
-      worksheet.insertRow(1, [filterInfo]);
-      const filterInfoRow = worksheet.getRow(1);
-      filterInfoRow.font = { bold: true, size: 10, color: { argb: 'FF8B4513' } }; // Marrom
-      filterInfoRow.height = 20;
-      worksheet.mergeCells(1, 1, 1, 13); // 13 colunas totais
-      filterInfoRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-      infoRows++;
-
-      // Linha 2: Período (se aplicável)
-      if (hasDateFilter) {
-        const periodInfo = startDateStr && endDateStr
-          ? `📅 Período: ${startDateStr} até ${endDateStr}`
-          : startDateStr
-          ? `📅 A partir de: ${startDateStr}`
-          : `📅 Até: ${endDateStr}`;
-        
-        worksheet.insertRow(2, [periodInfo]);
-        const periodInfoRow = worksheet.getRow(2);
-        periodInfoRow.font = { bold: true, size: 11, color: { argb: 'FF4472C4' } }; // Azul
-        periodInfoRow.height = 20;
-        worksheet.mergeCells(2, 1, 2, 13); // 13 colunas totais
-        periodInfoRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
-        infoRows++;
-      }
-      
-      // Linha em branco após informações
-      worksheet.insertRow(infoRows + 1, []);
-
-      // Re-estilizar cabeçalhos na nova posição (agora está mais abaixo)
-      const headerRowNumber = infoRows + 2; // infoRows (1 ou 2) + linha em branco (1) + 1 para o cabeçalho
-      const headerRowAfterInsert = worksheet.getRow(headerRowNumber);
-      
-      // Garantir que os cabeçalhos estejam preenchidos corretamente (devem corresponder às colunas definidas)
-      const headers = [
-        'Document Name', 'User Name', 'User Email', 'Translation Status', 'Pages', 
-        'Amount', 'Tax', 'Net Value', 
-        'Payment Method', 'Payment Status',
-        'Authenticator Name', 'Authentication Date', 'Created At'
-      ];
-      
-      headers.forEach((header, index) => {
-        const cell = headerRowAfterInsert.getCell(index + 1);
-        cell.value = header;
-      });
-      
-      headerRowAfterInsert.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-      headerRowAfterInsert.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF4472C4' } // Azul
-      };
-      headerRowAfterInsert.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      headerRowAfterInsert.height = 25;
-
       // Aplicar formatação condicional para status de pagamento e melhorar espaçamento
-      const dataStartRow = headerRowNumber + 1; // Linha onde começam os dados (após informações, linha em branco e cabeçalho)
+      const dataStartRow = hasDateFilter ? 4 : 2; // Linha onde começam os dados (após período, linha em branco e cabeçalho)
       worksheet.eachRow((row, rowNumber) => {
         // Pular linhas de informação de período, linha em branco e cabeçalho
         if (rowNumber < dataStartRow) return;
@@ -802,7 +654,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           // Alinhamento específico por tipo de coluna
           if (columnKey === 'pages') {
             cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-          } else if (columnKey === 'cost' || columnKey === 'paymentAmount') {
+          } else if (columnKey === 'amount' || columnKey === 'tax' || columnKey === 'netValue') {
             cell.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
           } else {
             cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
@@ -810,8 +662,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         });
       });
 
-      // Congelar linha do cabeçalho (ajustar considerando informações de filtro e período)
-      const freezeRow = headerRowNumber;
+      // Congelar linha do cabeçalho (ajustar se tiver informações de período)
+      const freezeRow = hasDateFilter ? 3 : 1;
       worksheet.views = [{ state: 'frozen', ySplit: freezeRow }];
 
       // Adicionar filtros automáticos (ajustar linha do cabeçalho)
@@ -842,26 +694,25 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
             if (cell && cell.value !== null && cell.value !== undefined) {
               let cellLength = 0;
               
-            // Calcular comprimento baseado no tipo de dado
-            if (typeof cell.value === 'number') {
-              // Para números, considerar o formato (ex: $1,234.56)
-              if (isNaN(cell.value) || !isFinite(cell.value)) {
-                cellLength = 10; // Valor padrão para NaN/Infinity
+              // Calcular comprimento baseado no tipo de dado
+              if (typeof cell.value === 'number') {
+                // Para números, considerar o formato (ex: $1,234.56)
+                if (isNaN(cell.value) || !isFinite(cell.value)) {
+                  cellLength = 10; // Valor padrão para NaN/Infinity
+                } else {
+                  cellLength = String(cell.value).length + 3;
+                }
+              } else if (cell.value instanceof Date) {
+                // Para datas, considerar formato brasileiro
+                if (isNaN(cell.value.getTime())) {
+                  cellLength = 10; // Data inválida
+                } else {
+                  cellLength = cell.value.toLocaleString('pt-BR').length;
+                }
               } else {
-                // Para valores monetários, adicionar espaço para formatação
-                cellLength = String(cell.value).length + 5; // +5 para "$" e formatação
+                // Para strings, usar o comprimento direto
+                cellLength = String(cell.value).length;
               }
-            } else if (cell.value instanceof Date) {
-              // Para datas, considerar formato brasileiro
-              if (isNaN(cell.value.getTime())) {
-                cellLength = 10; // Data inválida
-              } else {
-                cellLength = cell.value.toLocaleString('pt-BR').length;
-              }
-            } else {
-              // Para strings, usar o comprimento direto
-              cellLength = String(cell.value).length;
-            }
               
               maxLength = Math.max(maxLength, cellLength);
             }
@@ -893,10 +744,10 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           } else if (columnKey === 'userName' || columnKey === 'authenticatorName' || columnKey === 'clientName') {
             minWidth = 15;
             maxWidth = 40; // Nomes podem variar
-          } else if (columnKey === 'authenticationDate' || columnKey === 'createdAt') {
+          } else if (columnKey === 'authenticationDate' || columnKey === 'paymentDate') {
             minWidth = 18;
             maxWidth = 25; // Datas têm tamanho fixo
-          } else if (columnKey === 'cost' || columnKey === 'paymentAmount') {
+          } else if (columnKey === 'amount' || columnKey === 'tax' || columnKey === 'netValue') {
             minWidth = 12;
             maxWidth = 18; // Valores monetários
           } else if (columnKey === 'pages') {
@@ -941,7 +792,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      
+
       // Gerar nome do arquivo com período de data (se aplicável)
       let fileName = 'documents-report';
       if (hasDateFilter) {
@@ -959,8 +810,8 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
       saveAs(blob, fileName);
 
-      // Download automático sem alerta de confirmação
-      console.log(`✅ Exportação concluída! ${documentsToExport.length} documento(s) PAGO(S) exportado(s). Arquivo: ${fileName}`);
+      // Log silencioso (sem alerta de confirmação)
+      console.log(`✅ Exportação concluída! ${documentsToExport.length} documento(s) exportado(s). Arquivo: ${fileName}`);
     } catch (error) {
       console.error('Error exporting to Excel:', error);
       alert('Erro ao exportar para Excel. Por favor, tente novamente.');
