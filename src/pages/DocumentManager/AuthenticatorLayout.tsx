@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import AuthenticatorDashboard from './AuthenticatorDashboard';
+import AuthenticatorDashboard from './AuthenticatorDashboard/AuthenticatorDashboard';
 import TranslatedDocuments from './TranslatedDocuments';
 import AuthenticatorOverview from './AuthenticatorOverview';
 import AuthenticatorUpload from './AuthenticatorUpload';
