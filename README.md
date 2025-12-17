@@ -19,9 +19,17 @@ the-future-of-english-mvp-main/
 ├── eslint.config.js
 ├── index.html
 │
+├── docs/                    # Documentação do projeto (.md)
+│   ├── README.md
+│   └── ...arquivos de documentação
+│
+├── sql/                     # Scripts SQL auxiliares
+│   ├── README.md
+│   └── ...scripts SQL
+│
 ├── supabase/
 │   ├── config.toml
-│   ├── migrations/
+│   ├── migrations/          # Migrations oficiais do Supabase
 │   └── functions/
 │       └── send-translation-webhook/
 │           └── index.ts
@@ -66,7 +74,10 @@ the-future-of-english-mvp-main/
 
 ## Descrição das principais pastas
 
+- **docs/**: Toda a documentação do projeto em formato Markdown (.md). Inclui guias, relatórios, correções e documentação de sistemas.
+- **sql/**: Scripts SQL auxiliares para correções, testes e operações manuais. As migrations oficiais estão em `supabase/migrations/`.
 - **supabase/**: Tudo relacionado ao backend Supabase (migrations, edge functions, config).
+  - **migrations/**: Migrations oficiais versionadas e gerenciadas pelo Supabase CLI.
 - **src/**: Todo o código do frontend React.
   - **types/**: Tipos globais compartilhados.
   - **components/**: Componentes reutilizáveis.
