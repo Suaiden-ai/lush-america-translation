@@ -4,7 +4,7 @@ import { DateRange } from '../../../components/DateRangeFilter';
 export interface Document {
   id: string;
   filename: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'deleted';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'deleted' | 'draft';
   file_path?: string;
   user_id?: string;
   created_at?: string;
@@ -40,8 +40,8 @@ export interface PaymentWithRelations {
   payment_date: string | null;
   created_at: string;
   profiles: { email: string | null; name: string | null; role: string | null } | null;
-  documents: { 
-    filename: string | null; 
+  documents: {
+    filename: string | null;
     status: Document['status'] | null;
     client_name: string | null;
     idioma_raiz: string | null;
@@ -66,10 +66,10 @@ export interface MappedPayment extends PaymentWithRelations {
   authentication_date: string | null;
   source_language: string | null; // From documents_to_be_verified
   target_language: string | null; // From documents_to_be_verified
+  pages: number | null;
+  total_cost: number | null;
 }
 
 export interface PaymentsTableProps {
-  // `documents` prop is removed as it's not directly used here.
-  // `onStatusUpdate` and `onViewDocument` props are removed as internal logic handles these.
-  initialDateRange?: DateRange; // Renamed to avoid confusion with internal state
+  initialDateRange?: DateRange;
 }

@@ -26,21 +26,21 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
       // Aplicar filtros de data se fornecidos
       let startDateParam = null;
       let endDateParam = null;
-      
+
       if (dateFilter?.startDate) {
         // Para data de início, usar início do dia (00:00:00)
         const startDate = new Date(dateFilter.startDate);
         startDate.setHours(0, 0, 0, 0);
         startDateParam = startDate.toISOString();
       }
-      
+
       if (dateFilter?.endDate) {
         // Para data de fim, usar fim do dia (23:59:59)
         const endDate = new Date(dateFilter.endDate);
         endDate.setHours(23, 59, 59, 999);
         endDateParam = endDate.toISOString();
       }
-      
+
       console.log('🔍 Date filter params:', { startDateParam, endDateParam });
 
       // Buscar todos os documentos da tabela principal (como no Admin Dashboard)
@@ -96,7 +96,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           .from('documents')
           .select('id, filename, is_internal_use')
           .in('filename', filenames);
-        
+
         if (allDocsError) {
           console.error('Error loading all documents for check:', allDocsError);
         } else {
@@ -113,7 +113,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           .from('translated_documents')
           .select('original_document_id, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated, status')
           .in('original_document_id', dtbvIds);
-          
+
         if (tdError) {
           console.error('Error loading translated_documents:', tdError);
         } else if (translatedDocs) {
@@ -134,31 +134,31 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
       let regularDocsAuthMap = new Map(); // Mapa: documents.id -> dados de autenticação
       if (mainDocuments && mainDocuments.length > 0) {
         const regularDocIds = mainDocuments.map(doc => doc.id);
-        
+
         // Buscar documents_to_be_verified que referenciam os documentos regulares
         const { data: dtbvForRegularDocs, error: dtbvRegularError } = await supabase
           .from('documents_to_be_verified')
           .select('id, original_document_id')
           .in('original_document_id', regularDocIds);
-        
+
         if (!dtbvRegularError && dtbvForRegularDocs && dtbvForRegularDocs.length > 0) {
           const dtbvIdsForRegular = dtbvForRegularDocs.map(d => d.id);
-          
+
           // Buscar translated_documents usando os IDs dos dtbv
           const { data: translatedDocsForRegular, error: tdRegularError } = await supabase
             .from('translated_documents')
             .select('original_document_id, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated, status')
             .in('original_document_id', dtbvIdsForRegular);
-          
+
           if (!tdRegularError && translatedDocsForRegular) {
             // Criar mapa auxiliar: dtbv.id -> documents.id
             const dtbvToDocMap = new Map(dtbvForRegularDocs.map(d => [d.id, d.original_document_id]));
-            
+
             // Mapear dados de autenticação: documents.id -> dados de autenticação
             translatedDocsForRegular.forEach(td => {
               const dtbvId = td.original_document_id; // ID do documents_to_be_verified
               const originalDocId = dtbvToDocMap.get(dtbvId); // ID do documento original (documents.id)
-              
+
               if (originalDocId) {
                 regularDocsAuthMap.set(originalDocId, {
                   authenticated_by_name: td.authenticated_by_name,
@@ -211,7 +211,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           // Se não tiver original_document_id, buscar pelo filename no allDocumentsForCheck
           originalDoc = allDocumentsForCheck.find(doc => doc.filename === verifiedDoc.filename);
         }
-        
+
         if (originalDoc?.is_internal_use === true) {
           return false; // Excluir documentos de uso pessoal
         }
@@ -228,20 +228,20 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           });
         }
         const mainDoc = mainDocuments?.find(doc => doc.filename === verifiedDoc.filename);
-        
+
         // 🔍 BUSCAR STATUS REAL DA TABELA PAYMENTS PARA AUTENTICADORES
         // IMPORTANTE: verifiedDoc.id é o ID de documents_to_be_verified
         // O pagamento está vinculado ao document_id original (documents.id), não ao dtbv.id
         // MESMA LÓGICA DO ADMIN DASHBOARD: buscar apenas pelo original_document_id (sem fallback)
         let realStatus = 'completed'; // Default para autenticadores
         let paymentForAuth = null;
-        
+
         // Buscar APENAS pelo original_document_id (sem fallback, igual ao AdminDashboard)
         if (verifiedDoc.original_document_id) {
-          paymentForAuth = paymentsData?.find(payment => 
+          paymentForAuth = paymentsData?.find(payment =>
             payment.document_id === verifiedDoc.original_document_id
           );
-          
+
           // 🔍 LOG ESPECÍFICO PARA O DOCUMENTO DA KARINA
           if (verifiedDoc.filename?.includes('0UUWX0') || verifiedDoc.filename?.includes('certidao_de_casamento')) {
             console.log('🔍 DEBUG KARINA - Buscando pagamento:', {
@@ -263,7 +263,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
             });
           }
         }
-        
+
         // 🔍 LOG ESPECÍFICO PARA O DOCUMENTO DA KARINA
         if (verifiedDoc.filename?.includes('0UUWX0') || verifiedDoc.filename?.includes('certidao_de_casamento')) {
           console.log('🔍 DEBUG KARINA - Processing document:', {
@@ -282,7 +282,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
             }))
           });
         }
-        
+
         if (paymentForAuth) {
           realStatus = paymentForAuth.status;
           console.log('🔍 DEBUG - Found payment for authenticator document:', {
@@ -294,7 +294,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
             amount: paymentForAuth.amount
           });
         }
-        
+
         // 🔍 LOG PARA VERIFICAR SE O DOCUMENTO REFUNDED ESTÁ SENDO PROCESSADO COM STATUS CORRETO
         if (verifiedDoc.filename === 'relatorio-suaiden-ai_PS7V00.pdf') {
           console.log('🔍 DEBUG - Creating authenticator payment for refunded document:', {
@@ -304,7 +304,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
             payment_method: mainDoc?.payment_method || null
           });
         }
-        
+
         return {
           id: `auth-${verifiedDoc.id}`,
           user_id: verifiedDoc.user_id,
@@ -316,12 +316,12 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           payment_method: mainDoc?.payment_method || null, // Para autenticadores, buscar na tabela documents
           payment_date: verifiedDoc.authentication_date || verifiedDoc.created_at,
           created_at: verifiedDoc.created_at,
-          
+
           // Dados do usuário
           user_email: verifiedDoc.profiles?.email || null,
           user_name: verifiedDoc.profiles?.name || null,
           user_role: verifiedDoc.profiles?.role || null,
-          
+
           // Dados do documento
           document_filename: verifiedDoc.filename,
           // Para autenticadores, usar status 'completed' se foi autenticado (igual ao AdminDashboard)
@@ -329,14 +329,14 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           client_name: verifiedDoc.client_name,
           idioma_raiz: verifiedDoc.source_language,
           tipo_trad: verifiedDoc.target_language,
-          
+
           // ✅ DADOS DE AUTENTICAÇÃO VINDOS DE translated_documents (fonte de verdade)
           authenticated_by_name: (translatedDocsMap.get(verifiedDoc.id)?.authenticated_by_name) || verifiedDoc.authenticated_by_name || null,
           authenticated_by_email: (translatedDocsMap.get(verifiedDoc.id)?.authenticated_by_email) || verifiedDoc.authenticated_by_email || null,
           authentication_date: (translatedDocsMap.get(verifiedDoc.id)?.authentication_date) || verifiedDoc.authentication_date || null,
           source_language: verifiedDoc.source_language,
           target_language: verifiedDoc.target_language,
-          
+
           // Campos obrigatórios da interface
           profiles: verifiedDoc.profiles,
           documents: {
@@ -346,14 +346,16 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
             idioma_raiz: verifiedDoc.source_language,
             tipo_trad: verifiedDoc.target_language,
             verification_code: verifiedDoc.verification_code
-          }
+          },
+          pages: verifiedDoc.pages || 0,
+          total_cost: verifiedDoc.total_cost || 0
         };
       }) || [];
 
       // Processar documentos de usuários regulares (role: user)
       // Para usuários regulares, o payment_method está na tabela payments
       const regularPayments: MappedPayment[] = [];
-      
+
       // 🔍 LOG PARA VERIFICAR SE O DOCUMENTO REFUNDED ESTÁ SENDO PROCESSADO
       console.log('🔍 DEBUG - Total mainDocuments to process:', mainDocuments?.length || 0);
       const refundedDocument = mainDocuments?.find(doc => doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e');
@@ -367,24 +369,25 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           total_cost: refundedDocument.total_cost
         });
       }
-      
+
       if (mainDocuments) {
         for (const doc of mainDocuments) {
           // Excluir documentos de uso pessoal (is_internal_use = true)
           if (doc.is_internal_use === true) {
             continue;
           }
-          
+
           // 🔍 LOG PARA RASTREAR PROCESSAMENTO DO DOCUMENTO REFUNDED
-          if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e') {
-            console.log('🔍 DEBUG - Processing refunded document in loop:', {
+          if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e' || (doc.profiles?.name && doc.profiles.name.includes('Mayk'))) {
+            console.log('🔍 DEBUG MAYK - Processing document:', {
               id: doc.id,
               filename: doc.filename,
               user_id: doc.user_id,
-              status: doc.status
+              status: doc.status,
+              total_cost: doc.total_cost
             });
           }
-          
+
           // Verificar se já foi processado como autenticador
           const alreadyProcessed = authenticatorPayments.some(auth => auth.document_filename === doc.filename);
           if (alreadyProcessed) {
@@ -392,12 +395,9 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           }
 
           // Buscar pagamento na tabela payments para usuários regulares
-          // Tentar primeiro por document_id, depois por user_id
-          let paymentInfo = paymentsData?.find(payment => payment.document_id === doc.id);
-          if (!paymentInfo) {
-            paymentInfo = paymentsData?.find(payment => payment.user_id === doc.user_id);
-          }
-          
+          // Tentar ESTRITAMENTE por document_id (REMOVIDO fallback por user_id que causava duplicidade)
+          const paymentInfo = paymentsData?.find(payment => payment.document_id === doc.id);
+
           // 🔍 LOG ESPECÍFICO PARA RASTREAR MATCHING DE PAGAMENTOS
           if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e') {
             console.log('🔍 DEBUG - Processing specific document:', {
@@ -406,24 +406,37 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
               user_id: doc.user_id,
               status: doc.status
             });
-            
+
             console.log('🔍 DEBUG - Looking for payment by document_id:', doc.id);
             const paymentByDocId = paymentsData?.find(payment => payment.document_id === doc.id);
             console.log('🔍 DEBUG - Payment found by document_id:', paymentByDocId);
-            
+
             console.log('🔍 DEBUG - Looking for payment by user_id:', doc.user_id);
             const paymentByUserId = paymentsData?.find(payment => payment.user_id === doc.user_id);
             console.log('🔍 DEBUG - Payment found by user_id:', paymentByUserId);
-            
+
             console.log('🔍 DEBUG - Final paymentInfo selected:', paymentInfo);
-            
+
             // Verificar se o pagamento será incluído
             console.log('🔍 DEBUG - Will be included?', !(!paymentInfo && !doc.total_cost));
             console.log('🔍 DEBUG - Has paymentInfo?', !!paymentInfo);
             console.log('🔍 DEBUG - Has doc.total_cost?', !!doc.total_cost);
           }
-          
-          // Só incluir se tem informação financeira
+
+          // Só incluir se tem informação financeira e NÃO for um rascunho
+          // 🛑 REGRA ADMIN: Ignorar rascunhos (drafts)
+          const authData = regularDocsAuthMap.get(doc.id);
+          let translationStatus = doc.status || 'pending';
+
+          // Se o documento foi autenticado, deve mostrar "completed"
+          if (authData && (authData.is_authenticated === true || authData.status === 'completed')) {
+            translationStatus = 'completed';
+          }
+
+          if (translationStatus === 'draft') {
+            continue;
+          }
+
           if (!paymentInfo && !doc.total_cost) {
             continue;
           }
@@ -439,28 +452,26 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
             payment_method: paymentInfo?.payment_method || null, // Para usuários regulares, buscar na tabela payments
             payment_date: paymentInfo?.payment_date || doc.created_at,
             created_at: paymentInfo?.created_at || doc.created_at,
-            
+
             // Dados do usuário
             user_email: doc.profiles?.email || null,
             user_name: doc.profiles?.name || null,
             user_role: doc.profiles?.role || null,
-            
+
             // Dados do documento
             document_filename: doc.filename,
-            document_status: doc.status,
+            document_status: translationStatus,
             client_name: doc.client_name,
             idioma_raiz: doc.idioma_raiz,
             tipo_trad: doc.tipo_trad,
-            
+
             // ✅ DADOS DE AUTENTICAÇÃO PARA DOCUMENTOS REGULARES
-            // Primeiro tentar do regularDocsAuthMap (via translated_documents)
-            // Se não encontrar, verificar se há dados diretamente na tabela documents (marcado manualmente)
-            authenticated_by_name: regularDocsAuthMap.get(doc.id)?.authenticated_by_name || doc.authenticated_by_name || null,
-            authenticated_by_email: regularDocsAuthMap.get(doc.id)?.authenticated_by_email || doc.authenticated_by_email || null,
-            authentication_date: regularDocsAuthMap.get(doc.id)?.authentication_date || doc.authentication_date || null,
+            authenticated_by_name: authData?.authenticated_by_name || doc.authenticated_by_name || null,
+            authenticated_by_email: authData?.authenticated_by_email || doc.authenticated_by_email || null,
+            authentication_date: authData?.authentication_date || doc.authentication_date || null,
             source_language: doc.idioma_raiz,
             target_language: doc.tipo_trad,
-            
+
             // Campos obrigatórios da interface
             profiles: doc.profiles,
             documents: {
@@ -470,14 +481,16 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
               idioma_raiz: doc.idioma_raiz,
               tipo_trad: doc.tipo_trad,
               verification_code: doc.verification_code
-            }
+            },
+            pages: doc.pages || 0,
+            total_cost: doc.total_cost || 0
           });
         }
       }
 
       // Combinar ambos os tipos de pagamentos
       const documentsWithFinancialData: MappedPayment[] = [...authenticatorPayments, ...regularPayments];
-      
+
       setPayments(documentsWithFinancialData);
 
     } catch (err) {

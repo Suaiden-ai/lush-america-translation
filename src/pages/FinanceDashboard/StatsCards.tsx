@@ -19,7 +19,7 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
   const loadStats = async () => {
     try {
       setLoading(true);
-      
+
       // Buscar dados da tabela documents
       let documentsQuery = supabase
         .from('documents')
@@ -30,7 +30,7 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
             role
           )
         `);
-      
+
       // Aplicar filtros de data se fornecidos
       if (dateRange?.startDate) {
         documentsQuery = documentsQuery.gte('created_at', dateRange.startDate.toISOString());
@@ -38,9 +38,9 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       if (dateRange?.endDate) {
         documentsQuery = documentsQuery.lte('created_at', dateRange.endDate.toISOString());
       }
-      
+
       const { data: documentsData, error: documentsError } = await documentsQuery;
-      
+
       if (documentsError) {
         console.error('❌ Erro ao buscar documentos:', documentsError);
         return;
@@ -50,7 +50,7 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       let verifiedQuery = supabase
         .from('documents_to_be_verified')
         .select('*');
-      
+
       // Aplicar filtros de data se fornecidos
       if (dateRange?.startDate) {
         verifiedQuery = verifiedQuery.gte('created_at', dateRange.startDate.toISOString());
@@ -58,27 +58,28 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       if (dateRange?.endDate) {
         verifiedQuery = verifiedQuery.lte('created_at', dateRange.endDate.toISOString());
       }
-      
+
       const { data: verifiedData, error: verifiedError } = await verifiedQuery;
-      
+
       if (verifiedError) {
         console.error('❌ Erro ao buscar documentos verificados:', verifiedError);
       }
 
-      // Mesclar dados: priorizar status da documents_to_be_verified (usar filename como chave)
-      const allDocs = (documentsData || []).map(doc => {
-        const verifiedDoc = verifiedData?.find(v => v.filename === doc.filename);
-        return {
-          ...doc,
-          status: verifiedDoc ? verifiedDoc.status : doc.status
-        };
-      });
-      
+      // Mesclar dados: priorizar status da documents_to_be_verified
+      // Filtrar rascunhos para bater com o dashboard do Admin
+      const allDocs = (documentsData || [])
+        .map(doc => {
+          const verifiedDoc = verifiedData?.find(v => v.original_document_id === doc.id || v.filename === doc.filename);
+          const status = verifiedDoc ? verifiedDoc.status : doc.status;
+          return { ...doc, status };
+        })
+        .filter(doc => doc.status !== 'draft');
+
       // Preparar query para payments
       let paymentsQuery = supabase
         .from('payments')
         .select('*');
-      
+
       // Aplicar filtros de data se fornecidos
       if (dateRange?.startDate) {
         paymentsQuery = paymentsQuery.gte('created_at', dateRange.startDate.toISOString());
@@ -86,17 +87,17 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       if (dateRange?.endDate) {
         paymentsQuery = paymentsQuery.lte('created_at', dateRange.endDate.toISOString());
       }
-      
+
       const { data: paymentsData, error: paymentsError } = await paymentsQuery;
-      
+
       if (paymentsError) {
         console.error('❌ Erro ao buscar pagamentos:', paymentsError);
       }
-      
-      
+
+
       // Calcular estatísticas manualmente
       const allPayments = paymentsData || [];
-      
+
       // Estatísticas de pagamentos (calculadas mas não utilizadas no momento)
       const calculatedPaymentStats = {
         total_payments: allPayments.length,
@@ -105,48 +106,41 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
         pending_payments: allPayments.filter(p => p.status === 'pending').length,
         failed_payments: allPayments.filter(p => p.status === 'failed').length
       };
-      
+
       // Calcular revenue corretamente:
       // User Uploads: usar dados da tabela payments
       // NÃO incluir receita de autenticador pois não é lucro (valores ficam pending e não são pagos)
-      
-      // Revenue de usuários regulares (User Uploads) - usar tabela payments
-      // MESMA LÓGICA DO ADMIN DASHBOARD: somar TODOS os pagamentos completed
-      // (não apenas os de role='user', pois podem haver outros roles válidos como 'finance')
-      const regularRevenue = paymentsData?.reduce((sum, payment) => {
-        // Considerar apenas pagamentos com status 'completed' (pagamentos realmente pagos)
-        // NÃO filtrar por role, igual ao Admin Dashboard
-        if (payment.status === 'completed') {
+
+      // Total Revenue: apenas pagamentos completed de usuários regulares
+      // IMPORTANTE: Filtrar pagamentos que não tenham um documento válido (não-draft)
+      // Para simplificar e garantir precisão, somamos apenas pagamentos vinculados a documentos que restaram no 'allDocs'
+      const validDocIds = new Set(allDocs.map(d => d.id));
+
+      const filteredRegularRevenue = paymentsData?.reduce((sum, payment) => {
+        if (payment.status === 'completed' && payment.document_id && validDocIds.has(payment.document_id)) {
           return sum + (payment.amount || 0);
         }
         return sum;
       }, 0) || 0;
-      
-      // 🔍 LOG COMPARATIVO (agora regularRevenue = allCompletedAmount, pois não filtramos por role)
-      const allCompletedPayments = paymentsData?.filter(p => p.status === 'completed') || [];
-      const allCompletedAmount = allCompletedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-      
-      console.log('🔍 FINANCE DASHBOARD - All completed payments:', allCompletedPayments.length);
-      console.log('🔍 FINANCE DASHBOARD - All completed amount:', allCompletedAmount.toFixed(2));
-      console.log('🔍 FINANCE DASHBOARD - Regular revenue (all completed, no role filter):', regularRevenue.toFixed(2));
-      
-      // Revenue de autenticadores não é incluída no Total Revenue
-      // pois não é lucro (valores ficam pending e não são pagos)
-      // Excluir documentos de uso pessoal (is_internal_use = true)
-      const authenticatorRevenue = documentsData?.reduce((sum, doc) => {
+
+      // Revenue de autenticadores não é incluída no Total Revenue (conforme regra existente)
+      // Considerar apenas documentos que não são rascunhos e não são de uso interno
+      const authenticatorRevenue = allDocs.reduce((sum, doc) => {
         if (doc.profiles?.role === 'authenticator' && !doc.is_internal_use) {
           return sum + (doc.total_cost || 0);
         }
         return sum;
-      }, 0) || 0;
-      
-      // Total Revenue: apenas pagamentos completed de usuários regulares
-      const totalRevenue = regularRevenue;
-      
+      }, 0);
+
+      const totalRevenue = filteredRegularRevenue;
+
+      console.log('🔍 FINANCE DASHBOARD - Valid Documents:', validDocIds.size);
+      console.log('🔍 FINANCE DASHBOARD - Filtered Revenue (No Drafts):', totalRevenue.toFixed(2));
+
       console.log('🔍 Debug - StatsCards total_revenue (only completed payments):', totalRevenue);
-      console.log('🔍 Debug - User Uploads revenue (from payments table, status=completed):', regularRevenue);
+      console.log('🔍 Debug - User Uploads revenue (from payments table, status=completed):', filteredRegularRevenue);
       console.log('🔍 Debug - Authenticator Uploads revenue (excluded from total):', authenticatorRevenue);
-      
+
       // Estatísticas de tradução calculadas mas não utilizadas no momento
       // const calculatedTranslationStats = {
       //   total_documents: allDocs.length,
@@ -154,39 +148,39 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       //   pending_translations: allDocs.filter(d => d.status === 'pending').length,
       //   total_revenue: totalRevenue
       // };
-      
+
       // Separar por tipo de usuário
       // Excluir documentos de uso pessoal (is_internal_use = true)
       const userDocs = allDocs.filter(d => d.profiles?.role === 'user' && !d.is_internal_use);
       const authenticatorDocs = allDocs.filter(d => d.profiles?.role === 'authenticator' && !d.is_internal_use);
-      
+
       // Estatísticas aprimoradas com separação por tipo de usuário
       const calculatedEnhancedStats = {
         total_documents: allDocs.length,
         total_revenue: totalRevenue, // Apenas pagamentos completed de usuários regulares
-        
+
         // User uploads
         user_uploads_total: userDocs.length,
         user_uploads_completed: userDocs.filter(d => d.status === 'completed').length,
         user_uploads_pending: userDocs.filter(d => d.status === 'pending').length,
-        user_uploads_revenue: regularRevenue, // Revenue de usuários regulares (tabela payments, status=completed)
-        
+        user_uploads_revenue: filteredRegularRevenue,
+
         // Authenticator uploads  
         authenticator_uploads_total: authenticatorDocs.length,
         authenticator_uploads_completed: authenticatorDocs.filter(d => d.status === 'completed').length,
         authenticator_uploads_pending: authenticatorDocs.filter(d => d.status === 'pending').length,
         authenticator_uploads_revenue: authenticatorRevenue, // Revenue de autenticadores (não incluída no total)
-        
+
         // Status breakdown
         total_completed: allDocs.filter(d => d.status === 'completed').length,
         total_pending: allDocs.filter(d => d.status === 'pending').length,
         total_processing: allDocs.filter(d => d.status === 'processing').length,
         total_rejected: allDocs.filter(d => d.status === 'rejected').length
       };
-      
+
 
       setEnhancedStats(calculatedEnhancedStats);
-      
+
       // Breakdown por tipo de usuário usando os status reais mesclados
       const calculatedBreakdown = [
         {
@@ -196,11 +190,11 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
           pending_documents: userDocs.filter(d => d.status === 'pending').length,
           processing_documents: userDocs.filter(d => d.status === 'processing').length,
           rejected_documents: userDocs.filter(d => d.status === 'rejected').length,
-          total_revenue: regularRevenue, // Revenue de usuários regulares (tabela payments)
-          avg_revenue_per_doc: userDocs.length > 0 ? regularRevenue / userDocs.length : 0
+          total_revenue: filteredRegularRevenue, // Revenue de usuários regulares (tabela payments)
+          avg_revenue_per_doc: userDocs.length > 0 ? filteredRegularRevenue / userDocs.length : 0
         },
         {
-          user_type: "Authenticators", 
+          user_type: "Authenticators",
           total_documents: authenticatorDocs.length,
           completed_documents: authenticatorDocs.filter(d => d.status === 'completed').length,
           pending_documents: authenticatorDocs.filter(d => d.status === 'pending').length,
@@ -210,13 +204,13 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
           avg_revenue_per_doc: authenticatorDocs.length > 0 ? authenticatorRevenue / authenticatorDocs.length : 0
         }
       ];
-      
+
       setUserTypeBreakdown(calculatedBreakdown);
 
       // Debug dos valores calculados
       console.log('🔍 Enhanced Stats:', calculatedEnhancedStats);
       console.log('🔍 Payment Stats:', calculatedPaymentStats);
-      console.log('🔍 User Uploads Revenue (from payments table, status=completed):', regularRevenue);
+      console.log('🔍 User Uploads Revenue (from payments table, status=completed):', filteredRegularRevenue);
       console.log('🔍 Authenticator Uploads Revenue (excluded from total):', authenticatorRevenue);
       console.log('🔍 Total Revenue (only completed payments):', totalRevenue);
 
@@ -229,7 +223,7 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
 
   // Calcular valores reais primeiro - usar sempre os dados do enhancedStats
   const realRevenue = enhancedStats?.total_revenue ?? 0;
-  
+
   const realDocuments = enhancedStats?.total_documents ?? 0;
 
   // Debug simplificado - removido para reduzir logs
@@ -237,11 +231,11 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
 
   // Calcular valores reais para todos os cards - usar sempre os dados do enhancedStats
   const realUserUploads = enhancedStats?.user_uploads_total ?? 0;
-    
+
   const realUserRevenue = enhancedStats?.user_uploads_revenue ?? 0;
-    
+
   const realAuthUploads = enhancedStats?.authenticator_uploads_total ?? 0;
-    
+
   const realAuthRevenue = enhancedStats?.authenticator_uploads_revenue ?? 0;
 
   // Debug dos valores finais
@@ -320,9 +314,9 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
     <div className="space-y-3 sm:space-y-4 lg:space-y-6 mb-4 sm:mb-6 lg:mb-8 w-full">
       {/* Main Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 w-full">
-      {stats.map((stat, index) => {
-        const Icon = stat.icon;
-        return (
+        {stats.map((stat, index) => {
+          const Icon = stat.icon;
+          return (
             <div key={index} className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 lg:p-5 hover:shadow-md transition-shadow duration-200">
               <div className="flex items-center justify-between mb-2 sm:mb-3">
                 <div className={`w-8 h-8 sm:w-9 sm:h-9 ${stat.bgColor} rounded-lg flex items-center justify-center flex-shrink-0`}>
@@ -351,11 +345,10 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
               <div key={index} className="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-2">
-                    <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md flex items-center justify-center ${
-                      breakdown.user_type === 'Regular Users' 
-                        ? 'bg-purple-100' 
-                        : 'bg-orange-100'
-                    }`}>
+                    <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md flex items-center justify-center ${breakdown.user_type === 'Regular Users'
+                      ? 'bg-purple-100'
+                      : 'bg-orange-100'
+                      }`}>
                       {breakdown.user_type === 'Regular Users' ? (
                         <Users className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-purple-600" />
                       ) : (
@@ -366,7 +359,7 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
                   </div>
                   <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded whitespace-nowrap">{breakdown.total_documents} docs</span>
                 </div>
-                
+
                 <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-3 sm:mb-4">
                   <div className="text-center">
                     <div className="text-xs sm:text-sm font-medium text-gray-900">{breakdown.completed_documents || 0}</div>
@@ -381,7 +374,7 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
                     <div className="text-xs text-gray-500">Rejected</div>
                   </div>
                 </div>
-                
+
                 <div className="pt-3 border-t border-gray-300">
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-500">Total Revenue</span>
