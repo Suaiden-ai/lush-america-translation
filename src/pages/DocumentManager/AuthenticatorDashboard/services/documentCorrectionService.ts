@@ -1,4 +1,4 @@
-import { supabase } from '../../../../lib/supabase';
+import { supabase, STORAGE_BUCKETS } from '../../../../lib/supabase';
 import { Document } from '../types/authenticator.types';
 import { Logger } from '../../../../lib/loggingHelpers';
 import { ActionTypes } from '../../../../types/actionTypes';
@@ -30,25 +30,25 @@ export async function uploadCorrection(
   try {
     // Upload para Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('documents')
+      .from(STORAGE_BUCKETS.DOCUMENTS)
       .upload(`corrections/${document.id}_${Date.now()}_${file.name}`, file, { upsert: true });
-    
+
     if (uploadError) {
       throw uploadError;
     }
-    
+
     const filePath = uploadData?.path;
-    const { data: publicUrlData } = supabase.storage.from('documents').getPublicUrl(filePath);
+    const { data: publicUrlData } = supabase.storage.from(STORAGE_BUCKETS.DOCUMENTS).getPublicUrl(filePath);
     const publicUrl = publicUrlData.publicUrl;
-    
+
     // Se tem verification_id, usar ele; senão, usar o id principal do documento
     const verificationId = document.verification_id || document.id;
-    
+
     // Buscar verification_code do documento original
     let originalDoc: any;
     let fetchError: any;
     let finalVerificationId = verificationId;
-    
+
     if (document.verification_id) {
       // Documento já está na tabela documents_to_be_verified
       const { data, error } = await supabase
@@ -65,11 +65,11 @@ export async function uploadCorrection(
         .select('*')
         .eq('id', document.id)
         .single();
-        
+
       if (docError || !docData) {
         throw new Error('Não foi possível obter dados do documento original.');
       }
-      
+
       // Criar entrada na tabela documents_to_be_verified
       const { data: newVerifiedDoc, error: createError } = await supabase
         .from('documents_to_be_verified')
@@ -88,20 +88,20 @@ export async function uploadCorrection(
         })
         .select('id, verification_code')
         .single();
-        
+
       if (createError || !newVerifiedDoc) {
         throw new Error('Não foi possível criar entrada na tabela de verificação.');
       }
-      
+
       finalVerificationId = newVerifiedDoc.id;
       originalDoc = newVerifiedDoc;
       fetchError = null;
     }
-    
+
     if (fetchError || !originalDoc) {
       throw new Error('Não foi possível obter o verification_code do documento original.');
     }
-    
+
     // Dados do autenticador
     const authData = {
       authenticated_by: currentUser?.id,
@@ -109,10 +109,10 @@ export async function uploadCorrection(
       authenticated_by_email: currentUser?.email,
       authentication_date: new Date().toISOString()
     };
-    
+
     // Gerar novo código de verificação único para a correção
     const newVerificationCode = generateVerificationCode();
-    
+
     // Debug: verificar os valores dos idiomas antes da inserção
     console.log('DEBUG: Idiomas antes da inserção em translated_documents:');
     console.log('doc.source_language:', document.source_language);
@@ -121,7 +121,7 @@ export async function uploadCorrection(
     console.log('source_language:', document.source_language || 'Portuguese');
     console.log('target_language:', document.target_language || 'English');
     console.log('Novo verification_code:', newVerificationCode);
-    
+
     // Inserir na tabela translated_documents com dados do autenticador
     const { error: insertError } = await supabase.from('translated_documents').insert({
       original_document_id: finalVerificationId,
@@ -137,11 +137,11 @@ export async function uploadCorrection(
       verification_code: newVerificationCode,
       ...authData
     } as any);
-    
+
     if (insertError) {
       throw insertError;
     }
-    
+
     // Log da rejeição do documento pelo autenticador
     try {
       await Logger.log(
@@ -207,13 +207,13 @@ export async function uploadCorrection(
     } catch (logError) {
       console.error('Error logging document status change after correction:', logError);
     }
-    
+
     // Atualizar status do documento original para 'completed' com dados do autenticador
     if (document.verification_id) {
       // Documento estava na tabela documents_to_be_verified
       await supabase
         .from('documents_to_be_verified')
-        .update({ 
+        .update({
           status: 'completed',
           ...authData
         })
@@ -222,21 +222,21 @@ export async function uploadCorrection(
       // Documento foi criado em documents_to_be_verified, atualizar ambas as tabelas
       await supabase
         .from('documents_to_be_verified')
-        .update({ 
+        .update({
           status: 'completed',
           ...authData
         })
         .eq('id', finalVerificationId);
-        
+
       await supabase
         .from('documents')
-        .update({ 
+        .update({
           status: 'completed',
           ...authData
         })
         .eq('id', document.id);
     }
-    
+
     // Log de upload manual pelo autenticador
     try {
       await Logger.log(

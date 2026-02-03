@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
     // Create Supabase client with service role key
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
+
     console.log("Supabase URL:", supabaseUrl ? "✓ Set" : "✗ Missing");
     console.log("Service Role Key:", supabaseServiceKey ? "✓ Set" : "✗ Missing");
 
@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
     console.log("=== WEBHOOK CALL START ===");
     console.log("Timestamp:", new Date().toISOString());
     console.log("Raw request body:", requestBody);
-    
+
     const parsedBody = JSON.parse(requestBody);
     console.log("Parsed request body:", parsedBody);
     console.log("Request headers:", Object.fromEntries(req.headers.entries()));
@@ -66,14 +66,14 @@ Deno.serve(async (req: Request) => {
     // Gerar um ID único para esta requisição baseado no conteúdo (SEM timestamp para detectar duplicatas reais)
     const requestId = `${parsedBody.user_id || 'unknown'}_${parsedBody.filename || 'unknown'}`;
     console.log("Request ID:", requestId);
-    
+
     // VERIFICAÇÃO ROBUSTA DE DUPLICATAS USANDO BANCO DE DADOS
     // Cache em memória pode falhar se houver múltiplas instâncias da Edge Function
     if (parsedBody.user_id && parsedBody.filename) {
       console.log("🔍 VERIFICAÇÃO ANTI-DUPLICATA: Checando banco de dados...");
-      
+
       const cutoffTime = new Date(Date.now() - 2 * 60 * 1000).toISOString(); // 2 minutos atrás
-      
+
       const { data: recentDocs, error: recentError } = await supabase
         .from('documents_to_be_verified')
         .select('id, filename, created_at')
@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
         console.log("Documento existente:", recentDocs[0]);
         console.log("⏱️ Criado em:", recentDocs[0].created_at);
         console.log("✅ IGNORANDO upload duplicado para prevenir múltiplos documentos");
-        
+
         return new Response(
           JSON.stringify({
             success: true,
@@ -111,7 +111,7 @@ Deno.serve(async (req: Request) => {
         console.log("✅ Nenhuma duplicata encontrada, prosseguindo com o upload");
       }
     }
-    
+
     // Cache em memória como backup (pode não funcionar com múltiplas instâncias)
     const now = Date.now();
     const lastProcessed = processedRequests.get(requestId);
@@ -133,10 +133,10 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
-    
+
     // Marcar esta requisição como processada
     processedRequests.set(requestId, now);
-    
+
     // Limpar cache antigo (mais de 5 minutos)
     for (const [key, timestamp] of processedRequests.entries()) {
       if (now - timestamp > 300000) { // 5 minutos
@@ -145,24 +145,24 @@ Deno.serve(async (req: Request) => {
     }
 
     // Recebe o evento do Supabase Storage ou do frontend
-    const { 
-      filename, 
-      url, 
-      mimetype, 
-      size, 
-      record, 
-      user_id, 
+    const {
+      filename,
+      url,
+      mimetype,
+      size,
+      record,
+      user_id,
       pages,
       paginas,
       document_type,
-      tipo_trad, 
+      tipo_trad,
       total_cost,
-      valor, 
+      valor,
       source_language,
       target_language,
       idioma_raiz,
       idioma_destino,
-      is_bank_statement, 
+      is_bank_statement,
       client_name,
       source_currency,
       target_currency,
@@ -170,7 +170,7 @@ Deno.serve(async (req: Request) => {
       original_document_id,
       original_filename
     } = parsedBody;
-    
+
     // Debug logs para idiomas e moedas
     console.log("=== LANGUAGE & CURRENCY DEBUG ===");
     console.log("source_language:", source_language);
@@ -180,7 +180,7 @@ Deno.serve(async (req: Request) => {
     console.log("source_currency:", source_currency);
     console.log("target_currency:", target_currency);
     console.log("is_bank_statement:", is_bank_statement);
-    
+
     // Buscar original_filename da tabela documents se não estiver no payload
     let finalOriginalFilename = original_filename;
     if (!finalOriginalFilename && document_id) {
@@ -190,7 +190,7 @@ Deno.serve(async (req: Request) => {
         .select('original_filename, filename')
         .eq('id', document_id)
         .single();
-      
+
       if (docError) {
         console.error("❌ Erro ao buscar documento:", docError);
       } else {
@@ -198,7 +198,7 @@ Deno.serve(async (req: Request) => {
         console.log("✅ original_filename encontrado:", finalOriginalFilename);
       }
     }
-    
+
     let payload;
 
     if (record) {
@@ -206,51 +206,13 @@ Deno.serve(async (req: Request) => {
       console.log("Processing storage trigger payload");
       const bucket = record.bucket_id || record.bucket || record.bucketId || 'documents';
       const path = record.name || record.path || record.file_name;
-      
-      // IMPORTANTE: Como os buckets são privados, gerar signed URL usando service_role
-      let publicUrl;
-      if (url && url.startsWith('http') && url.includes('sign')) {
-        // Se já temos uma signed URL válida, usar ela
-        publicUrl = url;
-        console.log("Using existing signed URL:", publicUrl);
-      } else {
-        // Gerar signed URL válido por 24 horas (86400 segundos)
-        // Usando service_role, funciona mesmo com buckets privados
-        try {
-          const { data: signedData, error: signedError } = await supabase.storage
-            .from(bucket)
-            .createSignedUrl(path, 86400); // 24 horas
-          
-          if (signedData?.signedUrl) {
-            publicUrl = signedData.signedUrl;
-            console.log("Generated signed URL from storage trigger (valid for 24h):", publicUrl);
-          } else if (signedError) {
-            console.error("Error generating signed URL from storage trigger:", signedError);
-            // Fallback: tentar URL pública (pode não funcionar se bucket for privado)
-            const { data: { publicUrl: fallbackUrl } } = supabase.storage
-              .from(bucket)
-              .getPublicUrl(path);
-            publicUrl = fallbackUrl;
-            console.log("Fallback to public URL (may not work if bucket is private):", publicUrl);
-          }
-        } catch (urlError) {
-          console.error("Error generating URL from storage trigger:", urlError);
-          // Último fallback: tentar URL pública
-          try {
-            const { data: { publicUrl: fallbackUrl } } = supabase.storage
-              .from(bucket)
-              .getPublicUrl(path);
-            publicUrl = fallbackUrl;
-            console.log("Final fallback to public URL:", publicUrl);
-          } catch (fallbackError) {
-            console.error("All URL generation methods failed:", fallbackError);
-            publicUrl = url || `https://${supabaseUrl}/storage/v1/object/${bucket}/${path}`;
-          }
-        }
-      }
-      
-      console.log("Final URL for n8n:", publicUrl);
-      
+
+      // IMPORTANTE: Como os buckets são privados, usar Proxy URL autenticado para o n8n
+      const n8nSecret = Deno.env.get("N8N_STORAGE_SECRET") || "";
+      const publicUrl = `${supabaseUrl}/functions/v1/n8n-storage-access?bucket=${bucket}&path=${encodeURIComponent(path)}&token=${n8nSecret}`;
+
+      console.log("Final Proxy URL for n8n:", publicUrl);
+
       payload = {
         filename: path,
         url: publicUrl,
@@ -284,97 +246,46 @@ Deno.serve(async (req: Request) => {
       console.log("URL received:", url);
       console.log("User ID:", user_id);
       console.log("Filename:", filename);
-      
+
       // Verificar se a URL já é válida
+      // Converter a URL para Proxy URL se for do Supabase
       let finalUrl = url;
-      if (url && !url.startsWith('http')) {
-        // Se a URL não é completa (é apenas um filePath), gerar um signed URL
-        // IMPORTANTE: Como os buckets são privados, precisamos gerar signed URL usando service_role
+      if (url && url.includes('supabase.co')) {
         try {
-          // Extrair o caminho do arquivo da URL
-          const urlParts = url.split('/');
-          const fileName = urlParts[urlParts.length - 1];
-          const userFolder = urlParts[urlParts.length - 2];
-          const filePath = `${userFolder}/${fileName}`;
-          
-          console.log("Extracted file path:", filePath);
-          
-          // Detectar bucket baseado no caminho
-          let bucket = 'documents';
-          if (filePath.includes('arquivosfinaislush')) {
-            bucket = 'arquivosfinaislush';
-          }
-          
-          // Gerar signed URL válido por 24 horas (86400 segundos)
-          // Usando service_role, funciona mesmo com buckets privados
-          const { data: signedData, error: signedError } = await supabase.storage
-            .from(bucket)
-            .createSignedUrl(filePath, 86400); // 24 horas
-          
-          if (signedData?.signedUrl) {
-            finalUrl = signedData.signedUrl;
-            console.log("Generated signed URL from path (valid for 24h):", finalUrl);
-          } else if (signedError) {
-            console.error("Error generating signed URL:", signedError);
-            // Tentar fallback: construir URL direta (pode não funcionar se bucket for privado)
-            const { data: { publicUrl: fallbackUrl } } = supabase.storage
-              .from(bucket)
-              .getPublicUrl(filePath);
-            finalUrl = fallbackUrl;
-            console.log("Fallback to public URL (may not work if bucket is private):", finalUrl);
-          }
-        } catch (urlError) {
-          console.error("Error generating URL:", urlError);
-          // Usar a URL original se não conseguir gerar
-          finalUrl = url;
-        }
-      } else if (url && url.startsWith('http') && url.includes('supabase.co')) {
-        // Se já é uma URL do Supabase, verificar se é signed URL válida
-        // Se não for signed URL e o bucket for privado, tentar gerar signed URL
-        try {
-          // Extrair filePath da URL existente
           const urlObj = new URL(url);
           const pathParts = urlObj.pathname.split('/').filter(p => p);
-          
-          // Detectar bucket
+
+          // Detectar bucket e path
+          const publicIndex = pathParts.findIndex(p => p === 'public');
+          const objectIndex = pathParts.findIndex(p => p === 'object');
+
           let bucket = 'documents';
-          if (pathParts.includes('arquivosfinaislush')) {
-            bucket = 'arquivosfinaislush';
+          let filePath = '';
+
+          if (publicIndex >= 0) {
+            bucket = pathParts[publicIndex + 1];
+            filePath = pathParts.slice(publicIndex + 2).join('/');
+          } else if (objectIndex >= 0) {
+            bucket = pathParts[objectIndex + 2];
+            filePath = pathParts.slice(objectIndex + 3).join('/');
           }
-          
-          // Se não é signed URL (não tem 'sign' no path), tentar gerar
-          if (!pathParts.includes('sign')) {
-            // Tentar extrair filePath da URL
-            const bucketIndex = pathParts.findIndex(p => p === bucket);
-            if (bucketIndex >= 0) {
-              const filePath = pathParts.slice(bucketIndex + 1).join('/');
-              console.log("Extracted filePath from existing URL:", filePath);
-              
-              // Gerar signed URL válido por 24 horas
-              const { data: signedData, error: signedError } = await supabase.storage
-                .from(bucket)
-                .createSignedUrl(filePath, 86400);
-              
-              if (signedData?.signedUrl) {
-                finalUrl = signedData.signedUrl;
-                console.log("Generated signed URL from existing URL (valid for 24h):", finalUrl);
-              } else if (signedError) {
-                console.error("Error generating signed URL from existing URL:", signedError);
-              }
-            }
+
+          if (filePath) {
+            const n8nSecret = Deno.env.get("N8N_STORAGE_SECRET") || "";
+            finalUrl = `${supabaseUrl}/functions/v1/n8n-storage-access?bucket=${bucket}&path=${encodeURIComponent(filePath)}&token=${n8nSecret}`;
+            console.log("Converted frontend URL to Proxy URL for n8n:", finalUrl);
           }
         } catch (urlError) {
-          console.error("Error processing existing URL:", urlError);
-          // Manter URL original
+          console.error("Error parsing frontend URL for proxy conversion:", urlError);
         }
       }
-      
-      payload = { 
-        filename: filename, 
-        url: finalUrl, 
-        mimetype, 
-        size, 
-        user_id: user_id || null, 
+
+      payload = {
+        filename: filename,
+        url: finalUrl,
+        mimetype,
+        size,
+        user_id: user_id || null,
         // Sempre usar campos padronizados
         pages: pages || paginas || 1,
         document_type: 'Certificado', // Sempre usar 'Certificado' em português
@@ -396,7 +307,7 @@ Deno.serve(async (req: Request) => {
         tableName: 'profiles',
         schema: 'public'
       };
-      
+
       console.log("Final payload for frontend:", JSON.stringify(payload, null, 2));
     }
 
@@ -416,7 +327,7 @@ Deno.serve(async (req: Request) => {
 
     const webhookResponse = await fetch(webhookUrl, {
       method: "POST",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         "User-Agent": "Supabase-Edge-Function/1.0"
       },
@@ -432,14 +343,14 @@ Deno.serve(async (req: Request) => {
       try {
         console.log("Updating document status to processing...");
         console.log("Looking for document with user_id:", user_id, "and filename:", filename);
-        
+
         const { data: updateData, error: updateError } = await supabase
           .from('documents')
           .update({ status: 'processing' })
           .eq('user_id', user_id)
           .eq('filename', filename)
           .select();
-        
+
         if (updateError) {
           console.error("Error updating document status:", updateError);
         } else {
@@ -482,7 +393,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error("Error in send-translation-webhook:", error);
     console.error("Error stack:", error.stack);
-    
+
     const errorResponse = {
       success: false,
       error: error.message,

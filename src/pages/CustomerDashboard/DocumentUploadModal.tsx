@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, XCircle, FileText, CheckCircle, AlertCircle, Info, Shield, DollarSign, Award } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, STORAGE_BUCKETS } from '../../lib/supabase';
 import { fileStorage } from '../../utils/fileStorage';
 import { generateUniqueFileName } from '../../utils/fileUtils';
 import { PaymentMethodModal } from '../../components/PaymentMethodModal';
@@ -26,16 +26,16 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
   const [tipoTrad, setTipoTrad] = useState<'Certified'>('Certified');
   const [isExtrato, setIsExtrato] = useState<boolean | null>(null);
   const [idiomaRaiz, setIdiomaRaiz] = useState('Portuguese');
-  
+
   // Estados para os modais de pagamento
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showZelleModal, setShowZelleModal] = useState(false);
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
-  
+
   const translationTypes = [
     { value: 'Certified', label: 'Certified' },
   ];
-  
+
   const languages = [
     'Portuguese',
     'Portuguese (Portugal)',
@@ -104,7 +104,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
   const handleDirectPayment = async (fileId: string, customPayload?: any) => {
     try {
       console.log('DEBUG: Iniciando processamento do pagamento');
-      
+
       // Salvar arquivo no IndexedDB antes do pagamento
       if (!selectedFile) {
         throw new Error('Nenhum arquivo selecionado');
@@ -132,7 +132,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
 
       // CRIAR DOCUMENTO NO BANCO ANTES DO PAGAMENTO
       console.log('DEBUG: Criando documento no banco antes do pagamento');
-      
+
       console.log('DEBUG: Dados do documento a ser criado:', {
         userId,
         filename: uniqueFileName,
@@ -201,7 +201,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session?.access_token) {
         console.error('ERROR: Usuário não está autenticado');
         throw new Error('Usuário não está autenticado');
@@ -247,26 +247,26 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
 
   const handleUpload = async () => {
     if (!selectedFile) return;
-    
+
     // Validação: verificar se o campo bank statement foi preenchido
     if (isExtrato === null) {
       setError('Por favor, selecione se o documento é um extrato bancário ou não.');
       return;
     }
-    
+
     setError(null);
     setSuccess(null);
     setIsUploading(true);
-    
+
     try {
       // Criar documento no banco primeiro
       console.log('DEBUG: Criando documento no banco antes do pagamento');
-      
+
       // Gerar nome único com código aleatório para o filename
       const uniqueFileName = generateUniqueFileName(selectedFile.name);
       console.log('DEBUG: Nome único gerado:', uniqueFileName);
       console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
-      
+
       const { data: newDocument, error: createError } = await supabase
         .from('documents')
         .insert({
@@ -292,7 +292,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
 
       if (createError) {
         console.error('ERROR: Erro ao criar documento no banco:', createError);
-        
+
         // Logar erro de upload
         const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
         await logError('upload', createError, {
@@ -307,22 +307,22 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
             error_message: createError.message,
           },
         });
-        
+
         showUserFriendlyError('UPLOAD_ERROR');
         throw new Error('Erro ao criar documento no banco de dados');
       }
 
       console.log('DEBUG: Documento criado no banco:', newDocument.id);
-      
+
       // Armazenar o ID do documento para usar nos modais de pagamento
       setCurrentDocumentId(newDocument.id);
-      
+
       // Mostrar modal de seleção de método de pagamento
       setShowPaymentModal(true);
 
     } catch (err: any) {
       console.error('ERROR: Erro ao preparar documento:', err);
-      
+
       // Se já logou o erro acima, não logar novamente
       if (!err.message?.includes('Erro ao criar documento no banco de dados')) {
         // Logar erro genérico de upload
@@ -336,10 +336,10 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
             pages,
           },
         });
-        
+
         showUserFriendlyError('UPLOAD_ERROR');
       }
-      
+
       setError('Erro ao preparar documento. Por favor, tente novamente.');
     } finally {
       setIsUploading(false);
@@ -349,11 +349,11 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
   // Função para processar pagamento com Stripe
   const handleStripePayment = async () => {
     if (!selectedFile || !currentDocumentId) return;
-    
+
     try {
       setIsUploading(true);
       setError(null);
-      
+
       if (isMobile) {
         // Mobile: Tentar usar IndexedDB primeiro
         try {
@@ -367,15 +367,15 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
             userId,
             currentFolderId
           });
-          
+
           await handleDirectPayment(fileId);
         } catch (indexedDBError) {
           // Fallback: Upload direto para Supabase Storage
           const fileName = generateUniqueFileName(selectedFile.name);
           const filePath = `${userId}/${fileName}`; // Organizar por pasta do usuário
-          const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
+          const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKETS.DOCUMENTS).upload(filePath, selectedFile);
           if (uploadError) throw uploadError;
-          
+
           const payload = {
             pages,
             isCertified: true,
@@ -384,14 +384,14 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
             filePath,
             userId: userId,
             userEmail: userEmail,
-            filename: uniqueFileName, // Usar nome único com código aleatório
+            filename: fileName, // Usar nome único com código aleatório
             originalLanguage: idiomaRaiz,
             targetLanguage: 'English',
             documentType: 'Certificado',
             isMobile: true,
             documentId: currentDocumentId
           };
-          
+
           await handleDirectPayment('', payload);
         }
       } else {
@@ -406,10 +406,10 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
           userId,
           currentFolderId
         });
-        
+
         await handleDirectPayment(fileId);
       }
-      
+
     } catch (err: any) {
       console.error('ERROR: Erro ao processar pagamento Stripe:', err);
       setError(err.message || 'Erro ao processar pagamento');
@@ -577,7 +577,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
                         ))}
                       </select>
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="is-bank-statement">
                         4. Is it a bank statement? <span className="text-red-500">*</span>
@@ -595,7 +595,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
                         <option value="yes">Yes</option>
                       </select>
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="original-language">
                         5. Original Document Language
@@ -672,7 +672,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
                     <Info className="w-5 h-5 text-tfe-blue-600" />
                     Service Information
                   </h3>
-                  
+
                   <div className="space-y-4">
                     {/* Translation Types */}
                     <div>
@@ -709,7 +709,7 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
                             Birth certificates, marriage certificates, diplomas, transcripts, and other official documents.
                           </p>
                         </div>
-                        
+
                         <div className="bg-gray-50 rounded-lg p-3">
                           <div className="flex justify-between items-start mb-1">
                             <span className="font-medium text-gray-800 text-sm">Bank Statements</span>

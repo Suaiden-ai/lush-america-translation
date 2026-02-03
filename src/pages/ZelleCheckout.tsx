@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Copy, CheckCircle, DollarSign, Mail, Phone, AlertCircle, Clock, ArrowLeft, Upload, X } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, STORAGE_BUCKETS } from '../lib/supabase';
 import { Logger } from '../lib/loggingHelpers';
 import { ActionTypes } from '../types/actionTypes';
 
 export function ZelleCheckout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  
+
   const [step, setStep] = useState<'instructions' | 'confirmation' | 'completed'>('instructions');
   const [copied, setCopied] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,7 +37,7 @@ export function ZelleCheckout() {
   // Função para limpar documento não pago se usuário sair da página
   const cleanupDocument = async () => {
     if (!documentId || paymentCompleted || !shouldCleanupRef.current) return;
-    
+
     try {
       // Verificar se já existe um pagamento para este documento
       const { data: existingPayment } = await supabase
@@ -65,11 +65,11 @@ export function ZelleCheckout() {
           const urlParts = document.file_url.split('/');
           const fileName = urlParts[urlParts.length - 1];
           const filePath = `${document.user_id}/${fileName}`;
-          
+
           await supabase.storage
-            .from('documents')
+            .from(STORAGE_BUCKETS.DOCUMENTS)
             .remove([filePath]);
-          
+
           console.log('🗑️ Arquivo removido do storage:', filePath);
         }
 
@@ -91,7 +91,7 @@ export function ZelleCheckout() {
       navigate('/dashboard');
       return;
     }
-    
+
     // Log da abertura da página Zelle checkout
     if (!hasLoggedPageOpen.current && documentId) {
       hasLoggedPageOpen.current = true;
@@ -100,12 +100,12 @@ export function ZelleCheckout() {
         `Zelle checkout page opened`,
         {
           entityType: 'checkout',
-          entityId: documentId,
+          entityId: documentId || undefined,
           metadata: {
-            document_id: documentId,
-            amount: amount,
-            pages: pages,
-            filename: filename,
+            document_id: documentId || undefined,
+            amount: amount || undefined,
+            pages: pages || undefined,
+            filename: filename || undefined,
             timestamp: new Date().toISOString()
           },
           affectedUserId: documentData?.user_id,
@@ -113,7 +113,7 @@ export function ZelleCheckout() {
         }
       );
     }
-    
+
     const fetchDocumentData = async () => {
       try {
         const { data: document, error } = await supabase
@@ -161,17 +161,17 @@ export function ZelleCheckout() {
         // Mostrar aviso ao usuário
         e.preventDefault();
         e.returnValue = 'Your document upload will be lost if you leave. Are you sure?';
-        
+
         // Tentar executar limpeza
         cleanupDocument().catch(console.error);
-        
+
         return 'Your document upload will be lost if you leave. Are you sure?';
       }
     };
 
     // Usar apenas beforeunload para casos reais de saída
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
+
     return () => {
       isComponentMounted = false;
       window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -201,7 +201,7 @@ export function ZelleCheckout() {
 
     setPaymentReceipt(file);
     setError(null);
-    
+
     // Log do anexo do comprovante
     try {
       await Logger.log(
@@ -209,12 +209,12 @@ export function ZelleCheckout() {
         `Receipt attached: ${file.name}`,
         {
           entityType: 'payment',
-          entityId: documentId,
+          entityId: documentId || undefined,
           metadata: {
             filename: file.name,
             file_size: file.size,
             file_type: file.type,
-            document_id: documentId,
+            document_id: documentId || undefined,
             timestamp: new Date().toISOString()
           },
           affectedUserId: documentData?.user_id,
@@ -224,7 +224,7 @@ export function ZelleCheckout() {
     } catch (logError) {
       console.error('Error logging receipt attachment:', logError);
     }
-    
+
     const reader = new FileReader();
     reader.onloadend = () => {
       setReceiptPreview(reader.result as string);
@@ -265,7 +265,7 @@ export function ZelleCheckout() {
     const fileName = `${session.user.id}/${documentId}/receipt_${Date.now()}.${fileExt}`;
 
     const { error } = await supabase.storage
-      .from('payment-receipts')
+      .from(STORAGE_BUCKETS.PAYMENT_RECEIPTS)
       .upload(fileName, file);
 
     if (error) {
@@ -274,9 +274,9 @@ export function ZelleCheckout() {
     }
 
     const { data: { publicUrl } } = supabase.storage
-      .from('payment-receipts')
+      .from(STORAGE_BUCKETS.PAYMENT_RECEIPTS)
       .getPublicUrl(fileName);
-      
+
     return publicUrl;
   };
 
@@ -313,7 +313,7 @@ export function ZelleCheckout() {
     try {
       // Tentar parsear como JSON primeiro
       const responseObj = JSON.parse(responseText);
-      
+
       // Verificar se tem a propriedade response com valor válido
       if (responseObj && responseObj.response) {
         const validResponses = [
@@ -322,15 +322,15 @@ export function ZelleCheckout() {
           "Valid payment",
           "Payment is valid"
         ];
-        
+
         const response = responseObj.response.trim().toLowerCase();
         return validResponses.some(valid => response.includes(valid.toLowerCase()));
       }
-      
+
       // Fallback para string simples
       const validResponse = "The proof of payment is valid.";
       return responseText.trim().toLowerCase().includes(validResponse.toLowerCase());
-      
+
     } catch (error) {
       // Se não conseguir parsear JSON, tratar como string simples
       const validResponse = "The proof of payment is valid.";
@@ -374,10 +374,10 @@ export function ZelleCheckout() {
   const sendDocumentForTranslation = async (documentData: any, userProfile: any) => {
     try {
       console.log('🚀 Enviando documento para processo de tradução:', documentData.filename);
-      
+
       // Gerar a URL pública do documento
       let publicUrl: string;
-      
+
       if (documentData.file_url) {
         // Se o documento tem file_url (URL direta do arquivo)
         publicUrl = documentData.file_url;
@@ -385,7 +385,7 @@ export function ZelleCheckout() {
       } else {
         // Fallback para estrutura de Storage (assumindo estrutura padrão)
         const { data: { publicUrl: fallbackUrl } } = supabase.storage
-          .from('documents')
+          .from(STORAGE_BUCKETS.DOCUMENTS)
           .getPublicUrl(`${documentData.user_id}/${documentData.filename}`);
         publicUrl = fallbackUrl;
         console.log('📄 URL do documento (fallback):', publicUrl);
@@ -502,7 +502,7 @@ export function ZelleCheckout() {
 
       // Enviar webhook primeiro para validação
       console.log('🔄 Enviando comprovante para validação...');
-      
+
       // Log da tentativa de validação
       await Logger.log(
         ActionTypes.PAYMENT.ZELLE_VALIDATION_ATTEMPTED,
@@ -520,16 +520,16 @@ export function ZelleCheckout() {
           performerType: 'user'
         }
       );
-      
+
       let isValid = false;
 
       try {
         const webhookResponse = await sendWebhook(receiptUrl, session.user.id);
         isValid = isValidPaymentResponse(webhookResponse);
-        
+
         console.log('✅ Resposta do webhook:', webhookResponse);
         console.log('🎯 Comprovante válido:', isValid);
-        
+
         // Log do resultado da validação
         if (isValid) {
           await Logger.log(
@@ -537,10 +537,10 @@ export function ZelleCheckout() {
             `Receipt validated automatically as valid`,
             {
               entityType: 'payment',
-              entityId: documentId,
+              entityId: documentId || undefined,
               metadata: {
                 receipt_url: receiptUrl,
-                document_id: documentId,
+                document_id: documentId || undefined,
                 validation_result: webhookResponse,
                 timestamp: new Date().toISOString()
               },
@@ -554,10 +554,10 @@ export function ZelleCheckout() {
             `Receipt validation failed - manual review required`,
             {
               entityType: 'payment',
-              entityId: documentId,
+              entityId: documentId || undefined,
               metadata: {
                 receipt_url: receiptUrl,
-                document_id: documentId,
+                document_id: documentId || undefined,
                 validation_result: webhookResponse,
                 timestamp: new Date().toISOString()
               },
@@ -566,7 +566,7 @@ export function ZelleCheckout() {
             }
           );
         }
-        
+
       } catch (webhookError) {
         console.error('❌ Erro no webhook de validação:', webhookError);
         // Em caso de erro no webhook, considerar como inválido
@@ -601,7 +601,7 @@ export function ZelleCheckout() {
       // Processar baseado na validação
       if (isValid) {
         // Comprovante válido - fluxo normal
-        await supabase.from('documents').update({ 
+        await supabase.from('documents').update({
           status: 'processing',  // Mudando para processing pois vai iniciar tradução
           payment_method: 'zelle'
         }).eq('id', documentId);
@@ -659,19 +659,19 @@ export function ZelleCheckout() {
 
         // Enviar notificação normal para admin informando pagamento válido
         await sendNotificationToAdmin(userProfile, false);
-        
+
         console.log('✅ Comprovante validado automaticamente');
       } else {
         // Comprovante inválido - precisa revisão manual
         // Garantir que status é permitido no schema atual: usar 'pending' se 'pending_manual_review' não for aceito
         try {
-          const { error: docErr } = await supabase.from('documents').update({ 
+          const { error: docErr } = await supabase.from('documents').update({
             status: 'pending_manual_review',
             payment_method: 'zelle'
           }).eq('id', documentId);
           if (docErr) {
             console.warn('⚠️ Falling back to status "pending" due to constraint:', docErr?.message);
-            await supabase.from('documents').update({ 
+            await supabase.from('documents').update({
               status: 'pending',
               payment_method: 'zelle'
             }).eq('id', documentId);
@@ -682,16 +682,16 @@ export function ZelleCheckout() {
 
         // Enviar notificação para revisão manual
         await sendNotificationToAdmin(userProfile, true);
-        
+
         // Log de marcação para revisão manual
         await Logger.log(
           ActionTypes.PAYMENT.ZELLE_PENDING_MANUAL_REVIEW,
           `Payment marked for manual review`,
           {
             entityType: 'payment',
-            entityId: documentId,
+            entityId: documentId || undefined,
             metadata: {
-              document_id: documentId,
+              document_id: documentId || undefined,
               amount: amount,
               receipt_url: receiptUrl,
               reason: 'automatic_validation_failed',
@@ -701,17 +701,17 @@ export function ZelleCheckout() {
             performerType: 'system'
           }
         );
-        
+
         console.log('⚠️ Comprovante precisa de revisão manual');
       }
-      
+
       // Marcar pagamento como completado para evitar limpeza desnecessária
       setPaymentCompleted(true);
       shouldCleanupRef.current = false; // Desabilitar limpeza permanentemente
       setStep('completed');
     } catch (err: any) {
       console.error('Error confirming Zelle payment:', err);
-      
+
       // Log do erro no upload/confirmação
       try {
         await Logger.log(
@@ -719,10 +719,10 @@ export function ZelleCheckout() {
           `Receipt upload/confirmation failed: ${err.message}`,
           {
             entityType: 'payment',
-            entityId: documentId,
+            entityId: documentId || undefined,
             metadata: {
               error_message: err.message,
-              document_id: documentId,
+              document_id: documentId || undefined,
               timestamp: new Date().toISOString()
             },
             affectedUserId: documentData?.user_id,
@@ -732,13 +732,13 @@ export function ZelleCheckout() {
       } catch (logError) {
         console.error('Error logging upload failure:', logError);
       }
-      
+
       setError(err.message || 'Failed to confirm payment. Please try again.');
     } finally {
       setIsSubmitting(false);
       setUploadingReceipt(false);
     }
-  };  if (loading) {
+  }; if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -821,11 +821,11 @@ export function ZelleCheckout() {
                     <div className="flex items-center"><div className="w-10 h-10 bg-slate-800 text-white rounded-full flex items-center justify-center font-bold">2</div><span className="ml-3 font-semibold text-slate-800">Confirm</span></div>
                   </div>
                   <div className="text-center"><h3 className="text-xl font-bold text-gray-900 mb-2">Great! Now please confirm your payment</h3><p className="text-gray-600">Upload your payment receipt to complete the verification</p></div>
-                  
+
                   {/* Payment Receipt Requirements */}
                   <div className="bg-blue-50 rounded-xl p-5 mb-6">
                     <h4 className="font-semibold text-gray-900 mb-4">Your payment confirmation must include:</h4>
-                    
+
                     <div className="space-y-3 text-sm mb-4">
                       <div className="flex items-start space-x-3">
                         <span className="w-5 h-5 bg-blue-600 text-white rounded text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
@@ -834,7 +834,7 @@ export function ZelleCheckout() {
                           <span className="text-gray-600 ml-1">- The unique transaction code from Zelle</span>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-start space-x-3">
                         <span className="w-5 h-5 bg-blue-600 text-white rounded text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
                         <div>
@@ -842,7 +842,7 @@ export function ZelleCheckout() {
                           <span className="text-gray-600 ml-1">- When the transfer was completed</span>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-start space-x-3">
                         <span className="w-5 h-5 bg-blue-600 text-white rounded text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
                         <div>
@@ -850,7 +850,7 @@ export function ZelleCheckout() {
                           <span className="text-gray-600 ml-1">- The exact amount <strong className="text-green-600">(${amount} USD)</strong></span>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-start space-x-3">
                         <span className="w-5 h-5 bg-blue-600 text-white rounded text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">4</span>
                         <div>
@@ -859,7 +859,7 @@ export function ZelleCheckout() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="text-xs text-green-700 bg-green-100 rounded-lg p-3">
                       <strong>💡 Tip:</strong> Complete screenshots are verified automatically within minutes. Incomplete receipts need manual review (up to 24 hours).
                     </div>
@@ -928,7 +928,7 @@ export function ZelleCheckout() {
               </>
             )}
           </div>
-          
+
           <div className="xl:col-span-1">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 sticky top-8">
               <div className="bg-gray-50 p-4 border-b border-gray-200 rounded-t-2xl"><h3 className="text-lg font-bold text-gray-900">Payment Summary</h3></div>
