@@ -1,3 +1,5 @@
+import { STORAGE_BUCKETS } from '../lib/supabase';
+
 /**
  * Sanitiza o nome do arquivo removendo caracteres especiais e espaços
  * que podem causar problemas no upload para o Supabase Storage
@@ -7,17 +9,17 @@ export function sanitizeFileName(fileName: string): string {
   const lastDotIndex = fileName.lastIndexOf('.');
   const nameWithoutExt = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
   const extension = lastDotIndex !== -1 ? fileName.substring(lastDotIndex) : '';
-  
+
   // Sanitiza o nome do arquivo
   const sanitizedName = nameWithoutExt
     .replace(/[^a-zA-Z0-9_-]/g, '_') // Substitui caracteres especiais por underscore
     .replace(/_+/g, '_') // Remove underscores múltiplos
     .replace(/^_|_$/g, '') // Remove underscores no início e fim
     .toLowerCase(); // Converte para minúsculas
-  
+
   // Se o nome ficou vazio, usa um nome padrão
   const finalName = sanitizedName || 'document';
-  
+
   return finalName + extension;
 }
 
@@ -36,17 +38,17 @@ export function generateUniqueFileName(originalFileName: string): string {
   const lastDotIndex = originalFileName.lastIndexOf('.');
   const nameWithoutExt = lastDotIndex !== -1 ? originalFileName.substring(0, lastDotIndex) : originalFileName;
   const extension = lastDotIndex !== -1 ? originalFileName.substring(lastDotIndex) : '';
-  
+
   // Sanitizar o nome (sem extensão)
   const sanitizedName = nameWithoutExt
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
     .toLowerCase();
-  
+
   // Gerar código aleatório (6 caracteres alfanuméricos)
   const randomCode = Math.random().toString(36).substr(2, 6).toUpperCase();
-  
+
   // Estrutura: NomeOriginal_CODE.extensão
   return `${sanitizedName}_${randomCode}${extension}`;
 }
@@ -65,29 +67,29 @@ export function extractFilePathFromUrl(url: string): { filePath: string; bucket:
         cleanUrl = firstUrlMatch[0];
       }
     }
-    
+
     const urlObj = new URL(cleanUrl);
     const pathParts = urlObj.pathname.split('/').filter(p => p);
-    
+
     // Detectar bucket
-    let bucket = 'documents';
-    if (pathParts.includes('arquivosfinaislush')) {
-      bucket = 'arquivosfinaislush';
-    } else if (pathParts.includes('payment-receipts')) {
-      bucket = 'payment-receipts';
+    let bucket: string = STORAGE_BUCKETS.DOCUMENTS;
+    if (pathParts.includes(STORAGE_BUCKETS.FINAL_FILES)) {
+      bucket = STORAGE_BUCKETS.FINAL_FILES;
+    } else if (pathParts.includes(STORAGE_BUCKETS.PAYMENT_RECEIPTS)) {
+      bucket = STORAGE_BUCKETS.PAYMENT_RECEIPTS;
     }
-    
+
     // Extrair filePath
     // Para signed URLs, o formato é: /storage/v1/object/sign/{bucket}/{filePath}?token=...
     // Para public URLs, o formato é: /storage/v1/object/public/{bucket}/{filePath}
     // Para direct URLs, pode ser: /storage/v1/object/{bucket}/{filePath}
-    
+
     let filePath = '';
     const signIndex = pathParts.findIndex(p => p === 'sign');
     const publicIndex = pathParts.findIndex(p => p === 'public');
     const objectIndex = pathParts.findIndex(p => p === 'object');
     const bucketIndex = pathParts.findIndex(p => p === bucket);
-    
+
     if (signIndex >= 0) {
       // Signed URL: /storage/v1/object/sign/{bucket}/{filePath}
       // Pular 'sign', 'bucket' e pegar o resto
@@ -129,17 +131,17 @@ export function extractFilePathFromUrl(url: string): { filePath: string; bucket:
       // Último fallback: pegar últimos segmentos (assumindo formato userId/filename)
       filePath = pathParts.slice(-2).join('/');
     }
-    
+
     // Se filePath contém query params (token), remover
     if (filePath.includes('?')) {
       filePath = filePath.split('?')[0];
     }
-    
+
     // Remover duplicatas de bucket no início do caminho
     if (filePath.startsWith(`${bucket}/`)) {
       filePath = filePath.substring(bucket.length + 1);
     }
-    
+
     // Decodificar filePath para tratar caracteres especiais codificados (como %20, %28, %29, etc.)
     try {
       const decoded = decodeURIComponent(filePath);
@@ -151,7 +153,7 @@ export function extractFilePathFromUrl(url: string): { filePath: string; bucket:
       // Se a decodificação falhar, usar o filePath original
       console.warn('Erro ao decodificar filePath, usando original:', e);
     }
-    
+
     return { filePath, bucket };
   } catch (error) {
     console.error('Erro ao extrair filePath da URL:', error);
@@ -180,15 +182,15 @@ export function convertToServeDocumentUrl(url: string): string {
     }
 
     const { bucket, filePath } = extracted;
-    
+
     // Obter a URL base do Supabase (do .env ou da URL original)
     const urlObj = new URL(url);
     const supabaseUrl = `${urlObj.protocol}//${urlObj.host}`;
-    
+
     // Construir URL da Edge Function
     // Formato: {supabaseUrl}/functions/v1/serve-document?bucket={bucket}&path={filePath}
     const edgeFunctionUrl = `${supabaseUrl}/functions/v1/serve-document?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(filePath)}`;
-    
+
     return edgeFunctionUrl;
   } catch (error) {
     console.error('Erro ao converter URL para serve-document:', error);
@@ -234,12 +236,12 @@ export async function getValidFileUrl(url: string): Promise<string> {
       if (fetchError.message?.includes('URL expirada')) {
         throw fetchError;
       }
-      
+
       console.error('Erro ao verificar URL do Supabase Storage:', fetchError);
       // Para outros erros, tentar retornar a URL original
       return url;
     }
-    
+
     return url;
   } catch (error) {
     console.error('Erro ao verificar URL:', error);

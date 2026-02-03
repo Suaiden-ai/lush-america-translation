@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { XCircle, FileText, Calendar, Hash, Shield, Globe, DollarSign, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { XCircle, FileText, Calendar, Hash, Shield, Globe, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
 import { Document } from '../../App';
-import { db, supabase } from '../../lib/supabase';
+import { db } from '../../lib/supabase';
 import { ImageViewerModal } from '../../components/ImageViewerModal';
-// Removed getValidFileUrl import - using downloadFileAndTrigger and generateViewUrl instead
+import { convertPublicToSecure } from '../../lib/storage';
 import { Logger } from '../../lib/loggingHelpers';
 import { ActionTypes } from '../../types/actionTypes';
 
@@ -31,7 +31,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
   useEffect(() => {
     const fetchTranslatedInfo = async () => {
       if (!document?.id) return;
-      
+
       setLoadingTranslated(true);
       try {
         const translatedData = await db.getVerificationCode(document.id);
@@ -74,44 +74,16 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
     return imageExtensions.includes(extension || '');
   };
 
-  // Função para visualizar arquivo
-  // SEMPRE gera um novo signed URL quando o usuário clica em "view"
-  // Isso garante que mesmo se o link original estiver expirado, funcionará
+  // Função para visualizar arquivo usando URLs seguras (Blob fallback)
   const handleViewFile = async (url: string, filename: string) => {
     try {
-      // SEMPRE gerar um novo signed URL para visualização usando a função helper
-      const { db } = await import('../../lib/supabase');
-      const viewUrl = await db.generateViewUrl(url);
-      
-      if (!viewUrl) {
-        // Logar erro quando não consegue gerar URL de visualização
-        try {
-          const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
-          const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
-          
-          const pathInfo = extractFilePathFromUrl(url);
-          const logFilename = filename || document?.filename || 'unknown';
-          
-          await logError('view', new Error('VIEW_ERROR'), {
-            userId: document?.user_id,
-            documentId: document?.id,
-            filePath: pathInfo?.filePath,
-            filename: logFilename,
-            bucket: pathInfo?.bucket,
-            additionalInfo: {
-              operation: 'generate_view_url_failed',
-              original_url: url,
-            },
-          });
-          
-          showUserFriendlyError('VIEW_ERROR');
-        } catch (logError) {
-          console.error('Error logging view error:', logError);
-        }
-        
-        throw new Error('Não foi possível gerar link para visualização. Por favor, tente novamente.');
+      // 1. Obter URL segura (Blob, Signed ou Proxy)
+      const secureUrl = await convertPublicToSecure(url);
+
+      if (!secureUrl) {
+        throw new Error('Não foi possível gerar link para visualização.');
       }
-      
+
       // Log de visualização do documento
       try {
         await Logger.log(
@@ -123,7 +95,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
             metadata: {
               document_id: document?.id,
               filename: filename,
-              file_url: viewUrl,
+              file_url: secureUrl,
               file_type: filename.split('.').pop()?.toLowerCase(),
               user_id: document?.user_id,
               timestamp: new Date().toISOString(),
@@ -136,73 +108,29 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       } catch (logError) {
         console.error('Error logging document view:', logError);
       }
-      
-      // IMPORTANTE: Usar blob URL para evitar expor URL original no DOM
-      // 1. Extrair filePath da URL original
-      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
-      const pathInfo = extractFilePathFromUrl(url);
-      
-      if (!pathInfo) {
-        // Se não conseguir extrair, usar signed URL diretamente (para URLs externas)
-        if (isImageFile(filename)) {
-          setImageToView({ url: viewUrl, filename });
-          setShowImageViewer(true);
-        } else {
-          window.open(viewUrl, '_blank');
-        }
-        return;
-      }
-      
-      // 2. Fazer download do arquivo
-      const blob = await db.downloadFile(pathInfo.filePath, pathInfo.bucket);
-      
-      if (!blob) {
-        throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
-      }
-      
-      // 3. Criar blob URL (URL local, não expõe URL original)
-      const blobUrl = window.URL.createObjectURL(blob);
-      
+
+      // 2. Se for imagem, mostrar no modal, senão abrir nova aba (PDF)
       if (isImageFile(filename)) {
-        setImageToView({ url: blobUrl, filename });
+        setImageToView({ url: secureUrl, filename });
         setShowImageViewer(true);
       } else {
-        // Para PDFs, também usar blob URL no iframe
-        setImageToView({ url: blobUrl, filename });
-        setShowImageViewer(true);
+        // Para PDFs, abrir em nova aba usando a URL segura (que pode ser blob ou proxy)
+        window.open(secureUrl, '_blank');
       }
     } catch (error) {
       console.error('Error opening file:', error);
-      
-      // Logar erro de visualização
-      try {
-        const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
-        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
-        
-        // Extrair informações do arquivo para o log
-        const pathInfo = extractFilePathFromUrl(url);
-        const logFilename = filename || document?.filename || 'unknown';
-        
-        await logError('view', error instanceof Error ? error : new Error(String(error)), {
-          userId: document?.user_id,
-          documentId: document?.id,
-          filePath: pathInfo?.filePath,
-          filename: logFilename,
-          bucket: pathInfo?.bucket,
-          additionalInfo: {
-            error_code: (error as any)?.code,
-            error_name: (error as Error)?.name,
-            operation: 'view_document',
-          },
-        });
-        
-        showUserFriendlyError('VIEW_ERROR');
-      } catch (logError) {
-        console.error('Error logging view error:', logError);
-        alert((error as Error).message || 'Failed to open file.');
-      }
+      alert((error as Error).message || 'Failed to open file.');
     }
   };
+
+  // Cleanup de Blob URLs ao fechar o componente
+  useEffect(() => {
+    return () => {
+      if (imageToView?.url && imageToView.url.startsWith('blob:')) {
+        URL.revokeObjectURL(imageToView.url);
+      }
+    };
+  }, [imageToView]);
 
   // Função para download automático (incluindo PDFs)
   // Usa download direto - bucket público
@@ -211,13 +139,13 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
       // Extrair filePath e bucket da URL
       const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
       const pathInfo = extractFilePathFromUrl(url);
-      
+
       if (!pathInfo) {
         // Se não conseguir extrair, verificar se é URL do Supabase (não deve tentar fetch direto)
         if (url.includes('supabase.co')) {
           throw new Error('Não foi possível acessar o arquivo. URL do Supabase inválida ou expirada.');
         }
-        
+
         // Se não for URL do Supabase, tentar download direto da URL (para S3 externo)
         try {
           const response = await fetch(url);
@@ -231,7 +159,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
             link.click();
             window.document.body.removeChild(link);
             window.URL.revokeObjectURL(downloadUrl);
-            
+
             // Log de download
             try {
               await Logger.log(
@@ -264,14 +192,14 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
           throw new Error('Não foi possível acessar o arquivo. Verifique sua conexão.');
         }
       }
-      
+
       // Usar download direto
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
-      
+
       if (!success) {
         throw new Error('Não foi possível baixar o arquivo. Por favor, tente novamente.');
       }
-      
+
       // Log de download do documento
       try {
         await Logger.log(
@@ -370,10 +298,10 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
           {/* Status */}
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700">Status:</span>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(document)}`}>
-                  {getStatusIcon(document)}
-                  <span className="ml-1 capitalize">{document.file_url ? 'Completed' : document.status}</span>
-                </span>
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(document)}`}>
+              {getStatusIcon(document)}
+              <span className="ml-1 capitalize">{document.file_url ? 'Completed' : document.status}</span>
+            </span>
           </div>
 
           {/* Upload Date */}
@@ -382,8 +310,8 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
             <div className="flex items-center text-sm text-gray-900">
               <Calendar className="w-4 h-4 mr-1" />
               <span className="text-gray-700">
-                {document.upload_date ? new Date(document.upload_date).toLocaleDateString('pt-BR') : 
-                 document.created_at ? new Date(document.created_at).toLocaleDateString('pt-BR') : '-'}
+                {document.upload_date ? new Date(document.upload_date).toLocaleDateString('pt-BR') :
+                  document.created_at ? new Date(document.created_at).toLocaleDateString('pt-BR') : '-'}
               </span>
             </div>
           </div>
@@ -506,7 +434,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
                 Translation in Progress
               </h4>
               <p className="text-sm text-tfe-blue-800">
-                Our certified translators are currently working on your document. 
+                Our certified translators are currently working on your document.
                 You'll be notified when it's completed.
               </p>
             </div>
@@ -519,42 +447,42 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
                 Translation Complete
               </h4>
               <p className="text-sm text-green-800">
-                Your certified translation is ready for download. The document includes 
+                Your certified translation is ready for download. The document includes
                 official authentication and is accepted by USCIS.
               </p>
-                             <div className="flex gap-2 mt-3">
-                 {translatedInfo?.translated_file_url ? (
-                   <>
-                                           <button 
-                        className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
-                        onClick={() => handleDownload(translatedInfo.translated_file_url, `translated_${document.filename}`)}
-                      >
-                        Download Translation
-                      </button>
-                     <button 
-                       className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-                       onClick={() => handleViewFile(translatedInfo.translated_file_url, `translated_${document.filename}`)}
-                     >
-                       View Translation
-                     </button>
-                   </>
-                 ) : document.file_url && (
-                   <>
-                                           <button 
-                        className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
-                        onClick={() => handleDownload(document.file_url!, document.filename)}
-                      >
-                        Download Original
-                      </button>
-                     <button 
-                       className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-                       onClick={() => handleViewFile(document.file_url!, document.filename)}
-                     >
-                       View Original
-                     </button>
-                   </>
-                 )}
-               </div>
+              <div className="flex gap-2 mt-3">
+                {translatedInfo?.translated_file_url ? (
+                  <>
+                    <button
+                      className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
+                      onClick={() => handleDownload(translatedInfo.translated_file_url, `translated_${document.filename}`)}
+                    >
+                      Download Translation
+                    </button>
+                    <button
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+                      onClick={() => handleViewFile(translatedInfo.translated_file_url, `translated_${document.filename}`)}
+                    >
+                      View Translation
+                    </button>
+                  </>
+                ) : document.file_url && (
+                  <>
+                    <button
+                      className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors"
+                      onClick={() => handleDownload(document.file_url!, document.filename)}
+                    >
+                      Download Original
+                    </button>
+                    <button
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+                      onClick={() => handleViewFile(document.file_url!, document.filename)}
+                    >
+                      View Original
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -565,7 +493,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
                 Payment Refunded
               </h4>
               <p className="text-sm text-orange-800">
-                This document's payment has been refunded. The translation process has been cancelled 
+                This document's payment has been refunded. The translation process has been cancelled
                 and you should have received a refund for this order.
               </p>
             </div>
@@ -578,7 +506,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
                 Order Cancelled
               </h4>
               <p className="text-sm text-red-800">
-                This document's order has been cancelled. The translation process has been stopped 
+                This document's order has been cancelled. The translation process has been stopped
                 and no charges were made for this order.
               </p>
             </div>
@@ -617,20 +545,20 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
           >
             Close
           </button>
-                 </div>
-       </div>
+        </div>
+      </div>
 
-       {/* Image Viewer Modal */}
-       {showImageViewer && imageToView && (
-         <ImageViewerModal
-           imageUrl={imageToView.url}
-           filename={imageToView.filename}
-           onClose={() => {
-             setShowImageViewer(false);
-             setImageToView(null);
-           }}
-         />
-       )}
-     </div>
-   );
- }
+      {/* Image Viewer Modal */}
+      {showImageViewer && imageToView && (
+        <ImageViewerModal
+          imageUrl={imageToView.url}
+          filename={imageToView.filename}
+          onClose={() => {
+            setShowImageViewer(false);
+            setImageToView(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}

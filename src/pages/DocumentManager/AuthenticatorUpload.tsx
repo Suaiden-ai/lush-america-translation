@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertCircle, Info, Shield, Globe, Award, Receipt } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, STORAGE_BUCKETS } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { generateUniqueFileName } from '../../utils/fileUtils';
 
@@ -24,18 +24,18 @@ export default function AuthenticatorUpload() {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptFileUrl, setReceiptFileUrl] = useState<string | null>(null);
   const receiptInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Estados para moedas do bank statement
   const [sourceCurrency, setSourceCurrency] = useState('USD');
   const [targetCurrency, setTargetCurrency] = useState('USD');
-  
+
   // Detecta se é mobile (iOS/Android)
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  
+
   const translationTypes = [
     { value: 'Certified', label: 'Certified' },
   ];
-  
+
   const sourceLanguages = [
     'Portuguese',
     'Portuguese (Portugal)',
@@ -47,7 +47,7 @@ export default function AuthenticatorUpload() {
     'Japanese',
     'Korean',
   ];
-  
+
   const targetLanguages = [
     'Portuguese',
     'Spanish',
@@ -58,7 +58,7 @@ export default function AuthenticatorUpload() {
     'Japanese',
     'Korean',
   ];
-  
+
   const currencies = [
     'USD',
     'BRL',
@@ -74,7 +74,7 @@ export default function AuthenticatorUpload() {
     'CLP',
     'COP',
   ];
-  
+
   const paymentMethods = [
     { value: 'card', label: 'Credit/Debit Card' },
     { value: 'cash', label: 'Cash' },
@@ -93,42 +93,42 @@ export default function AuthenticatorUpload() {
   const getFieldNumber = (baseNumber: number): number | null => {
     // Campos sempre visíveis: 1, 2, 3
     if (baseNumber <= 3) return baseNumber;
-    
+
     // Campo 4 (Client Name) - só aparece se for client
     if (baseNumber === 4) {
       return uploadType === 'client' ? 4 : null;
     }
-    
+
     // Campo 5 (Translation Type) - sempre visível
     if (baseNumber === 5) {
       return uploadType === 'client' ? 5 : 4; // Se não for client, vira 4
     }
-    
+
     // Campo 6 (Bank Statement) - sempre visível
     if (baseNumber === 6) {
       return uploadType === 'client' ? 6 : 5; // Se não for client, vira 5
     }
-    
+
     // Campo 7 (Original Language) - sempre visível
     if (baseNumber === 7) {
       return uploadType === 'client' ? 7 : 6; // Se não for client, vira 6
     }
-    
+
     // Campo 8 (Target Language) - sempre visível
     if (baseNumber === 8) {
       return uploadType === 'client' ? 8 : 7; // Se não for client, vira 7
     }
-    
+
     // Campo 9 (Payment Method) - só aparece se for client
     if (baseNumber === 9) {
       return uploadType === 'client' ? 9 : null;
     }
-    
+
     // Campo 10 (Receipt) - só aparece se for client
     if (baseNumber === 10) {
       return uploadType === 'client' ? 10 : null;
     }
-    
+
     return baseNumber;
   };
 
@@ -152,40 +152,40 @@ export default function AuthenticatorUpload() {
     setSelectedFile(file);
     setError(null);
     setSuccess(null);
-    
+
     // Reset upload state
     setIsUploading(false);
-    
+
     // Validate file type
     if (!file.type.includes('pdf')) {
       setError('Please select a PDF file.');
       return;
     }
-    
+
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       setError('File size must be less than 10MB.');
       return;
     }
-    
+
     try {
       // Load PDF.js for page counting
       if (!pdfjsLib) {
         await loadPdfJs();
       }
-      
+
       // Count pages
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       const pageCount = pdf.numPages;
       setPages(pageCount);
-      
+
       console.log('DEBUG: PDF loaded, pages:', pageCount);
-      
+
       // Generate preview URL
       const url = URL.createObjectURL(file);
       setFileUrl(url);
-      
+
     } catch (error) {
       console.error('Error processing PDF:', error);
       setError('Error processing PDF file. Please try again.');
@@ -195,19 +195,19 @@ export default function AuthenticatorUpload() {
   const handleReceiptFileChange = (file: File) => {
     setReceiptFile(file);
     setError(null);
-    
+
     // Validate file type
     if (!file.type.includes('pdf') && !file.type.includes('image/')) {
       setError('Receipt file must be PDF or image (JPG, PNG).');
       return;
     }
-    
+
     // Validate file size (max 5MB for receipt)
     if (file.size > 5 * 1024 * 1024) {
       setError('Receipt file size must be less than 5MB.');
       return;
     }
-    
+
     // Generate preview URL
     const url = URL.createObjectURL(file);
     setReceiptFileUrl(url);
@@ -221,7 +221,7 @@ export default function AuthenticatorUpload() {
       console.log('DEBUG: Autenticador - Upload direto sem pagamento');
       console.log('DEBUG: File ID recebido:', fileId);
       console.log('DEBUG: Custom payload:', customPayload);
-      
+
       if (!selectedFile) {
         throw new Error('No file selected');
       }
@@ -235,7 +235,7 @@ export default function AuthenticatorUpload() {
       const metadata = {
         documentType: tipoTrad,
         certification: false,
-                    notarization: tipoTrad === 'Certified',
+        notarization: tipoTrad === 'Certified',
         pageCount: pages,
         isBankStatement: isExtrato,
         originalLanguage: idiomaRaiz,
@@ -250,12 +250,12 @@ export default function AuthenticatorUpload() {
       };
 
       console.log('DEBUG: Salvando arquivo no IndexedDB com metadata:', metadata);
-      
+
       // Gerar nome único com código aleatório para o filename
       const uniqueFileName = generateUniqueFileName(selectedFile.name);
       console.log('DEBUG: Nome único gerado:', uniqueFileName);
       console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
-      
+
       // Usar payload customizado se fornecido (que já tem originalLanguage e targetLanguage corretos)
       const payload = customPayload || {
         pages,
@@ -322,7 +322,7 @@ export default function AuthenticatorUpload() {
             ...(uploadType === 'client' && {
               client_name: clientName.trim(),
               payment_method: paymentMethod,
-              receipt_url: customPayload?.receiptPath ? supabase.storage.from('documents').getPublicUrl(customPayload.receiptPath).data.publicUrl : null,
+              receipt_url: customPayload?.receiptPath ? supabase.storage.from(STORAGE_BUCKETS.DOCUMENTS).getPublicUrl(customPayload.receiptPath).data.publicUrl : null,
             }),
             is_internal_use: uploadType === 'personal',
             created_at: new Date().toISOString(),
@@ -372,11 +372,11 @@ export default function AuthenticatorUpload() {
       // Enviar direto para o webhook de tradução (SEM Stripe)
       console.log('DEBUG: === ENVIANDO PARA WEBHOOK ===');
       console.log('DEBUG: Timestamp:', new Date().toISOString());
-      
+
       const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-translation-webhook`;
       console.log('DEBUG: Webhook URL:', webhookUrl);
       console.log('DEBUG: Webhook data:', JSON.stringify(webhookData, null, 2));
-      
+
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
@@ -428,41 +428,41 @@ export default function AuthenticatorUpload() {
     console.log('DEBUG: idiomaRaiz:', idiomaRaiz);
     console.log('DEBUG: idiomaDestino:', idiomaDestino);
     console.log('DEBUG: isUploading:', isUploading);
-    
+
     // Proteção contra chamadas duplicadas
     if (isUploading) {
       console.log('DEBUG: Upload já em andamento, ignorando chamada duplicada');
       return;
     }
-    
+
     if (!selectedFile || !user) {
       console.log('DEBUG: Upload bloqueado - validação básica falhou');
       console.log('DEBUG: selectedFile exists:', !!selectedFile);
       console.log('DEBUG: user exists:', !!user);
       return;
     }
-    
+
     if (uploadType === 'client' && !clientName.trim()) {
       console.log('DEBUG: Upload bloqueado - Client Name é obrigatório para uploads de cliente');
       setError('Client name is required when uploading for a client. Please enter the client\'s full name.');
       return;
     }
-    
+
     setError(null);
     setSuccess(null);
     setIsUploading(true);
-    
+
     try {
       console.log('DEBUG: === INICIANDO UPLOAD E ENVIO PARA WEBHOOK ===');
       console.log('DEBUG: Usuário clicou no botão - fazendo upload agora');
-      
+
       // Upload direto para Supabase Storage
       console.log('DEBUG: Fazendo upload para Supabase Storage');
       const fileName = generateUniqueFileName(selectedFile.name);
       const filePath = `${user?.id}/${fileName}`; // Organizar por pasta do usuário
       console.log('DEBUG: Tentando upload para Supabase Storage:', filePath);
-      
-      const { data, error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
+
+      const { data, error: uploadError } = await supabase.storage.from(STORAGE_BUCKETS.DOCUMENTS).upload(filePath, selectedFile);
 
       // Upload do comprovante de pagamento se existir e for para cliente
       let receiptPath = null;
@@ -472,12 +472,12 @@ export default function AuthenticatorUpload() {
           const { data: receiptData, error: receiptError } = await supabase.storage
             .from('documents')
             .upload(receiptFilePath, receiptFile);
-            
+
           if (receiptError) {
             console.error('DEBUG: Erro no upload do comprovante:', receiptError);
             throw receiptError;
           }
-          
+
           console.log('DEBUG: Upload do comprovante bem-sucedido:', receiptData);
           receiptPath = receiptFilePath;
         } catch (err) {
@@ -489,21 +489,21 @@ export default function AuthenticatorUpload() {
         console.error('DEBUG: Erro no upload para Supabase Storage:', uploadError);
         throw uploadError;
       }
-      
+
       console.log('DEBUG: Upload para Supabase Storage bem-sucedido:', data);
-      
+
       // Debug dos valores antes de criar o payload
       console.log('DEBUG: Valores no momento do payload:');
       console.log('DEBUG: idiomaRaiz:', idiomaRaiz);
       console.log('DEBUG: idiomaDestino:', idiomaDestino);
       console.log('DEBUG: tipoTrad:', tipoTrad);
       console.log('DEBUG: isExtrato:', isExtrato);
-      
+
       // Gerar nome único com código aleatório para o filename
       const uniqueFileName = generateUniqueFileName(selectedFile.name);
       console.log('DEBUG: Nome único gerado:', uniqueFileName);
       console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
-      
+
       // Payload para webhook
       const payload = {
         pages,
@@ -531,10 +531,10 @@ export default function AuthenticatorUpload() {
       console.log('DEBUG: Payload enviado:', payload);
       console.log('DEBUG: Payload.originalLanguage:', payload.originalLanguage);
       console.log('DEBUG: Payload.targetLanguage:', payload.targetLanguage);
-      
+
       // Chama o upload direto com payload
       await handleDirectUpload(filePath, payload);
-      
+
     } catch (err: any) {
       console.error('ERROR: === HANDLE UPLOAD ERROR ===');
       console.error('ERROR: Timestamp:', new Date().toISOString());
@@ -570,7 +570,7 @@ export default function AuthenticatorUpload() {
           <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-2">Document Translation</h1>
           <p className="text-gray-600 text-lg">Upload documents for professional translation - Free access for authenticators.</p>
         </div>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left: Upload Form */}
           <div className="lg:col-span-2">
@@ -698,7 +698,7 @@ export default function AuthenticatorUpload() {
                     <option value="personal">Personal Use</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    {uploadType === 'client' 
+                    {uploadType === 'client'
                       ? 'This document is for a client who paid for translation services.'
                       : 'This document is for your personal use and will not be counted in statistics.'}
                   </p>
@@ -744,7 +744,7 @@ export default function AuthenticatorUpload() {
                       ))}
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="is-bank-statement">
                       {getFieldNumber(6) !== null && `${getFieldNumber(6)}. `}Is it a bank statement?
@@ -760,7 +760,7 @@ export default function AuthenticatorUpload() {
                       <option value="yes">Yes</option>
                     </select>
                   </div>
-                  
+
                   {/* Campos de moeda - aparecem apenas se for bank statement */}
                   {isExtrato && (
                     <>
@@ -780,7 +780,7 @@ export default function AuthenticatorUpload() {
                           ))}
                         </select>
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="target-currency">
                           {getFieldNumber(6) !== null && `${getFieldNumber(6)}.2. `}Target Currency (Translation To)
@@ -799,7 +799,7 @@ export default function AuthenticatorUpload() {
                       </div>
                     </>
                   )}
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="original-language">
                       {getFieldNumber(7) !== null && `${getFieldNumber(7)}. `}Original Document Language
@@ -816,7 +816,7 @@ export default function AuthenticatorUpload() {
                       ))}
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="target-language">
                       {getFieldNumber(8) !== null && `${getFieldNumber(8)}. `}Target Language (Translation To)
@@ -890,9 +890,9 @@ export default function AuthenticatorUpload() {
                           <span className="text-xs text-gray-500">{(receiptFile.size / 1024 / 1024).toFixed(2)} MB</span>
                           <button
                             className="mt-1 text-xs text-tfe-red-500 hover:underline"
-                            onClick={e => { 
-                              e.stopPropagation(); 
-                              setReceiptFile(null); 
+                            onClick={e => {
+                              e.stopPropagation();
+                              setReceiptFile(null);
                               setReceiptFileUrl(null);
                             }}
                           >Remove receipt</button>
@@ -970,7 +970,7 @@ export default function AuthenticatorUpload() {
                   <span className="text-2xl font-bold text-green-600">FREE</span>
                 </div>
                 <p className="text-xs text-tfe-blue-950/80 mb-2">
-                                    {translationTypes.find(t => t.value === tipoTrad)?.label} $20 per page × {pages} pages = ${(pages * 20).toFixed(2)}
+                  {translationTypes.find(t => t.value === tipoTrad)?.label} $20 per page × {pages} pages = ${(pages * 20).toFixed(2)}
                 </p>
                 <div className="mb-3 p-2 bg-tfe-blue-100 rounded-lg">
                   <p className="text-xs text-tfe-blue-950/80 font-medium flex items-center gap-1">
@@ -992,7 +992,7 @@ export default function AuthenticatorUpload() {
                   <Info className="w-5 h-5 text-tfe-blue-600" />
                   Service Information
                 </h3>
-                
+
                 <div className="space-y-6">
                   {/* Translation Types */}
                   <div>
@@ -1039,7 +1039,7 @@ export default function AuthenticatorUpload() {
                           Birth certificates, marriage certificates, diplomas, transcripts, and other official documents.
                         </p>
                       </div>
-                      
+
                       <div className="bg-gray-50 rounded-lg p-3">
                         <div className="flex justify-between items-start mb-2">
                           <span className="font-medium text-gray-800">Bank Statements</span>

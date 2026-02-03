@@ -1,9 +1,9 @@
-                                              import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileText, CheckCircle, AlertCircle, Info, Shield, DollarSign, Globe, Award } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, STORAGE_BUCKETS } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
-import { fileStorage } from '../../utils/fileStorage';
 import { generateUniqueFileName } from '../../utils/fileUtils';
+import { fileStorage } from '../../utils/fileStorage';
 import { useI18n } from '../../contexts/I18nContext';
 import { PaymentMethodModal } from '../../components/PaymentMethodModal';
 import { ZellePaymentModal } from '../../components/ZellePaymentModal';
@@ -29,27 +29,27 @@ export default function UploadDocument() {
   const [idiomaDestino, setIdiomaDestino] = useState('English');
   const [sourceCurrency, setSourceCurrency] = useState('USD');
   const [targetCurrency, setTargetCurrency] = useState('BRL');
-  
+
   // Estados para os modais de pagamento
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showZelleModal, setShowZelleModal] = useState(false);
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
   const [currentFilename, setCurrentFilename] = useState<string | null>(null);
-  
+
   // Estados para rastrear abandono de checkout
   const [checkoutStartTime, setCheckoutStartTime] = useState<Date | null>(null);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
-  
+
   // Detecta se é mobile (iOS/Android)
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  
+
   // useEffect para capturar abandono por navegação (simplificado)
   useEffect(() => {
     const handleBeforeUnload = () => {
       // Se o usuário estava no checkout e está saindo da página, logar abandono
       if (checkoutStartTime && currentDocumentId) {
         const timeSpent = Math.round((new Date().getTime() - checkoutStartTime.getTime()) / 1000);
-        
+
         // Log simples via console para debug
         console.log('🚨 Checkout abandoned by navigation:', {
           document_id: currentDocumentId,
@@ -62,18 +62,18 @@ export default function UploadDocument() {
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [checkoutStartTime, currentDocumentId, currentFilename, checkoutSessionId]);
-  
+
   // Função para lidar com fechamento do modal de pagamento
   const handlePaymentModalClose = async () => {
     // Se o usuário estava no checkout e fechou sem pagar, logar abandono
     if (checkoutStartTime && currentDocumentId) {
       const timeSpent = Math.round((new Date().getTime() - checkoutStartTime.getTime()) / 1000); // em segundos
-      
+
       try {
         await Logger.log(
           ActionTypes.PAYMENT.CHECKOUT_ABANDONED,
@@ -98,17 +98,17 @@ export default function UploadDocument() {
         console.error('Error logging checkout abandoned:', logError);
       }
     }
-    
+
     // Limpar estados
     setCheckoutStartTime(null);
     setCheckoutSessionId(null);
     setShowPaymentModal(false);
   };
-  
+
   const translationTypes = [
     { value: 'Certified', label: 'Certified' },
   ];
-  
+
   const sourceLanguages = [
     'Portuguese',
     'Portuguese (Portugal)',
@@ -120,7 +120,7 @@ export default function UploadDocument() {
     'Japanese',
     'Korean',
   ];
-  
+
   const targetLanguages = [
     'Portuguese',
     'Spanish',
@@ -146,7 +146,7 @@ export default function UploadDocument() {
     'MXN',
     'CHF',
   ];
-  
+
   function calcularValor(pages: number, extrato: boolean | null) {
     if (extrato === null) return 0; // Retornar 0 se não foi selecionado
     return extrato ? pages * 25 : pages * 20; // $20 base + $5 bank statement fee
@@ -174,23 +174,23 @@ export default function UploadDocument() {
     setFileUrl(null);
     setPages(1);
     setSelectedFile(file);
-    
+
     console.log('DEBUG: File selected:', {
       name: file.name,
       type: file.type,
       size: file.size,
       lastModified: file.lastModified
     });
-    
+
     if (file.type === 'application/pdf') {
       try {
         console.log('DEBUG: Attempting to read PDF file...');
         const pdfjsLib = await loadPdfJs();
         console.log('DEBUG: PDF.js library loaded successfully');
-        
+
         const arrayBuffer = await file.arrayBuffer();
         console.log('DEBUG: File converted to ArrayBuffer, size:', arrayBuffer.byteLength);
-        
+
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         console.log('DEBUG: PDF loaded successfully, pages:', pdf.numPages);
         setPages(pdf.numPages);
@@ -203,17 +203,18 @@ export default function UploadDocument() {
       console.log('DEBUG: File is not a PDF, type:', file.type);
       setPages(1);
     }
-    
+
     if (file.type.startsWith('image/')) {
       setFileUrl(URL.createObjectURL(file));
     }
   };
 
+
   // Função para processar pagamento direto com Stripe
   const handleDirectPayment = async (fileId: string, customPayload?: any, filename?: string) => {
     try {
       console.log('DEBUG: Iniciando pagamento direto com Stripe');
-      
+
       // Verificar se o arquivo foi selecionado
       if (!selectedFile) {
         throw new Error('Nenhum arquivo selecionado');
@@ -225,13 +226,13 @@ export default function UploadDocument() {
       }
 
       console.log('DEBUG: Usando documentId fornecido:', customPayload.documentId);
-      
+
       // Usar filename passado como parâmetro ou gerar novo se não fornecido
       const uniqueFileName = filename || generateUniqueFileName(selectedFile.name);
       console.log('DEBUG: Nome único usado no payload:', uniqueFileName);
       console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
       console.log('DEBUG: Filename passado como parâmetro:', filename);
-      
+
       // Criar payload completo igual ao DocumentUploadModal
       const payload = {
         pages,
@@ -264,7 +265,7 @@ export default function UploadDocument() {
       console.log('Payload enviado para checkout:', payload);
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error } = await supabase.auth.getSession();
       const response = await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`, {
         method: 'POST',
         headers: {
@@ -290,7 +291,7 @@ export default function UploadDocument() {
       const { url, sessionId } = await response.json();
       console.log('DEBUG: URL do Stripe Checkout:', url);
       console.log('DEBUG: Session ID:', sessionId);
-      
+
       // Armazenar session ID para rastreamento de abandono
       if (sessionId) {
         setCheckoutSessionId(sessionId);
@@ -307,26 +308,26 @@ export default function UploadDocument() {
 
   const handleUpload = async () => {
     if (!selectedFile || !user) return;
-    
+
     // Validação: verificar se o campo bank statement foi preenchido
     if (isExtrato === null) {
       setError('Por favor, selecione se o documento é um extrato bancário ou não.');
       return;
     }
-    
+
     setError(null);
     setSuccess(null);
     setIsUploading(true);
-    
+
     try {
       // CRIAR DOCUMENTO NO BANCO ANTES DO PAGAMENTO
       console.log('DEBUG: Criando documento no banco antes do pagamento');
-      
+
       // Gerar nome único com código aleatório para o filename
       const uniqueFileName = generateUniqueFileName(selectedFile.name);
       console.log('DEBUG: Nome único gerado:', uniqueFileName);
       console.log('DEBUG: Nome original do arquivo:', selectedFile.name);
-      
+
       const { data: newDocument, error: createError } = await supabase
         .from('documents')
         .insert({
@@ -353,7 +354,7 @@ export default function UploadDocument() {
 
       if (createError) {
         console.error('ERROR: Erro ao criar documento no banco:', createError);
-        
+
         // Logar erro de upload
         const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
         await logError('upload', createError, {
@@ -368,7 +369,7 @@ export default function UploadDocument() {
             error_message: createError.message,
           },
         });
-        
+
         showUserFriendlyError('UPLOAD_ERROR');
         throw new Error('Erro ao criar documento no banco de dados');
       }
@@ -378,11 +379,11 @@ export default function UploadDocument() {
         filename: newDocument.filename,
         original_filename: newDocument.original_filename
       });
-      
+
       // Armazenar o ID do documento e filename para usar nos modais de pagamento
       setCurrentDocumentId(newDocument.id);
       setCurrentFilename(uniqueFileName);
-      
+
       // Log de entrada no checkout
       try {
         await Logger.log(
@@ -413,16 +414,16 @@ export default function UploadDocument() {
       } catch (logError) {
         console.error('Error logging checkout started:', logError);
       }
-      
+
       // Registrar tempo de início do checkout
       setCheckoutStartTime(new Date());
-      
+
       // Mostrar modal de seleção de método de pagamento
       setShowPaymentModal(true);
 
     } catch (err: any) {
       console.error('ERROR: Erro ao preparar documento:', err);
-      
+
       // Se já logou o erro acima, não logar novamente
       if (!err.message?.includes('Erro ao criar documento no banco de dados')) {
         // Logar erro genérico de upload
@@ -436,10 +437,10 @@ export default function UploadDocument() {
             pages,
           },
         });
-        
+
         showUserFriendlyError('UPLOAD_ERROR');
       }
-      
+
       setError('Erro ao preparar documento. Por favor, tente novamente.');
     } finally {
       setIsUploading(false);
@@ -449,13 +450,13 @@ export default function UploadDocument() {
   // Função para redirecionar para checkout Zelle COM UPLOAD
   const handleZelleRedirect = async (amount: number) => {
     if (!selectedFile || !user || !currentDocumentId) return;
-    
+
     try {
       setIsUploading(true);
       setError(null);
-      
+
       console.log('🚀 Uploading document for Zelle payment...');
-      
+
       // Fazer upload do arquivo para o Storage
       const fileName = generateUniqueFileName(selectedFile.name);
       const filePath = `${user.id}/${fileName}`; // Organizar por pasta do usuário
@@ -469,9 +470,9 @@ export default function UploadDocument() {
       }
 
       // Obter URL público
-          const { data: { publicUrl } } = supabase.storage
-            .from('documents')
-            .getPublicUrl(filePath);
+      const { data: { publicUrl } } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath);
 
       console.log('✅ Document uploaded successfully:', publicUrl);
 
@@ -505,7 +506,7 @@ export default function UploadDocument() {
       // Atualizar o documento no banco com file_url e filename correto
       const { error: updateError } = await supabase
         .from('documents')
-        .update({ 
+        .update({
           file_url: publicUrl,
           filename: fileName // Atualizar com o nome único gerado
           // original_filename já foi salvo no handleUpload, não precisa atualizar
@@ -548,9 +549,9 @@ export default function UploadDocument() {
         filename: selectedFile.name,
         pages: pages?.toString() || '1'
       });
-      
+
       navigate(`/zelle-checkout?${params.toString()}`);
-      
+
     } catch (err: any) {
       console.error('❌ Error preparing Zelle payment:', err);
       setError(err.message || 'Erro ao preparar pagamento Zelle');
@@ -560,11 +561,11 @@ export default function UploadDocument() {
   };
 
   const handleDirectStripePayment = async () => {
-    
+
     try {
       setIsUploading(true);
       setError(null);
-      
+
       if (isMobile) {
         // Mobile: Tentar usar IndexedDB primeiro, se falhar usar upload direto
         if (!selectedFile || !user) {
@@ -583,7 +584,7 @@ export default function UploadDocument() {
             sourceCurrency: isExtrato ? sourceCurrency : null,
             targetCurrency: isExtrato ? targetCurrency : null
           });
-          
+
           if (!selectedFile || !user) {
             throw new Error('Arquivo ou usuário não encontrado');
           }
@@ -595,9 +596,9 @@ export default function UploadDocument() {
           }
           const fileName = generateUniqueFileName(selectedFile.name);
           const filePath = `${user.id}/${fileName}`; // Organizar por pasta do usuário
-          const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, selectedFile);
+          const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKETS.DOCUMENTS).upload(filePath, selectedFile);
           if (uploadError) throw uploadError;
-          
+
           const payload = {
             pages,
             isCertified: true,
@@ -615,7 +616,7 @@ export default function UploadDocument() {
             sourceCurrency: isExtrato ? sourceCurrency : null,
             targetCurrency: isExtrato ? targetCurrency : null
           };
-          
+
           if (!selectedFile || !user) {
             throw new Error('Arquivo ou usuário não encontrado');
           }
@@ -638,10 +639,10 @@ export default function UploadDocument() {
           sourceCurrency: isExtrato ? sourceCurrency : null,
           targetCurrency: isExtrato ? targetCurrency : null
         });
-        
+
         await handleDirectPayment(fileId, { documentId: currentDocumentId }, currentFilename || undefined);
       }
-      
+
     } catch (err: any) {
       console.error('ERROR: Erro ao processar pagamento Stripe:', err);
       setError(err.message || 'Erro ao processar pagamento');
@@ -675,7 +676,7 @@ export default function UploadDocument() {
           <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-2">{t('upload.pageTitle')}</h1>
           <p className="text-gray-600 text-lg">{t('upload.pageDescription')}</p>
         </div>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left: Upload Form */}
           <div className="lg:col-span-2">
@@ -795,7 +796,7 @@ export default function UploadDocument() {
                       ))}
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="is-bank-statement">
                       {t('upload.form.isBankStatement')} <span className="text-red-500">*</span>
@@ -833,7 +834,7 @@ export default function UploadDocument() {
                           ))}
                         </select>
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="target-currency">
                           4.2. Target Currency (Translation To)
@@ -852,7 +853,7 @@ export default function UploadDocument() {
                       </div>
                     </>
                   )}
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="original-language">
                       {t('upload.form.originalLanguage')}
@@ -869,7 +870,7 @@ export default function UploadDocument() {
                       ))}
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="target-language">
                       {t('upload.form.targetLanguage')}
@@ -952,7 +953,7 @@ export default function UploadDocument() {
                   <Info className="w-5 h-5 text-tfe-blue-600" />
                   {t('upload.serviceInfo.title')}
                 </h3>
-                
+
                 <div className="space-y-6">
                   {/* Translation Types */}
                   <div>
@@ -999,7 +1000,7 @@ export default function UploadDocument() {
                           {t('upload.serviceInfo.documentTypes.regular.description')}
                         </p>
                       </div>
-                      
+
                       <div className="bg-gray-50 rounded-lg p-3">
                         <div className="flex justify-between items-start mb-2">
                           <span className="font-medium text-gray-800">{t('upload.serviceInfo.documentTypes.bankStatements.title')}</span>
@@ -1086,17 +1087,17 @@ export default function UploadDocument() {
         }}
         onSelectZelle={async () => {
           setShowPaymentModal(false);
-          
+
           // Log da seleção do método Zelle
           await Logger.log(
             ActionTypes.PAYMENT.ZELLE_SELECTED,
             `User selected Zelle payment method`,
             {
               entityType: 'payment',
-              entityId: currentDocumentId,
+              entityId: currentDocumentId || undefined,
               metadata: {
                 amount: calcularValor(pages, isExtrato),
-                document_id: currentDocumentId,
+                document_id: currentDocumentId || undefined,
                 filename: selectedFile?.name,
                 pages: pages,
                 timestamp: new Date().toISOString()
@@ -1105,7 +1106,7 @@ export default function UploadDocument() {
               performerType: 'user'
             }
           );
-          
+
           handleZelleRedirect(calcularValor(pages, isExtrato));
         }}
         amount={calcularValor(pages, isExtrato)}
