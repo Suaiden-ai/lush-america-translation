@@ -127,14 +127,29 @@ export const db = {
 
   /**
    * Baixa um arquivo do storage e retorna como Blob
+   * Tenta primeiro via SDK (respeita RLS) e faz fallback para Proxy
    */
   downloadFile: async (path: string, bucket: string = STORAGE_BUCKETS.DOCUMENTS) => {
-    const { data, error } = await supabase.storage.from(bucket).download(path);
-    if (error) {
-      console.error('Error downloading file:', error);
+    try {
+      // 1. Tentar download direto via SDK (mais rápido e respeita RLS do usuário)
+      const { data, error } = await supabase.storage.from(bucket).download(path);
+      if (!error && data) return data;
+
+      console.warn('SDK download failed, trying proxy fallback for:', path);
+
+      // 2. Fallback: Tentar via Proxy (Edge Function)
+      const proxyUrl = `${supabaseUrl}/functions/v1/serve-document?bucket=${bucket}&path=${encodeURIComponent(path)}`;
+      const response = await fetch(proxyUrl);
+
+      if (response.ok) {
+        return await response.blob();
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error in downloadFile:', error);
       return null;
     }
-    return data;
   },
 
   /**
@@ -156,7 +171,7 @@ export const db = {
   },
 
   /**
-   * Gera uma URL de visualização temporária (signed)
+   * Gera uma URL de visualização temporária (signed) ou proxy
    */
   generateViewUrl: async (url: string) => {
     if (!url) return null;
@@ -167,11 +182,18 @@ export const db = {
       const pathInfo = extractFilePathFromUrl(url);
       if (!pathInfo) return url;
 
+      // 1. Tentar gerar Signed URL
       const { data, error } = await supabase.storage
         .from(pathInfo.bucket)
         .createSignedUrl(pathInfo.filePath, 3600);
 
-      return error ? null : data.signedUrl;
+      if (!error && data?.signedUrl) {
+        return data.signedUrl;
+      }
+
+      // 2. Fallback: Proxy URL
+      console.warn('Signed URL failed, using proxy fallback');
+      return `${supabaseUrl}/functions/v1/serve-document?bucket=${pathInfo.bucket}&path=${encodeURIComponent(pathInfo.filePath)}`;
     } catch (e) {
       console.error('Error generating view URL:', e);
       return null;

@@ -31,7 +31,7 @@ export async function uploadCorrection(
     // Upload para Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(STORAGE_BUCKETS.DOCUMENTS)
-      .upload(`corrections/${document.id}_${Date.now()}_${file.name}`, file, { upsert: true });
+      .upload(`${currentUser.id}/${document.id}_${Date.now()}_${file.name}`, file, { upsert: true });
 
     if (uploadError) {
       throw uploadError;
