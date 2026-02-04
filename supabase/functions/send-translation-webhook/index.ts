@@ -255,20 +255,28 @@ Deno.serve(async (req: Request) => {
           const urlObj = new URL(url);
           const pathParts = urlObj.pathname.split('/').filter(p => p);
 
-          // Detectar bucket e path
+          // Detectar bucket (sempre tentar pegar o bucket correto primeiro)
           const publicIndex = pathParts.findIndex(p => p === 'public');
           const objectIndex = pathParts.findIndex(p => p === 'object');
 
           let bucket = 'documents';
-          let filePath = '';
-
           if (publicIndex >= 0) {
             bucket = pathParts[publicIndex + 1];
-            filePath = pathParts.slice(publicIndex + 2).join('/');
           } else if (objectIndex >= 0) {
             bucket = pathParts[objectIndex + 2];
-            filePath = pathParts.slice(objectIndex + 3).join('/');
           }
+
+          // Extração robusta do path do arquivo da URL para evitar "undefined/"
+          const urlParts = url.split('/');
+          const fileName = urlParts[urlParts.length - 1]; // Pega o último item
+          const userFolder = urlParts.length >= 2 ? urlParts[urlParts.length - 2] : null;
+
+          // Se a pasta for inválida, vazia ou parte do protocolo (contém :), usa apenas o nome do arquivo
+          const filePath = userFolder && userFolder !== "" && !userFolder.includes(':') && userFolder !== bucket
+            ? `${userFolder}/${fileName}`
+            : fileName;
+
+          console.log(`Debug proxy conversion: bucket=${bucket}, filePath=${filePath}`);
 
           if (filePath) {
             const n8nSecret = Deno.env.get("N8N_STORAGE_SECRET") || "";

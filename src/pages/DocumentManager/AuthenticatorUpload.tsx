@@ -280,6 +280,11 @@ export default function AuthenticatorUpload() {
       };
       console.log('Payload final a ser enviado para webhook:', payload);
 
+      // Gerar URL pública ANTES da verificação (sempre necessário para o webhook)
+      const { data: { publicUrl } } = supabase.storage
+        .from('documents')
+        .getPublicUrl(payload.filePath);
+
       // Verificar se o documento já existe na tabela documents
       console.log('DEBUG: Verificando se documento já existe na tabela documents...');
       const { data: existingDocs, error: checkError } = await supabase
@@ -300,9 +305,6 @@ export default function AuthenticatorUpload() {
       } else {
         // Criar documento na tabela documents primeiro (para que a edge function possa puxar client_name)
         console.log('DEBUG: Criando documento na tabela documents...');
-        const { data: { publicUrl } } = supabase.storage
-          .from('documents')
-          .getPublicUrl(payload.filePath);
 
         const { data: createdDoc, error: createError } = await supabase
           .from('documents')
@@ -347,7 +349,7 @@ export default function AuthenticatorUpload() {
       // Preparar dados para o webhook
       const webhookData = {
         filename: uniqueFileName, // Usar nome único com código aleatório
-        url: payload.filePath, // Sempre o caminho completo
+        url: publicUrl, // URL pública completa para conversão no webhook
         user_id: user?.id,
         paginas: pages,
         valor: valor,
@@ -468,7 +470,8 @@ export default function AuthenticatorUpload() {
       let receiptPath = null;
       if (uploadType === 'client' && receiptFile) {
         try {
-          const receiptFilePath = generateUniqueFileName(`receipt_${receiptFile.name}`);
+          const uniqueReceiptName = generateUniqueFileName(`receipt_${receiptFile.name}`);
+          const receiptFilePath = `${user?.id}/${uniqueReceiptName}`;
           const { data: receiptData, error: receiptError } = await supabase.storage
             .from('documents')
             .upload(receiptFilePath, receiptFile);
