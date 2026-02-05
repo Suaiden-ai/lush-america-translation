@@ -48,7 +48,7 @@ export function DocumentPreviewModal({
             </button>
           </div>
         </div>
-        <div className="flex-1 bg-gray-50 overflow-auto" style={{ 
+        <div className="flex-1 bg-gray-50 overflow-auto" style={{
           WebkitOverflowScrolling: 'touch',
           touchAction: 'pan-x pan-y pinch-zoom'
         }}>
@@ -69,16 +69,16 @@ export function DocumentPreviewModal({
           {!previewLoading && !previewError && previewUrl && (
             <>
               {previewType === 'image' ? (
-                <div className="flex items-center justify-center h-full p-2 sm:p-4" style={{ 
+                <div className="flex items-center justify-center h-full p-2 sm:p-4" style={{
                   minHeight: 'calc(100vh - 60px)',
                   WebkitUserSelect: 'none',
                   userSelect: 'none'
                 }}>
-                  <img 
-                    src={previewUrl} 
-                    alt={document?.filename || 'Document'} 
+                  <img
+                    src={previewUrl}
+                    alt={document?.filename || 'Document'}
                     className="max-w-full max-h-full object-contain"
-                    style={{ 
+                    style={{
                       maxHeight: 'calc(100vh - 60px)',
                       width: 'auto',
                       height: 'auto',
@@ -92,14 +92,14 @@ export function DocumentPreviewModal({
                   />
                 </div>
               ) : (
-                <div className="w-full h-full" style={{ 
+                <div className="w-full h-full" style={{
                   minHeight: 'calc(100vh - 60px)',
                   overflow: 'auto',
                   WebkitOverflowScrolling: 'touch'
                 }}>
-                  <iframe 
-                    src={previewUrl} 
-                    className="w-full h-full border-0" 
+                  <iframe
+                    src={`${previewUrl}#zoom=25`}
+                    className="w-full h-full border-0"
                     title="Document Preview"
                     style={{
                       minHeight: 'calc(100vh - 60px)',
