@@ -280,10 +280,16 @@ export default function AuthenticatorUpload() {
       };
       console.log('Payload final a ser enviado para webhook:', payload);
 
-      // Gerar URL pública ANTES da verificação (sempre necessário para o webhook)
+      // Usar o filename e filePath já definidos no payload para evitar inconsistências
+      const finalFileName = payload.filename;
+      const finalFilePath = payload.filePath;
+
+      // Gerar URL pública completa
       const { data: { publicUrl } } = supabase.storage
         .from('documents')
-        .getPublicUrl(payload.filePath);
+        .getPublicUrl(finalFilePath);
+
+      console.log('DEBUG: Full Public URL generated:', publicUrl);
 
       // Verificar se o documento já existe na tabela documents
       console.log('DEBUG: Verificando se documento já existe na tabela documents...');
@@ -291,33 +297,29 @@ export default function AuthenticatorUpload() {
         .from('documents')
         .select('id, filename, user_id, created_at')
         .eq('user_id', user?.id)
-        .eq('filename', uniqueFileName)
+        .eq('filename', finalFileName)
         .order('created_at', { ascending: false });
 
       let newDocument;
       if (existingDocs && existingDocs.length > 0 && !checkError) {
         console.log('DEBUG: Documento já existe na tabela documents:', existingDocs.length, 'entradas encontradas');
-        existingDocs.forEach((doc, index) => {
-          console.log(`DEBUG: Documento ${index + 1}:`, doc.id, doc.created_at);
-        });
-        newDocument = existingDocs[0]; // Usar o mais recente
+        newDocument = existingDocs[0];
         console.log('DEBUG: Usando documento existente:', newDocument.id);
       } else {
-        // Criar documento na tabela documents primeiro (para que a edge function possa puxar client_name)
+        // Criar documento na tabela documents
         console.log('DEBUG: Criando documento na tabela documents...');
 
         const { data: createdDoc, error: createError } = await supabase
           .from('documents')
           .insert({
             user_id: user?.id,
-            filename: uniqueFileName, // Usar nome único com código aleatório
+            filename: finalFileName,
             pages: pages,
             status: 'pending',
             total_cost: valor,
             tipo_trad: tipoTrad,
             valor: valor,
             idioma_raiz: idiomaRaiz,
-            // idioma_destino: idiomaDestino, // Temporariamente comentado até criar a coluna no banco
             is_bank_statement: isExtrato,
             file_url: publicUrl,
             verification_code: `AUTH${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
@@ -348,8 +350,8 @@ export default function AuthenticatorUpload() {
 
       // Preparar dados para o webhook
       const webhookData = {
-        filename: uniqueFileName, // Usar nome único com código aleatório
-        url: publicUrl, // URL pública completa para conversão no webhook
+        filename: finalFileName,
+        url: publicUrl,
         user_id: user?.id,
         paginas: pages,
         valor: valor,
@@ -366,10 +368,12 @@ export default function AuthenticatorUpload() {
         ...(isExtrato && {
           source_currency: sourceCurrency,
           target_currency: targetCurrency
-        })
+        }),
+        // Adicionar flag para debug no n8n para confirmar que o código foi atualizado
+        _v: '2026.02.05.v1'
       };
 
-      console.log('DEBUG: Dados enviados para webhook:', webhookData);
+      console.log('DEBUG: Dados enviados para webhook (VERSION 2026.02.05.v1):', webhookData);
 
       // Enviar direto para o webhook de tradução (SEM Stripe)
       console.log('DEBUG: === ENVIANDO PARA WEBHOOK ===');

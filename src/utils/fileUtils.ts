@@ -69,6 +69,23 @@ export function extractFilePathFromUrl(url: string): { filePath: string; bucket:
     }
 
     const urlObj = new URL(cleanUrl);
+
+    // NOVO: Suporte para URLs de Edge Functions (Proxy URLs)
+    // Ex: .../functions/v1/n8n-storage-access?bucket=documents&path=folder/file.pdf
+    if (urlObj.pathname.includes('/functions/v1/')) {
+      const queryPath = urlObj.searchParams.get('path');
+      const queryBucket = urlObj.searchParams.get('bucket');
+
+      if (queryPath) {
+        // Decodificar o path caso esteja codificado (mas searchParams.get já costuma decodificar)
+        // Se o path vier com encoding duplo, pode precisar de decodeURIComponent
+        return {
+          filePath: queryPath,
+          bucket: queryBucket || STORAGE_BUCKETS.DOCUMENTS
+        };
+      }
+    }
+
     const pathParts = urlObj.pathname.split('/').filter(p => p);
 
     // Detectar bucket

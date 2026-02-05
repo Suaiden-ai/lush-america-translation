@@ -247,44 +247,52 @@ Deno.serve(async (req: Request) => {
       console.log("User ID:", user_id);
       console.log("Filename:", filename);
 
-      // Verificar se a URL já é válida
-      // Converter a URL para Proxy URL se for do Supabase
+      // Processamento da URL: Converter para Proxy URL se for do Supabase ou se for um path relativo
       let finalUrl = url;
-      if (url && url.includes('supabase.co')) {
-        try {
-          const urlObj = new URL(url);
-          const pathParts = urlObj.pathname.split('/').filter(p => p);
 
-          // Detectar bucket (sempre tentar pegar o bucket correto primeiro)
-          const publicIndex = pathParts.findIndex(p => p === 'public');
-          const objectIndex = pathParts.findIndex(p => p === 'object');
+      if (url) {
+        // Caso 1: Recebemos um path relativo (ex: user_id/filename.pdf) - Fallback para cache/bugs do frontend
+        if (!url.includes('http') && url.includes('/') && !url.startsWith('/')) {
+          console.warn("URL received is a relative path (likely from cached frontend). Manually converting to Proxy URL.");
+          const n8nSecret = Deno.env.get("N8N_STORAGE_SECRET") || "";
+          finalUrl = `${supabaseUrl}/functions/v1/n8n-storage-access?bucket=documents&path=${encodeURIComponent(url)}&token=${n8nSecret}`;
+        }
+        // Caso 2: Recebemos uma URL completa do Supabase
+        else if (url.includes('supabase.co')) {
+          try {
+            const urlObj = new URL(url);
+            const pathParts = urlObj.pathname.split('/').filter(p => p);
 
-          let bucket = 'documents';
-          if (publicIndex >= 0) {
-            bucket = pathParts[publicIndex + 1];
-          } else if (objectIndex >= 0) {
-            bucket = pathParts[objectIndex + 2];
+            // Detectar bucket
+            const publicIndex = pathParts.findIndex(p => p === 'public');
+            const objectIndex = pathParts.findIndex(p => p === 'object');
+
+            let bucket = 'documents';
+            if (publicIndex >= 0) {
+              bucket = pathParts[publicIndex + 1];
+            } else if (objectIndex >= 0) {
+              bucket = pathParts[objectIndex + 2];
+            }
+
+            // Extração robusta do path do arquivo
+            const urlParts = url.split('/');
+            const fileName = urlParts[urlParts.length - 1];
+            const userFolder = urlParts.length >= 2 ? urlParts[urlParts.length - 2] : null;
+
+            const filePath = userFolder && userFolder !== "" && !userFolder.includes(':') && userFolder !== bucket
+              ? `${userFolder}/${fileName}`
+              : fileName;
+
+            console.log(`Debug proxy conversion: bucket=${bucket}, filePath=${filePath}`);
+
+            if (filePath) {
+              const n8nSecret = Deno.env.get("N8N_STORAGE_SECRET") || "";
+              finalUrl = `${supabaseUrl}/functions/v1/n8n-storage-access?bucket=${bucket}&path=${encodeURIComponent(filePath)}&token=${n8nSecret}`;
+              console.log("Converted Supabase URL to Proxy URL:", finalUrl);
+            }
+          } catch (urlError) {
+            console.error("Error parsing URL for proxy conversion:", urlError);
           }
-
-          // Extração robusta do path do arquivo da URL para evitar "undefined/"
-          const urlParts = url.split('/');
-          const fileName = urlParts[urlParts.length - 1]; // Pega o último item
-          const userFolder = urlParts.length >= 2 ? urlParts[urlParts.length - 2] : null;
-
-          // Se a pasta for inválida, vazia ou parte do protocolo (contém :), usa apenas o nome do arquivo
-          const filePath = userFolder && userFolder !== "" && !userFolder.includes(':') && userFolder !== bucket
-            ? `${userFolder}/${fileName}`
-            : fileName;
-
-          console.log(`Debug proxy conversion: bucket=${bucket}, filePath=${filePath}`);
-
-          if (filePath) {
-            const n8nSecret = Deno.env.get("N8N_STORAGE_SECRET") || "";
-            finalUrl = `${supabaseUrl}/functions/v1/n8n-storage-access?bucket=${bucket}&path=${encodeURIComponent(filePath)}&token=${n8nSecret}`;
-            console.log("Converted frontend URL to Proxy URL for n8n:", finalUrl);
-          }
-        } catch (urlError) {
-          console.error("Error parsing frontend URL for proxy conversion:", urlError);
         }
       }
 
