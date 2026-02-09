@@ -34,6 +34,8 @@ export interface PaymentWithRelations {
   user_id: string;
   stripe_session_id: string | null;
   amount: number;
+  fee_amount?: number | null;
+  gross_amount?: number | null;
   currency: string;
   status: string; // payment status
   payment_method: string | null;
@@ -68,6 +70,8 @@ export interface MappedPayment extends PaymentWithRelations {
   target_language: string | null; // From documents_to_be_verified
   pages: number | null;
   total_cost: number | null;
+  fee_amount: number | null;
+  gross_amount: number | null;
 }
 
 export interface PaymentsTableProps {
