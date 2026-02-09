@@ -75,9 +75,9 @@ export async function exportPaymentsReport(
 
     // 4. ADICIONAR DADOS (USANDO MAPA JÁ EXISTENTE NO FRONTEND)
     paymentsToExport.forEach(p => {
-      // Amount (Bruto) = total_cost
-      // Net Value (Líquido) = payment amount
-      const amount = p.total_cost || p.amount || 0;
+      // Lógica de cálculo de valores (Bruto, Taxa, Líquido)
+      // IGUAL AO ADMIN DASHBOARD: Tax = Total Cost - Amount
+      const amount = p.gross_amount || p.total_cost || 0;
       const netValue = p.amount || 0;
       const tax = Math.max(0, amount - netValue);
 

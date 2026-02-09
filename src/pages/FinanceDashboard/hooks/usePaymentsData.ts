@@ -173,24 +173,31 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
         }
       }
 
-      // Buscar dados de pagamentos
-      let paymentsQuery = supabase
-        .from('payments')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Buscar IDs de todos os documentos encontrados para buscar os pagamentos vinculados
+      const allDocIds = [
+        ...(mainDocuments?.map(d => d.id) || []),
+        ...(verifiedDocuments?.map(d => d.id) || []),
+        ...(verifiedDocuments?.map(d => d.original_document_id).filter(id => !!id) as string[] || [])
+      ];
 
-      // Aplicar filtros de data
-      if (startDateParam) {
-        paymentsQuery = paymentsQuery.gte('created_at', startDateParam);
-      }
-      if (endDateParam) {
-        paymentsQuery = paymentsQuery.lte('created_at', endDateParam);
-      }
+      // Eliminar duplicatas
+      const uniqueDocIds = [...new Set(allDocIds)];
 
-      const { data: paymentsData, error: paymentsError } = await paymentsQuery;
+      // Buscar dados de pagamentos vinculados aos documentos encontrados
+      // IMPORTANTE: Não filtrar por data aqui para garantir que pagamentos feitos após
+      // a criação do documento sejam encontrados, igual ao Admin Dashboard.
+      let paymentsData: any[] = [];
+      if (uniqueDocIds.length > 0) {
+        const { data, error: paymentsError } = await supabase
+          .from('payments')
+          .select('*')
+          .in('document_id', uniqueDocIds);
 
-      if (paymentsError) {
-        console.error('Error loading payments data:', paymentsError);
+        if (paymentsError) {
+          console.error('Error loading payments data:', paymentsError);
+        } else {
+          paymentsData = data || [];
+        }
       }
 
       // Processar documentos de autenticadores (documents_to_be_verified)
@@ -217,16 +224,6 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
         }
         return true; // Incluir todos os outros documentos
       }).map(verifiedDoc => {
-        // 🔍 LOG PARA RASTREAR PROCESSAMENTO DO DOCUMENTO REFUNDED COMO AUTENTICADOR
-        if (verifiedDoc.filename === 'relatorio-suaiden-ai_PS7V00.pdf') {
-          console.log('🔍 DEBUG - Processing refunded document as authenticator:', {
-            id: verifiedDoc.id,
-            filename: verifiedDoc.filename,
-            user_id: verifiedDoc.user_id,
-            status: verifiedDoc.status,
-            total_cost: verifiedDoc.total_cost
-          });
-        }
         const mainDoc = mainDocuments?.find(doc => doc.filename === verifiedDoc.filename);
 
         // 🔍 BUSCAR STATUS REAL DA TABELA PAYMENTS PARA AUTENTICADORES
@@ -236,63 +233,14 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
         let realStatus = 'completed'; // Default para autenticadores
         let paymentForAuth = null;
 
-        // Buscar APENAS pelo original_document_id (sem fallback, igual ao AdminDashboard)
         if (verifiedDoc.original_document_id) {
           paymentForAuth = paymentsData?.find(payment =>
             payment.document_id === verifiedDoc.original_document_id
           );
-
-          // 🔍 LOG ESPECÍFICO PARA O DOCUMENTO DA KARINA
-          if (verifiedDoc.filename?.includes('0UUWX0') || verifiedDoc.filename?.includes('certidao_de_casamento')) {
-            console.log('🔍 DEBUG KARINA - Buscando pagamento:', {
-              original_document_id: verifiedDoc.original_document_id,
-              dtbv_id: verifiedDoc.id,
-              filename: verifiedDoc.filename,
-              payments_checked: paymentsData?.filter(p => p.document_id === verifiedDoc.original_document_id).map(p => ({
-                id: p.id,
-                document_id: p.document_id,
-                status: p.status,
-                amount: p.amount
-              })),
-              payment_found: paymentForAuth ? {
-                id: paymentForAuth.id,
-                document_id: paymentForAuth.document_id,
-                status: paymentForAuth.status,
-                amount: paymentForAuth.amount
-              } : null
-            });
-          }
-        }
-
-        // 🔍 LOG ESPECÍFICO PARA O DOCUMENTO DA KARINA
-        if (verifiedDoc.filename?.includes('0UUWX0') || verifiedDoc.filename?.includes('certidao_de_casamento')) {
-          console.log('🔍 DEBUG KARINA - Processing document:', {
-            dtbv_id: verifiedDoc.id,
-            original_document_id: verifiedDoc.original_document_id,
-            filename: verifiedDoc.filename,
-            user_id: verifiedDoc.user_id,
-            total_cost: verifiedDoc.total_cost,
-            payment_found: !!paymentForAuth,
-            payment_status: paymentForAuth?.status,
-            all_payments_for_user: paymentsData?.filter(p => p.user_id === verifiedDoc.user_id).map(p => ({
-              id: p.id,
-              document_id: p.document_id,
-              status: p.status,
-              amount: p.amount
-            }))
-          });
         }
 
         if (paymentForAuth) {
           realStatus = paymentForAuth.status;
-          console.log('🔍 DEBUG - Found payment for authenticator document:', {
-            dtbv_id: verifiedDoc.id,
-            original_document_id: verifiedDoc.original_document_id,
-            payment_id: paymentForAuth.id,
-            payment_document_id: paymentForAuth.document_id,
-            real_status: paymentForAuth.status,
-            amount: paymentForAuth.amount
-          });
         }
 
         // 🔍 LOG PARA VERIFICAR SE O DOCUMENTO REFUNDED ESTÁ SENDO PROCESSADO COM STATUS CORRETO
@@ -310,12 +258,14 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           user_id: verifiedDoc.user_id,
           document_id: verifiedDoc.id,
           stripe_session_id: null,
-          amount: verifiedDoc.total_cost || 0,
+          amount: paymentForAuth?.amount || verifiedDoc.total_cost || 0,
           currency: 'usd',
           status: realStatus, // Usar status real da tabela payments
-          payment_method: mainDoc?.payment_method || null, // Para autenticadores, buscar na tabela documents
-          payment_date: verifiedDoc.authentication_date || verifiedDoc.created_at,
+          payment_method: paymentForAuth?.payment_method || mainDoc?.payment_method || null, // Priorizar método do pagamento
+          payment_date: paymentForAuth?.payment_date || verifiedDoc.authentication_date || verifiedDoc.created_at,
           created_at: verifiedDoc.created_at,
+          fee_amount: paymentForAuth?.fee_amount || 0,
+          gross_amount: paymentForAuth?.gross_amount || verifiedDoc.total_cost || 0,
 
           // Dados do usuário
           user_email: verifiedDoc.profiles?.email || null,
@@ -356,36 +306,11 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
       // Para usuários regulares, o payment_method está na tabela payments
       const regularPayments: MappedPayment[] = [];
 
-      // 🔍 LOG PARA VERIFICAR SE O DOCUMENTO REFUNDED ESTÁ SENDO PROCESSADO
-      console.log('🔍 DEBUG - Total mainDocuments to process:', mainDocuments?.length || 0);
-      const refundedDocument = mainDocuments?.find(doc => doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e');
-      console.log('🔍 DEBUG - Refunded document found in mainDocuments:', !!refundedDocument);
-      if (refundedDocument) {
-        console.log('🔍 DEBUG - Refunded document details:', {
-          id: refundedDocument.id,
-          filename: refundedDocument.filename,
-          user_id: refundedDocument.user_id,
-          status: refundedDocument.status,
-          total_cost: refundedDocument.total_cost
-        });
-      }
-
       if (mainDocuments) {
         for (const doc of mainDocuments) {
           // Excluir documentos de uso pessoal (is_internal_use = true)
           if (doc.is_internal_use === true) {
             continue;
-          }
-
-          // 🔍 LOG PARA RASTREAR PROCESSAMENTO DO DOCUMENTO REFUNDED
-          if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e' || (doc.profiles?.name && doc.profiles.name.includes('Mayk'))) {
-            console.log('🔍 DEBUG MAYK - Processing document:', {
-              id: doc.id,
-              filename: doc.filename,
-              user_id: doc.user_id,
-              status: doc.status,
-              total_cost: doc.total_cost
-            });
           }
 
           // Verificar se já foi processado como autenticador
@@ -395,33 +320,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
           }
 
           // Buscar pagamento na tabela payments para usuários regulares
-          // Tentar ESTRITAMENTE por document_id (REMOVIDO fallback por user_id que causava duplicidade)
           const paymentInfo = paymentsData?.find(payment => payment.document_id === doc.id);
-
-          // 🔍 LOG ESPECÍFICO PARA RASTREAR MATCHING DE PAGAMENTOS
-          if (doc.id === 'eefae3a4-8a80-4908-a94f-69349106664e') {
-            console.log('🔍 DEBUG - Processing specific document:', {
-              document_id: doc.id,
-              filename: doc.filename,
-              user_id: doc.user_id,
-              status: doc.status
-            });
-
-            console.log('🔍 DEBUG - Looking for payment by document_id:', doc.id);
-            const paymentByDocId = paymentsData?.find(payment => payment.document_id === doc.id);
-            console.log('🔍 DEBUG - Payment found by document_id:', paymentByDocId);
-
-            console.log('🔍 DEBUG - Looking for payment by user_id:', doc.user_id);
-            const paymentByUserId = paymentsData?.find(payment => payment.user_id === doc.user_id);
-            console.log('🔍 DEBUG - Payment found by user_id:', paymentByUserId);
-
-            console.log('🔍 DEBUG - Final paymentInfo selected:', paymentInfo);
-
-            // Verificar se o pagamento será incluído
-            console.log('🔍 DEBUG - Will be included?', !(!paymentInfo && !doc.total_cost));
-            console.log('🔍 DEBUG - Has paymentInfo?', !!paymentInfo);
-            console.log('🔍 DEBUG - Has doc.total_cost?', !!doc.total_cost);
-          }
 
           // Só incluir se tem informação financeira e NÃO for um rascunho
           // 🛑 REGRA ADMIN: Ignorar rascunhos (drafts)
@@ -449,9 +348,11 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
             amount: paymentInfo?.amount || doc.total_cost || 0,
             currency: paymentInfo?.currency || 'usd',
             status: paymentInfo?.status, // Para usuários regulares, buscar na tabela payments
-            payment_method: paymentInfo?.payment_method || null, // Para usuários regulares, buscar na tabela payments
+            payment_method: paymentInfo?.payment_method || doc.payment_method || null, // Priorizar método do pagamento
             payment_date: paymentInfo?.payment_date || doc.created_at,
             created_at: paymentInfo?.created_at || doc.created_at,
+            fee_amount: paymentInfo?.fee_amount || 0,
+            gross_amount: paymentInfo?.gross_amount || doc.total_cost || 0,
 
             // Dados do usuário
             user_email: doc.profiles?.email || null,
@@ -488,8 +389,14 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
         }
       }
 
-      // Combinar ambos os tipos de pagamentos
-      const documentsWithFinancialData: MappedPayment[] = [...authenticatorPayments, ...regularPayments];
+      // Combinar ambos os tipos de pagamentos e ordenar por data de criação (mais recente primeiro)
+      // para bater com a ordem do Dashboard do Admin
+      const documentsWithFinancialData: MappedPayment[] = [...authenticatorPayments, ...regularPayments]
+        .sort((a, b) => {
+          const dateA = new Date(a.created_at || 0).getTime();
+          const dateB = new Date(b.created_at || 0).getTime();
+          return dateB - dateA; // Decrescente (mais recente primeiro)
+        });
 
       setPayments(documentsWithFinancialData);
 
