@@ -84,28 +84,46 @@ export const db = {
    * Busca o código de verificação e informações do documento traduzido
    */
   getVerificationCode: async (documentId: string) => {
-    // Primeiro tentar na tabela document_verifications
-    const { data: verification, error: vError } = await supabase
-      .from('document_verifications')
-      .select('verification_code, is_authenticated, authentication_date, authenticated_by_name')
-      .eq('document_id', documentId)
-      .single();
+    // 1. Primeiro, buscar na tabela documents_to_be_verified (dtbv) que liga a documents
+    const { data: dtbv, error: dtbvError } = await supabase
+      .from('documents_to_be_verified')
+      .select('id, verification_code, status, translated_file_url, authentication_date, authenticated_by_name')
+      .eq('original_document_id', documentId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(); // maybeSingle para não dar erro se não existir
 
-    if (!vError && verification) {
-      // Buscar a URL do arquivo traduzido na tabela translated_documents
-      const { data: translated } = await supabase
+    if (!dtbvError && dtbv) {
+      // 2. Tentar buscar na tabela translated_documents usando o ID do dtbv
+      const { data: translated, error: tError } = await supabase
         .from('translated_documents')
-        .select('translated_file_url')
-        .eq('document_id', documentId)
-        .single();
+        .select('translated_file_url, verification_code, authentication_date, authenticated_by_name, is_authenticated')
+        .eq('original_document_id', dtbv.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
+      if (!tError && translated) {
+        return {
+          verification_code: translated.verification_code || dtbv.verification_code || '',
+          translated_file_url: translated.translated_file_url || dtbv.translated_file_url || '',
+          is_authenticated: translated.is_authenticated ?? (dtbv.status === 'completed'),
+          authentication_date: translated.authentication_date || dtbv.authentication_date || null,
+          authenticated_by_name: translated.authenticated_by_name || dtbv.authenticated_by_name || null
+        };
+      }
+
+      // Se não encontrou em translated_documents, retornar os dados do dtbv (que podem ter vindo do n8n)
       return {
-        ...verification,
-        translated_file_url: translated?.translated_file_url || ''
+        verification_code: dtbv.verification_code || '',
+        translated_file_url: dtbv.translated_file_url || '',
+        is_authenticated: dtbv.status === 'completed',
+        authentication_date: dtbv.authentication_date || null,
+        authenticated_by_name: dtbv.authenticated_by_name || null
       };
     }
 
-    // Fallback: tentar na tabela documents se o código estiver lá
+    // Fallback: tentar na tabela documents se o código estiver lá (casos legados ou simplificados)
     const { data: doc, error: dError } = await supabase
       .from('documents')
       .select('verification_code, file_url, status')
