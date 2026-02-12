@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { XCircle, FileText, User, Calendar, Hash, Eye, Download, Phone } from 'lucide-react';
-import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
-import { Document } from './PaymentsTable';
+import { useState, useEffect, useCallback } from 'react';
+import { XCircle, FileText, User as UserIcon, Calendar, Hash, Eye, Download, Phone, Clock, AlertCircle, X, CheckCircle } from 'lucide-react';
+import { Document as AppDocument } from './types/payments.types';
 import { supabase, db } from '../../lib/supabase';
 
 interface DocumentDetailsModalProps {
-  document: Document | null;
+  document: AppDocument | null;
   onClose: () => void;
 }
 
@@ -23,7 +22,48 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
   const [translatedDoc, setTranslatedDoc] = useState<{ translated_file_url: string; filename: string; original_document_id?: string; } | null>(null);
   const [loadingTranslated, setLoadingTranslated] = useState(false);
   const [actualDocumentStatus, setActualDocumentStatus] = useState<string | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(false);
+
+  // Estados para o Preview Modal
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<'image' | 'pdf'>('pdf');
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Helper local para cores e ícones de status (evita problemas de tipo com o helper global)
+  const getStatusInfo = useCallback((status: string | null) => {
+    const s = status?.toLowerCase() || 'pending';
+    switch (s) {
+      case 'completed':
+      case 'approved':
+        return {
+          bg: 'bg-green-50',
+          text: 'text-green-600',
+          border: 'border-green-100',
+          icon: <CheckCircle className="w-5 h-5 text-green-600" />
+        };
+      case 'processing':
+        return {
+          bg: 'bg-tfe-blue-50',
+          text: 'text-tfe-blue-600',
+          border: 'border-tfe-blue-100',
+          icon: <FileText className="w-5 h-5 text-tfe-blue-600" />
+        };
+      case 'pending':
+        return {
+          bg: 'bg-yellow-50',
+          text: 'text-yellow-600',
+          border: 'border-yellow-100',
+          icon: <Clock className="w-5 h-5 text-yellow-600" />
+        };
+      default:
+        return {
+          bg: 'bg-gray-50',
+          text: 'text-gray-600',
+          border: 'border-gray-100',
+          icon: <FileText className="w-5 h-5 text-gray-600" />
+        };
+    }
+  }, []);
 
   // Buscar documento traduzido, perfil do usuário e status atualizado quando o documento mudar
   useEffect(() => {
@@ -36,7 +76,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
 
   const fetchUserProfile = async () => {
     if (!document?.user_id) return;
-    
+
     setLoadingProfile(true);
     try {
       const { data, error } = await supabase
@@ -44,7 +84,7 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
         .select('name, email, phone')
         .eq('id', document.user_id)
         .single();
-      
+
       if (error) {
         console.error('❌ Erro ao buscar perfil do usuário:', error);
         setUserProfile(null);
@@ -61,107 +101,64 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
 
   const fetchTranslatedDocument = async () => {
     if (!document?.user_id || !document.filename) return;
-    
+
     setLoadingTranslated(true);
     try {
-      console.log('🔍 Buscando documento traduzido para:', { 
-        user_id: document.user_id, 
-        filename: document.filename,
-        document_type: document.document_type
-      });
+      // 1. Buscar na tabela documents_to_be_verified (dtbv) que é o elo central
+      let dtbvQuery = supabase
+        .from('documents_to_be_verified')
+        .select('id, filename, translated_file_url')
+        .eq('user_id', document.user_id);
 
-      // Para documentos de autenticador, usar uma abordagem diferente
       if (document.document_type === 'authenticator') {
-        console.log('🔄 Processando documento de autenticador...');
-        
-        // Primeiro buscar na tabela translated_documents por user_id e filename
-        const { data: translatedDocs, error: translatedError } = await supabase
+        dtbvQuery = dtbvQuery.eq('id', document.id);
+      } else {
+        dtbvQuery = dtbvQuery.eq('filename', document.filename);
+      }
+
+      const { data: dtbvData, error: dtbvError } = await dtbvQuery
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (dtbvError) {
+        console.error('❌ Erro ao buscar documento verificado:', dtbvError);
+      }
+
+      if (dtbvData) {
+        // 2. Agora buscar na tabela translated_documents usando o ID do dtbv
+        const { data: translatedDocs, error: tError } = await supabase
           .from('translated_documents')
-          .select('translated_file_url, filename, original_document_id')
-          .eq('user_id', document.user_id)
-          .eq('filename', document.filename)
+          .select('translated_file_url, filename, original_document_id, user_id')
+          .eq('original_document_id', dtbvData.id)
           .order('created_at', { ascending: false });
 
-        if (translatedError) {
-          console.error('❌ Erro ao buscar documentos traduzidos (autenticador):', translatedError);
-        } else if (translatedDocs && translatedDocs.length > 0) {
-          console.log('✅ Documento traduzido encontrado (autenticador):', translatedDocs[0]);
+        if (!tError && translatedDocs && translatedDocs.length > 0) {
           setTranslatedDoc(translatedDocs[0]);
           return;
         }
-        
-        // Se não encontrar, usar a URL do próprio documento se existir
-        if (document.translated_file_url) {
-          console.log('✅ Usando URL do documento de autenticador:', document.translated_file_url);
+
+        // 3. Se não encontrou em translated_documents, verificar se o dtbv tem a URL (n8n)
+        if (dtbvData.translated_file_url) {
           setTranslatedDoc({
-            translated_file_url: document.translated_file_url,
-            filename: document.filename
+            translated_file_url: dtbvData.translated_file_url,
+            filename: dtbvData.filename
           });
           return;
         }
-        
-        console.log('ℹ️ Nenhum arquivo traduzido encontrado para documento de autenticador');
-        return;
       }
 
-      // Para documentos de pagamento, usar a lógica original
-      console.log('🔄 Processando documento de pagamento...');
-      
-      // Primeiro, buscar o document_id na tabela documents_to_be_verified usando o filename
-      const { data: verifiedDoc, error: verifiedError } = await supabase
-        .from('documents_to_be_verified')
-        .select('id, filename')
+      // 4. Última tentativa: busca direta por filename original
+      const { data: directDocs, error: directError } = await supabase
+        .from('translated_documents')
+        .select('translated_file_url, filename, original_document_id')
         .eq('user_id', document.user_id)
         .eq('filename', document.filename)
-        .single();
+        .order('created_at', { ascending: false });
 
-      if (verifiedError) {
-        console.error('❌ Erro ao buscar documento verificado:', verifiedError);
-        
-        // Fallback: buscar diretamente na translated_documents por user_id e filename
-        const { data: translatedDocs, error } = await supabase
-          .from('translated_documents')
-          .select('translated_file_url, filename, original_document_id')
-          .eq('user_id', document.user_id)
-          .eq('filename', document.filename);
-
-        if (error) {
-          console.error('❌ Erro ao buscar documentos traduzidos (fallback):', error);
-          return;
-        }
-
-        console.log('📋 Documentos traduzidos encontrados (fallback):', translatedDocs);
-        
-        if (translatedDocs && translatedDocs.length > 0) {
-          setTranslatedDoc(translatedDocs[0]);
-          console.log('✅ Documento traduzido encontrado via fallback:', translatedDocs[0]);
-        }
+      if (!directError && directDocs && directDocs.length > 0) {
+        setTranslatedDoc(directDocs[0]);
         return;
-      }
-
-      console.log('📋 Documento verificado encontrado:', verifiedDoc);
-
-      // Agora buscar o documento traduzido usando o original_document_id
-      const { data: translatedDocs, error } = await supabase
-        .from('translated_documents')
-        .select('translated_file_url, filename, original_document_id, user_id')
-        .eq('original_document_id', verifiedDoc.id)
-        .eq('user_id', document.user_id);
-
-      if (error) {
-        console.error('❌ Erro ao buscar documentos traduzidos:', error);
-        return;
-      }
-      
-      console.log('📋 Documentos traduzidos encontrados por original_document_id:', translatedDocs);
-      
-      if (translatedDocs && translatedDocs.length > 0) {
-        // Pegar o mais recente se houver múltiplos
-        const matchingTranslatedDoc = translatedDocs[0];
-        console.log('✅ Documento traduzido encontrado:', matchingTranslatedDoc);
-        setTranslatedDoc(matchingTranslatedDoc);
-      } else {
-        console.log('ℹ️ Nenhum documento traduzido encontrado para este documento verificado');
       }
     } catch (error) {
       console.error('💥 Erro ao buscar documento traduzido:', error);
@@ -172,377 +169,314 @@ export function DocumentDetailsModal({ document, onClose }: DocumentDetailsModal
 
   const fetchActualDocumentStatus = async () => {
     if (!document?.filename) return;
-    
-    setLoadingStatus(true);
+
     try {
-      // Buscar o status real na tabela documents_to_be_verified
-      // Status 'completed' ou 'approved' indica que foi aprovado pelo autenticador
-      const { data: verifiedDoc, error } = await supabase
+      const { data: verifiedDoc } = await supabase
         .from('documents_to_be_verified')
         .select('status')
         .eq('filename', document.filename)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
-        console.error('❌ Erro ao buscar status do documento:', error);
-      }
-      
-      // Define o status do documento verificado se encontrado, senão mantém o status original
-      setActualDocumentStatus(verifiedDoc ? verifiedDoc.status : document.status);
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
+      setActualDocumentStatus(verifiedDoc ? verifiedDoc.status : document.status);
     } catch (err) {
       console.error('💥 Erro na busca do status:', err);
-      setActualDocumentStatus(document.status); // Fallback para o status original em caso de erro
-    } finally {
-      setLoadingStatus(false);
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!document) return;
-    
-    // Verificar se o documento foi aprovado pelo autenticador
-    const isAuthenticated = actualDocumentStatus === 'completed' || actualDocumentStatus === 'approved';
-    
-    let fileUrl: string | null = null;
-    
-    if (isAuthenticated) {
-      // Para documentos aprovados, priorizar SEMPRE arquivo da tabela translated_documents
-      fileUrl = translatedDoc?.translated_file_url || document?.translated_file_url || document?.file_path || null;
-      console.log('📄 Download - Documento aprovado - usando arquivo traduzido:', {
-        translatedDocUrl: translatedDoc?.translated_file_url,
-        documentTranslatedUrl: document?.translated_file_url,
-        fallbackUrl: document?.file_path,
-        finalUrl: fileUrl
-      });
-    } else {
-      // Para documentos não aprovados, usar apenas o arquivo original
-      fileUrl = document?.file_path || null;
-      console.log('📄 Download - Documento não aprovado - usando arquivo original:', fileUrl);
-    }
-    
-    if (fileUrl) {
-      try {
-        // Extrair filePath e bucket da URL
-        const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
-        const pathInfo = extractFilePathFromUrl(fileUrl);
-        
-        if (!pathInfo) {
-          // Se não conseguir extrair, tentar download direto da URL (para S3 externo)
-          try {
-            const response = await fetch(fileUrl);
-            if (response.ok) {
-              const blob = await response.blob();
-              const downloadUrl = window.URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = downloadUrl;
-              link.download = document.filename;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              window.URL.revokeObjectURL(downloadUrl);
-              return;
-            }
-          } catch (error) {
-            alert('Não foi possível acessar o arquivo. Verifique sua conexão.');
-            return;
-          }
-        }
-        
-        // Usar download direto
-        const success = await db.downloadFileAndTrigger(pathInfo.filePath, document.filename, pathInfo.bucket);
-        
-        if (!success) {
-          alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
-        }
-      } catch (error) {
-        console.error('Error downloading file:', error);
-        alert(`Erro ao baixar arquivo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
-      }
-    } else {
-        alert('No file available to download');
-    }
-  };
-
-  const handleViewFile = async () => {
-    // Verificar se o documento foi aprovado pelo autenticador
-    const isAuthenticated = actualDocumentStatus === 'completed' || actualDocumentStatus === 'approved';
-    
-    console.log('🔍 HandleViewFile - Status check:', {
-      actualDocumentStatus,
-      isAuthenticated,
-      documentStatus: document?.status
-    });
-    
-    let url: string | null = null;
-    
-    if (isAuthenticated) {
-      // Para documentos aprovados, priorizar SEMPRE arquivo da tabela translated_documents
-      url = translatedDoc?.translated_file_url || document?.translated_file_url || document?.file_path || null;
-      console.log('📄 Documento aprovado - usando arquivo traduzido:', {
-        translatedDocUrl: translatedDoc?.translated_file_url,
-        documentTranslatedUrl: document?.translated_file_url,
-        fallbackUrl: document?.file_path,
-        finalUrl: url,
-        translatedDocData: translatedDoc
-      });
-    } else {
-      // Para documentos não aprovados, usar apenas o arquivo original
-      url = document?.file_path || null;
-      console.log('📄 Documento não aprovado - usando arquivo original:', url);
-    }
-    
-    console.log('🚀 Tentando abrir URL:', url);
-    
-    if (url) {
-      // SEMPRE gerar um novo signed URL para visualização
-      const { db } = await import('../../lib/supabase');
-      const viewUrl = await db.generateViewUrl(url);
-      
-      if (viewUrl) {
-        window.open(viewUrl, '_blank', 'noopener,noreferrer');
-      } else {
-        // Logar erro quando não consegue gerar URL de visualização
-        try {
-          const { logError, showUserFriendlyError } = await import('../../utils/errorHelpers');
-          const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
-          
-          const pathInfo = extractFilePathFromUrl(url);
-          const logFilename = document?.filename || 'unknown';
-          
-          await logError('view', new Error('VIEW_ERROR'), {
-            userId: document?.user_id,
-            documentId: document?.id,
-            filePath: pathInfo?.filePath,
-            filename: logFilename,
-            bucket: pathInfo?.bucket,
-            additionalInfo: {
-              operation: 'generate_view_url_failed',
-              original_url: url,
-            },
-          });
-          
-          showUserFriendlyError('VIEW_ERROR');
-        } catch (logError) {
-          console.error('Error logging view error:', logError);
-          alert('Não foi possível gerar link para visualização. Por favor, tente novamente.');
-        }
-      }
-    } else {
-      console.error('❌ Nenhuma URL disponível para visualizar');
-      alert('No file available to view');
+      setActualDocumentStatus(document.status);
     }
   };
 
   if (!document) return null;
 
-  const currentStatus = actualDocumentStatus || document.status;
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const handleDownload = async (url: string) => {
+    try {
+      const { extractFilePathFromUrl } = await import('../../utils/fileUtils');
+      const pathInfo = extractFilePathFromUrl(url);
+
+      if (!pathInfo) {
+        window.open(url, '_blank');
+        return;
+      }
+
+      const filename = translatedDoc?.filename || `translated_${document.filename}`;
+      const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
+
+      if (!success) {
+        alert('Não foi possível baixar o arquivo. Por favor, tente novamente.');
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Erro ao baixar o arquivo.');
+    }
+  };
+
+  const handleView = async (url: string) => {
+    setPreviewLoading(true);
+    setIsPreviewOpen(true);
+    try {
+      const viewUrl = await db.generateViewUrl(url);
+      if (viewUrl) {
+        setPreviewUrl(viewUrl);
+        const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+        setPreviewType(isImage ? 'image' : 'pdf');
+      } else {
+        alert('Não foi possível gerar link para visualização.');
+        setIsPreviewOpen(false);
+      }
+    } catch (error) {
+      console.error('Error viewing file:', error);
+      alert('Erro ao visualizar o arquivo.');
+      setIsPreviewOpen(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const statusInfo = getStatusInfo(actualDocumentStatus || document.status);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-gray-900">Document Details</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1" aria-label="Close modal">
-            <XCircle className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="space-y-6">
-          {/* File Info */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <FileText className="w-6 h-6 text-tfe-blue-600" />
-              <h4 className="text-lg font-semibold text-gray-900">File Information</h4>
+    <>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-xl ${statusInfo.bg}`}>
+                <FileText className={`w-6 h-6 ${statusInfo.text}`} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 leading-tight">Detalhes do Documento</h2>
+                <p className="text-sm text-gray-500 font-medium">Informações completas e arquivos</p>
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Filename</label>
-                <p className="text-gray-900 break-all">{document.filename}</p>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
+            >
+              <XCircle className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-8">
+            {/* Status Banner */}
+            <div className={`p-4 rounded-2xl flex items-center gap-4 ${statusInfo.bg} border ${statusInfo.border}`}>
+              <div className={`p-2.5 rounded-xl bg-white/80 shadow-sm`}>
+                {statusInfo.icon}
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">Pages</label>
-                <p className="text-gray-900">{document.pages || 'Not specified'}</p>
+                <p className={`text-sm font-bold uppercase tracking-wider ${statusInfo.text}`}>Status Atual</p>
+                <p className="text-lg font-semibold text-gray-900 capitalize">{actualDocumentStatus || document.status}</p>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Total Cost</label>
-                <p className="text-gray-900 font-semibold">${document.total_cost || 0}.00</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Status</label>
-                <div className="mt-1">
-                  {loadingStatus ? (
-                    <span className="text-gray-500">Loading...</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* User Info */}
+              <section className="space-y-4">
+                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                  <UserIcon className="w-4 h-4" /> Cliente
+                </h3>
+                <div className="bg-gray-50/50 rounded-2xl p-4 border border-gray-100 space-y-3">
+                  {loadingProfile ? (
+                    <div className="animate-pulse space-y-2">
+                      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                      <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                    </div>
                   ) : (
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor({ status: currentStatus } as any)}`}>
-                      {getStatusIcon({ status: currentStatus } as any)}
-                      <span className="ml-1 capitalize">{currentStatus || 'Unknown'}</span>
-                    </span>
+                    <>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase">Nome</label>
+                        <p className="text-gray-900 font-medium">{userProfile?.name || ('client_name' in document ? (document as any).client_name : 'N/A')}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase">E-mail</label>
+                        <p className="text-gray-900 font-medium truncate">{userProfile?.email || ('user_email' in document ? (document as any).user_email : 'N/A')}</p>
+                      </div>
+                      {userProfile?.phone && (
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <Phone className="w-3.5 h-3.5" />
+                          <span className="text-sm font-medium">{userProfile.phone}</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-              </div>
-            </div>
-          </div>
+              </section>
 
-          {/* User Info */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <User className="w-6 h-6 text-green-600" />
-              <h4 className="text-lg font-semibold text-gray-900">User Information</h4>
+              {/* Document Details */}
+              <section className="space-y-4">
+                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                  <Hash className="w-4 h-4" /> Documento
+                </h3>
+                <div className="bg-gray-50/50 rounded-2xl p-4 border border-gray-100 space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase">Arquivo Original</label>
+                    <p className="text-gray-900 font-medium truncate" title={document.filename}>{document.filename}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">Páginas</label>
+                      <p className="text-gray-900 font-medium">{document.pages || 0}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase">Criado em</label>
+                      <div className="flex items-center gap-1.5 text-gray-900 font-medium">
+                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-[13px]">{formatDate(document.created_at)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
-            {loadingProfile ? (
-              <p className="text-gray-500">Loading user data...</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Name</label>
-                  <p className="text-gray-900">{userProfile?.name || document.user_name || 'Not provided'}</p>
+
+            {/* Verification Info - Highlighted */}
+            {document.verification_code && (
+              <section className="bg-tfe-blue-50/50 rounded-2xl p-5 border border-tfe-blue-100 space-y-3">
+                <h3 className="text-xs font-bold text-tfe-blue-600 uppercase tracking-widest flex items-center gap-2">
+                  <Hash className="w-4 h-4" /> Código de Verificação Digital
+                </h3>
+                <div className="flex items-center gap-3">
+                  <div className="bg-white px-4 py-2 rounded-xl border border-tfe-blue-200 font-mono text-xl font-bold text-tfe-blue-700 shadow-sm">
+                    {document.verification_code}
+                  </div>
+                  <div className="text-xs text-tfe-blue-600 font-medium leading-relaxed">
+                    Este código permite que qualquer pessoa<br />verifique a autenticidade deste documento.
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Email</label>
-                  <p className="text-gray-900 break-all">{userProfile?.email || document.user_email || 'Not provided'}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                    <Phone className="w-4 h-4" />
-                    Phone Number
-                  </label>
-                  <p className="text-gray-900">{userProfile?.phone || document.user_phone || 'Not provided'}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">User ID</label>
-                  <p className="text-gray-900 font-mono text-sm break-all bg-gray-100 p-2 rounded">
-                    {document.user_id || 'Not available'}
-                  </p>
-                </div>
-              </div>
+              </section>
             )}
-          </div>
-          
-          {/* Document Details, Dates, Verification sections... (sem alterações) */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <Hash className="w-6 h-6 text-purple-600" />
-              <h4 className="text-lg font-semibold text-gray-900">Document Details</h4>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Translation Type</label>
-                <p className="text-gray-900">{document.translation_type || 'Not specified'}</p>
+
+            {/* Actions */}
+            <section className="space-y-4 pt-2">
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Arquivo Disponível</h3>
+              <div className="space-y-3">
+                {loadingTranslated ? (
+                  <div className="bg-gray-50 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 border border-dashed border-gray-200">
+                    <div className="w-8 h-8 border-4 border-tfe-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Buscando Tradução...</p>
+                  </div>
+                ) : translatedDoc ? (
+                  <div className="bg-gradient-to-br from-tfe-blue-600 to-tfe-blue-800 rounded-2xl p-4 flex items-center justify-between shadow-lg shadow-tfe-blue-200 group hover:scale-[1.01] transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-white/20 backdrop-blur-md rounded-xl">
+                        <FileText className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-white text-lg leading-tight">Documento Traduzido</p>
+                          <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter backdrop-blur-sm">Final</span>
+                        </div>
+                        <p className="text-xs text-white/80 font-medium">Tradução autenticada e verificada</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleView(translatedDoc.translated_file_url)}
+                        className="p-2.5 text-white hover:bg-white/20 rounded-xl transition-colors"
+                        title="Visualizar"
+                      >
+                        <Eye className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => handleDownload(translatedDoc.translated_file_url)}
+                        className="p-2.5 text-white hover:bg-white/20 rounded-xl transition-colors"
+                        title="Baixar"
+                      >
+                        <Download className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 rounded-2xl p-6 border border-dashed border-gray-200 flex flex-col items-center justify-center text-center gap-2">
+                    <Clock className="w-8 h-8 text-gray-300" />
+                    <div>
+                      <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Tradução Pendente</p>
+                      <p className="text-xs text-gray-400 font-medium mt-1">Este documento ainda está sendo processado<br />ou aguarda autenticação final.</p>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Source Language</label>
-                <p className="text-gray-900">{document.source_language || 'Not specified'}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Target Language</label>
-                <p className="text-gray-900">{document.target_language || 'Not specified'}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Bank Statement</label>
-                <p className="text-gray-900">{document.bank_statement ? 'Yes' : 'No'}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Authenticated</label>
-                <p className="text-gray-900">{document.authenticated ? 'Yes' : 'No'}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <Calendar className="w-6 h-6 text-orange-600" />
-              <h4 className="text-lg font-semibold text-gray-900">Timeline</h4>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Created</label>
-                <p className="text-gray-900">{document.created_at ? new Date(document.created_at).toLocaleString() : 'Not available'}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Last Updated</label>
-                <p className="text-gray-900">{(document as any).updated_at ? new Date((document as any).updated_at).toLocaleString() : 'Not available'}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <Hash className="w-6 h-6 text-tfe-red-600" />
-              <h4 className="text-lg font-semibold text-gray-900">Verification</h4>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Verification Code</label>
-              <p className="text-gray-900 font-mono text-sm break-all">{(document as any).verification_code || 'Not available'}</p>
-            </div>
+            </section>
           </div>
 
-          {/* Actions */}
-          <div className="bg-tfe-blue-50 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <Eye className="w-6 h-6 text-tfe-blue-600" />
-              <h4 className="text-lg font-semibold text-tfe-blue-950">File Actions</h4>
-              {loadingTranslated && (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-tfe-blue-600"></div>
-              )}
-              {/* Mostrar status de aprovação */}
-              {actualDocumentStatus === 'completed' || actualDocumentStatus === 'approved' ? (
-                (document.translated_file_url || translatedDoc?.translated_file_url) && (
-                  <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full">
-                    Approved - Translated Available
-                  </span>
-                )
-              ) : (
-                <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-1 rounded-full">
-                  Awaiting Authentication
-                </span>
-              )}
-            </div>
-            
-            {/* Aviso quando não foi aprovado */}
-            {!(actualDocumentStatus === 'completed' || actualDocumentStatus === 'approved') && (
-              <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800">
-                  <strong>Note:</strong> Translated documents are only available after authenticator approval. 
-                  Currently showing original document only.
-                </p>
-              </div>
-            )}
-            
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={handleViewFile}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-tfe-blue-600 text-white rounded-lg hover:bg-tfe-blue-700 transition-colors disabled:opacity-50"
-                disabled={loadingTranslated}
-              >
-                <Eye className="w-4 h-4" />
-                {(actualDocumentStatus === 'completed' || actualDocumentStatus === 'approved') && 
-                 (document.translated_file_url || translatedDoc?.translated_file_url) 
-                  ? 'View Translated File' 
-                  : 'View Original File'
-                }
-              </button>
-              <button
-                onClick={handleDownload}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                disabled={loadingTranslated}
-              >
-                <Download className="w-4 h-4" />
-                Download
-              </button>
-            </div>
+          {/* Footer */}
+          <div className="px-6 py-4 bg-gray-50/50 border-t border-gray-100 flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-8 py-3 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+            >
+              Fechar Detalhes
+            </button>
           </div>
-        </div>
-
-        <div className="mt-6 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-          >
-            Close
-          </button>
         </div>
       </div>
-    </div>
+
+      {/* Preview Modal Overlay (Full Page) */}
+      {isPreviewOpen && (
+        <div className="fixed inset-0 bg-black z-[100] flex flex-col animate-in fade-in duration-300">
+          <div className="flex items-center justify-between p-4 bg-black/50 text-white z-10 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-tfe-blue-400" />
+              <h3 className="text-lg font-bold truncate max-w-md">{translatedDoc?.filename || 'Pré-visualização'}</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleDownload(translatedDoc?.translated_file_url || '')}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all flex items-center gap-2 text-sm font-bold"
+              >
+                <Download className="w-4 h-4" /> Baixar
+              </button>
+              <button
+                onClick={() => setIsPreviewOpen(false)}
+                className="p-2 hover:bg-white/10 rounded-xl transition-all"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 relative bg-gray-900 overflow-hidden flex items-center justify-center">
+            {previewLoading ? (
+              <div className="flex flex-col items-center gap-4 text-white">
+                <div className="w-12 h-12 border-4 border-tfe-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-sm font-bold uppercase tracking-widest opacity-60">Carregando documento...</p>
+              </div>
+            ) : previewUrl ? (
+              previewType === 'image' ? (
+                <div className="w-full h-full p-4 flex items-center justify-center">
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="max-w-full max-h-full object-contain shadow-2xl"
+                  />
+                </div>
+              ) : (
+                <iframe
+                  src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&zoom=50`}
+                  className="w-full h-full border-none"
+                  title="PDF Preview"
+                />
+              )
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-white opacity-40">
+                <AlertCircle className="w-12 h-12" />
+                <p>Falha ao carregar pré-visualização</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
