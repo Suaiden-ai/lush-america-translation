@@ -15,13 +15,13 @@ interface ZellePaymentModalProps {
   };
 }
 
-export function ZellePaymentModal({ 
-  isOpen, 
-  onClose, 
-  amount, 
-  documentId, 
-  userId, 
-  documentDetails 
+export function ZellePaymentModal({
+  isOpen,
+  onClose,
+  amount,
+  documentId,
+  userId,
+  documentDetails
 }: ZellePaymentModalProps) {
   const [step, setStep] = useState<'instructions' | 'confirmation' | 'completed'>('instructions');
   const [copied, setCopied] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export function ZellePaymentModal({
 
   // Dados Zelle da empresa (você deve configurar estes dados)
   const ZELLE_INFO = {
-    email: 'info@thefutureofenglish.com',
+    email: 'admin@suaiden.com',
     businessName: 'Lush America Translations'
   };
 
@@ -71,7 +71,7 @@ export function ZellePaymentModal({
       // Atualizar status do documento para "pending_payment_verification"
       const { error: docError } = await supabase
         .from('documents')
-        .update({ 
+        .update({
           status: 'pending_payment_verification',
           payment_method: 'zelle'
         })
@@ -105,14 +105,14 @@ export function ZellePaymentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black bg-opacity-50" 
+      <div
+        className="absolute inset-0 bg-black bg-opacity-50"
         onClick={step === 'completed' ? undefined : onClose}
       />
-      
+
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 z-10 max-h-[90vh] overflow-y-auto">
-        
+
         {step === 'instructions' && (
           <>
             {/* Header */}
@@ -141,12 +141,12 @@ export function ZellePaymentModal({
                 <h3 className="text-lg font-semibold text-gray-900">
                   Step 1: Send Payment via Zelle
                 </h3>
-                
+
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <p className="text-sm text-blue-800 mb-3">
                     Use your banking app or online banking to send money via Zelle to:
                   </p>
-                  
+
                   <div className="space-y-3">
                     {/* Email Option */}
                     <div className="bg-white rounded-lg p-3 border border-blue-200">
@@ -168,7 +168,7 @@ export function ZellePaymentModal({
 
                   <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                     <p className="text-xs text-yellow-800">
-                      <strong>Important:</strong> Make sure to send exactly <strong>${amount}.00</strong> and 
+                      <strong>Important:</strong> Make sure to send exactly <strong>${amount}.00</strong> and
                       include your name in the memo/message field.
                     </p>
                   </div>
@@ -264,13 +264,13 @@ export function ZellePaymentModal({
 
             <div className="p-6 text-center space-y-6">
               <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
-              
+
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   Payment Confirmation Received!
                 </h3>
                 <p className="text-gray-600 text-sm">
-                  Thank you for your Zelle payment. We have received your confirmation code and 
+                  Thank you for your Zelle payment. We have received your confirmation code and
                   will verify your payment within 1-2 business days.
                 </p>
               </div>

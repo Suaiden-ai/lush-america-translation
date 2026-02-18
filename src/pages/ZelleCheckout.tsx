@@ -24,7 +24,7 @@ export function ZelleCheckout() {
 
   // Zelle company data
   const ZELLE_INFO = {
-    email: 'info@thefutureofenglish.com',
+    email: 'admin@suaiden.com',
     businessName: 'Lush America Translations'
   };
 
