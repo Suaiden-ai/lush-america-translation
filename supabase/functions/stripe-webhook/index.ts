@@ -21,7 +21,7 @@ async function verifyStripeSignature(body: string, signature: string, secret: st
     const stripe = new (await import('https://esm.sh/stripe@14.21.0')).default(secret, {
       apiVersion: '2024-12-18.acacia',
     });
-    
+
     await stripe.webhooks.constructEventAsync(body, signature, secret);
     return true;
   } catch (error) {
@@ -34,7 +34,7 @@ Deno.serve(async (req: Request) => {
   console.log(`🔍 [WEBHOOK DEBUG] Method: ${req.method}`);
   console.log(`🔍 [WEBHOOK DEBUG] URL: ${req.url}`);
   console.log(`🔍 [WEBHOOK DEBUG] Headers:`, Object.fromEntries(req.headers.entries()));
-  
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -58,9 +58,9 @@ Deno.serve(async (req: Request) => {
     const allSecrets = getAllWebhookSecrets();
     let validConfig = null;
     let isValid = false;
-    
+
     console.log(`[stripe-webhook] Tentando verificar assinatura com ${allSecrets.length} secrets disponíveis...`);
-    
+
     for (const { env, secret } of allSecrets) {
       console.log(`[stripe-webhook] Tentando ambiente: ${env}`);
       isValid = await verifyStripeSignature(body, signature, secret);
@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
         console.log(`❌ Falha na verificação com ambiente: ${env}`);
       }
     }
-    
+
     if (!isValid || !validConfig) {
       console.error('❌ Webhook signature verification failed with all available secrets');
       throw new Error('Webhook signature verification failed');
@@ -80,10 +80,10 @@ Deno.serve(async (req: Request) => {
 
     // Obter configuração do Stripe baseada no ambiente detectado
     const stripeConfig = getStripeConfig(req);
-    
+
     // Log adicional para debug
     console.log('🔧 Using Stripe in', validConfig.environment, 'mode');
-    
+
     // Obter variáveis do Supabase
     const supabaseUrl = Deno.env.get('PROJECT_URL');
     const supabaseServiceKey = Deno.env.get('SERVICE_ROLE_KEY');
@@ -122,23 +122,23 @@ Deno.serve(async (req: Request) => {
       case 'checkout.session.completed':
         await handleCheckoutSessionCompleted(event.data.object, supabase);
         break;
-      
+
       case 'checkout.session.async_payment_processing':
         await handleAsyncPaymentProcessing(event.data.object, supabase);
         break;
-      
+
       case 'checkout.session.expired':
         await handleCheckoutSessionExpired(event.data.object, supabase);
         break;
-      
+
       case 'payment_intent.succeeded':
         console.log('Payment succeeded:', event.data.object.id);
         break;
-      
+
       case 'payment_intent.payment_failed':
         await handlePaymentFailed(event.data.object, supabase);
         break;
-      
+
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
@@ -153,10 +153,10 @@ Deno.serve(async (req: Request) => {
 
   } catch (error) {
     console.error('ERROR:', error);
-    
+
     return new Response(
-      JSON.stringify({ 
-        error: error.message || 'Erro interno do servidor' 
+      JSON.stringify({
+        error: error.message || 'Erro interno do servidor'
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -168,7 +168,7 @@ Deno.serve(async (req: Request) => {
 
 async function handleAsyncPaymentProcessing(session: any, supabase: any) {
   console.log('🔍 [WEBHOOK DEBUG] Processando async payment processing:', session.id);
-  
+
   try {
     // Log de tentativa de pagamento
     if (session.metadata?.userId) {
@@ -195,7 +195,7 @@ async function handleAsyncPaymentProcessing(session: any, supabase: any) {
           },
           affected_user_id: session.metadata.userId
         });
-      
+
       if (processingLogError) {
         console.error('Error logging payment processing:', processingLogError);
       } else {
@@ -210,7 +210,7 @@ async function handleAsyncPaymentProcessing(session: any, supabase: any) {
 async function handleCheckoutSessionCompleted(session: any, supabase: any) {
   console.log('🔍 [WEBHOOK DEBUG] Processando checkout session completed:', session.id);
   console.log('🔍 [WEBHOOK DEBUG] Sessão completa:', JSON.stringify(session, null, 2));
-  
+
   try {
     // ✅ VALIDAÇÃO CRÍTICA: Verificar se pagamento foi realmente aprovado
     if (session.payment_status !== 'paid' || session.status !== 'complete') {
@@ -219,7 +219,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       console.log('⚠️ status:', session.status);
       console.log('⚠️ Session ID:', session.id);
       console.log('⚠️ NÃO processando documento.');
-      
+
       // Log de falha no pagamento
       if (session.metadata?.userId) {
         try {
@@ -244,7 +244,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
               },
               affected_user_id: session.metadata.userId
             });
-          
+
           if (insertError) {
             console.error('Error inserting payment failure log:', insertError);
           } else {
@@ -254,12 +254,12 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
           console.error('Error logging payment failure:', logError);
         }
       }
-      
+
       return;
     }
 
     console.log('✅ [WEBHOOK DEBUG] Pagamento confirmado. Processando documento...');
-    
+
     // Log de pagamento bem-sucedido
     if (session.metadata?.userId) {
       try {
@@ -290,7 +290,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
             },
             affected_user_id: session.metadata.userId
           });
-        
+
         if (insertError) {
           console.error('Error inserting payment success log:', insertError);
         } else {
@@ -318,7 +318,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
     } = session.metadata;
 
     console.log('🔍 [WEBHOOK DEBUG] Metadados da sessão:', {
-      fileId, userId, filename, pages, isCertified, isNotarized, isBankStatement, 
+      fileId, userId, filename, pages, isCertified, isNotarized, isBankStatement,
       totalPrice, base_amount, gross_amount, fee_amount, markup_enabled, documentId
     });
 
@@ -329,7 +329,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       .select('role, name, email')
       .eq('id', userId)
       .single();
-    
+
     if (userError) {
       console.log('🔍 [WEBHOOK DEBUG] Erro ao buscar perfil do usuário:', userError);
     } else {
@@ -355,7 +355,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       .select('id, filename, status, user_id, created_at, updated_at')
       .eq('id', documentId)
       .single();
-    
+
     if (currentError) {
       console.log('🔍 [WEBHOOK DEBUG] Erro ao buscar documento atual:', currentError);
     } else {
@@ -366,7 +366,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
 
     // Atualizar o documento existente com status pending
     console.log('🔍 [WEBHOOK DEBUG] Atualizando documento existente para status pending');
-    
+
     const { data: updatedDocument, error: updateError } = await supabase
       .from('documents')
       .update({
@@ -411,7 +411,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
           },
           affected_user_id: userId
         });
-      
+
       if (statusLogError) {
         console.error('Error logging document status change:', statusLogError);
       } else {
@@ -424,7 +424,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
     // Atualizar o status da sessão na tabela stripe_sessions
     try {
       console.log('DEBUG: Atualizando stripe_sessions para completed');
-      
+
       const { error: sessionUpdateError } = await supabase
         .from('stripe_sessions')
         .update({
@@ -447,20 +447,20 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
     // Criar registro na tabela payments
     try {
       console.log('DEBUG: Criando registro na tabela payments');
-      
+
       // Usar base_amount (valor líquido) como receita, mas manter gross_amount e fee_amount para rastreamento
       // Se base_amount não estiver disponível, usar totalPrice como fallback
       const baseAmount = base_amount ? parseFloat(base_amount) : (totalPrice ? parseFloat(totalPrice) : 0);
       const grossAmount = gross_amount ? parseFloat(gross_amount) : (totalPrice ? parseFloat(totalPrice) : 0);
       const feeAmount = fee_amount ? parseFloat(fee_amount) : 0;
-      
+
       console.log('🔍 [WEBHOOK DEBUG] Valores de pagamento:', {
         base_amount: baseAmount,
         gross_amount: grossAmount,
         fee_amount: feeAmount,
         markup_enabled: markup_enabled === 'true'
       });
-      
+
       const paymentData = {
         document_id: documentId,
         user_id: userId,
@@ -476,7 +476,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       };
 
       console.log('DEBUG: Dados do pagamento a serem inseridos:', paymentData);
-      
+
       const { data: paymentRecord, error: paymentError } = await supabase
         .from('payments')
         .insert(paymentData)
@@ -490,18 +490,18 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       } else {
         console.log('DEBUG: Registro criado na tabela payments com sucesso:', paymentRecord.id);
       }
-      
+
       // Enviar notificação de pagamento para admins
       try {
         console.log('DEBUG: Enviando notificação de pagamento Stripe para admins');
-        
+
         // Buscar dados do usuário que fez o pagamento
         const { data: user, error: userError } = await supabase
           .from('profiles')
           .select('name, email')
           .eq('id', userId)
           .single();
-        
+
         // Buscar emails dos admins
         const { data: adminProfiles } = await supabase
           .from('profiles')
@@ -520,14 +520,14 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
               document_id: documentId,
               status: 'pagamento aprovado automaticamente'
             };
-            
+
             try {
               const webhookResponse = await fetch('https://nwh.thefutureofenglish.com/webhook/notthelush1', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(notificationPayload)
               });
-              
+
               if (webhookResponse.ok) {
                 console.log(`SUCCESS: Notificação Stripe enviada para admin: ${admin.email}`);
               } else {
@@ -542,11 +542,11 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
         console.error('WARNING: Erro ao enviar notificações de pagamento Stripe:', notificationError);
         // Não falhar o processo por causa da notificação
       }
-      
+
       // Notificar autenticadores sobre documento pendente (Stripe = aprovação automática)
       try {
         console.log('DEBUG: Enviando notificação para autenticadores sobre documento pendente');
-        
+
         // Buscar todos os autenticadores
         const { data: authenticators, error: authError } = await supabase
           .from('profiles')
@@ -574,14 +574,14 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
               client_name: user?.name || 'Unknown Client',
               client_email: user?.email || 'unknown@email.com'
             };
-            
+
             try {
               const authWebhookResponse = await fetch('https://nwh.thefutureofenglish.com/webhook/notthelush1', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(authNotificationPayload)
               });
-              
+
               if (authWebhookResponse.ok) {
                 console.log(`SUCCESS: Notificação para autenticador enviada: ${authenticator.email}`);
               } else {
@@ -591,7 +591,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
               console.error(`ERROR: Erro ao enviar notificação para autenticador ${authenticator.email}:`, authNotificationError);
             }
           }
-          
+
           console.log(`SUCCESS: Notificações enviadas para ${authenticators.length} autenticadores`);
         } else {
           console.log('INFO: Nenhum autenticador encontrado para notificar');
@@ -600,7 +600,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
         console.error('WARNING: Erro ao enviar notificações para autenticadores:', authNotificationError);
         // Não falhar o processo por causa da notificação
       }
-      
+
     } catch (paymentError) {
       console.error('ERROR: Erro ao criar registro na tabela payments:', paymentError);
       throw paymentError;
@@ -621,7 +621,7 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
 
 async function handleCheckoutSessionExpired(session: any, supabase: any) {
   console.log('🔍 [WEBHOOK DEBUG] Processando checkout session expired:', session.id);
-  
+
   try {
     // Atualizar o status da sessão para expirado
     const { error: sessionUpdateError } = await supabase
@@ -643,7 +643,7 @@ async function handleCheckoutSessionExpired(session: any, supabase: any) {
       try {
         // Verificar se já existe um log de cancelamento recente (últimos 5 minutos)
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-        
+
         const { data: existingLogs, error: checkError } = await supabase
           .from('action_logs')
           .select('id, created_at')
@@ -651,14 +651,14 @@ async function handleCheckoutSessionExpired(session: any, supabase: any) {
           .eq('affected_user_id', session.metadata.userId)
           .gte('created_at', fiveMinutesAgo)
           .limit(1);
-        
+
         if (checkError) {
           console.error('Error checking existing cancellation logs:', checkError);
         } else if (existingLogs && existingLogs.length > 0) {
           console.log('⚠️ Skipping duplicate cancellation log - recent log already exists:', existingLogs[0].id);
           return; // Não inserir log duplicado
         }
-        
+
         const { error: insertError } = await supabase
           .from('action_logs')
           .insert({
@@ -679,7 +679,7 @@ async function handleCheckoutSessionExpired(session: any, supabase: any) {
             },
             affected_user_id: session.metadata.userId
           });
-        
+
         if (insertError) {
           console.error('Error inserting session expiration log:', insertError);
         } else {
@@ -697,7 +697,7 @@ async function handleCheckoutSessionExpired(session: any, supabase: any) {
 
 async function handlePaymentFailed(paymentIntent: any, supabase: any) {
   console.log('🔍 [WEBHOOK DEBUG] Processando payment intent failed:', paymentIntent.id);
-  
+
   try {
     // Buscar a sessão associada pelo payment_intent_id
     const { data: sessionData, error: sessionError } = await supabase
@@ -712,7 +712,7 @@ async function handlePaymentFailed(paymentIntent: any, supabase: any) {
       const { data: allSessions } = await supabase
         .from('stripe_sessions')
         .select('*');
-      
+
       console.log('🔍 Total de sessões no banco:', allSessions?.length || 0);
     }
 
@@ -756,7 +756,7 @@ async function handlePaymentFailed(paymentIntent: any, supabase: any) {
               },
               affected_user_id: sessionData.user_id
             });
-          
+
           if (insertError) {
             console.error('Error inserting payment failure log:', insertError);
           } else {

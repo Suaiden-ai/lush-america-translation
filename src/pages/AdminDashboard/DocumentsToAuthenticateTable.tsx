@@ -36,7 +36,7 @@ export function DocumentsToAuthenticateTable() {
   const fetchDocuments = async () => {
     try {
       setLoading(true);
-      
+
       // Buscar documentos para autenticação
       const { data: documentsData, error: documentsError } = await supabase
         .from('documents_to_be_verified')
@@ -50,13 +50,13 @@ export function DocumentsToAuthenticateTable() {
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payments')
         .select('document_id, status, user_id, amount');
-      
+
       if (paymentsError) {
         console.warn('[DocumentsToAuthenticateTable] Erro ao buscar pagamentos:', paymentsError);
       }
-      
+
       console.log('[DocumentsToAuthenticateTable] Pagamentos encontrados:', paymentsData?.length || 0);
-      
+
       // Criar mapa de status de pagamentos
       // Mapear por document_id primeiro, depois por user_id + amount se necessário
       const paymentStatusMap = new Map<string, string>();
@@ -65,22 +65,22 @@ export function DocumentsToAuthenticateTable() {
           paymentStatusMap.set(payment.document_id, payment.status);
         }
       });
-      
+
       // Para documentos sem document_id direto, tentar mapear por user_id + amount
       const documentsWithoutDirectPayment = (documentsData || []).filter(doc => {
         const directPayment = paymentStatusMap.get(doc.id);
         return !directPayment;
       });
-      
+
       console.log('[DocumentsToAuthenticateTable] Documentos sem pagamento direto:', documentsWithoutDirectPayment.length);
-      
+
       // Mapear por user_id + amount para documentos sem document_id direto
       documentsWithoutDirectPayment.forEach(doc => {
-        const matchingPayment = paymentsData?.find(payment => 
-          payment.user_id === doc.user_id && 
+        const matchingPayment = paymentsData?.find(payment =>
+          payment.user_id === doc.user_id &&
           payment.amount === doc.valor
         );
-        
+
         if (matchingPayment) {
           paymentStatusMap.set(doc.id, matchingPayment.status);
           console.log('[DocumentsToAuthenticateTable] Mapeamento por user_id + amount:', {
@@ -91,12 +91,12 @@ export function DocumentsToAuthenticateTable() {
           });
         }
       });
-      
+
       // Filtrar documentos que NÃO têm status refunded ou cancelled
       const validDocuments = (documentsData || []).filter(doc => {
         const paymentStatus = paymentStatusMap.get(doc.id);
         const shouldExclude = paymentStatus === 'refunded' || paymentStatus === 'cancelled';
-        
+
         if (shouldExclude) {
           console.log('[DocumentsToAuthenticateTable] Excluindo documento:', {
             id: doc.id,
@@ -104,10 +104,10 @@ export function DocumentsToAuthenticateTable() {
             payment_status: paymentStatus
           });
         }
-        
+
         return !shouldExclude;
       });
-      
+
       console.log('[DocumentsToAuthenticateTable] Documentos válidos (após filtro de pagamento):', validDocuments.length);
       console.log('[DocumentsToAuthenticateTable] Documentos filtrados (refunded/cancelled):', (documentsData || []).length - validDocuments.length);
 
@@ -126,9 +126,13 @@ export function DocumentsToAuthenticateTable() {
       // Processar dados para incluir nomes dos usuários
       const processedDocuments = validDocuments.map(doc => {
         const profile = profilesMap.get(doc.user_id);
+        const uploaderName = profile?.name || 'N/A';
+
         return {
           ...doc,
-          user_name: profile?.name || 'N/A',
+          user_name: (doc.client_name && doc.client_name !== 'Cliente Padrão' && doc.client_name !== uploaderName)
+            ? `${doc.client_name} (${uploaderName})`
+            : uploaderName,
           user_email: profile?.email || 'N/A'
         };
       });
@@ -150,8 +154,8 @@ export function DocumentsToAuthenticateTable() {
   // Filtrar documentos
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         doc.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         doc.user_email.toLowerCase().includes(searchTerm.toLowerCase());
+      doc.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      doc.user_email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -383,7 +387,7 @@ export function DocumentsToAuthenticateTable() {
                     </div>
                   </div>
                 </div>
-                
+
                 {/* User Info */}
                 <div className="flex items-start gap-3">
                   <User className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
@@ -396,7 +400,7 @@ export function DocumentsToAuthenticateTable() {
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Status and Authenticator */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-xs">
@@ -426,7 +430,7 @@ export function DocumentsToAuthenticateTable() {
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Actions */}
                 <div className="flex justify-end">
                   <button
@@ -449,7 +453,7 @@ export function DocumentsToAuthenticateTable() {
           <FileText className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">No documents found</h3>
           <p className="mt-1 text-sm text-gray-500">
-            {searchTerm || statusFilter !== 'all' 
+            {searchTerm || statusFilter !== 'all'
               ? 'Try adjusting your search or filter criteria.'
               : 'No documents are currently waiting for authentication.'
             }

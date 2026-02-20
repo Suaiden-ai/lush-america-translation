@@ -315,7 +315,7 @@ export default function AuthenticatorUpload() {
             user_id: user?.id,
             filename: finalFileName,
             pages: pages,
-            status: 'pending',
+            status: 'processing', // Alterado de pending para processing
             total_cost: valor,
             tipo_trad: tipoTrad,
             valor: valor,
@@ -346,6 +346,31 @@ export default function AuthenticatorUpload() {
 
         console.log('DEBUG: Documento criado na tabela documents:', createdDoc);
         newDocument = createdDoc;
+
+        // SE for upload para cliente, criar o registro de pagamento como COMPLETED
+        if (uploadType === 'client') {
+          console.log('DEBUG: Criando registro de pagamento automático para Autenticador...');
+          const { error: paymentError } = await supabase
+            .from('payments')
+            .insert({
+              document_id: newDocument.id,
+              user_id: user?.id,
+              amount: valor,
+              currency: 'USD',
+              status: 'completed', // Sempre completo para autenticador
+              payment_method: paymentMethod || 'other',
+              payment_date: new Date().toISOString(),
+              receipt_url: customPayload?.receiptPath ? supabase.storage.from(STORAGE_BUCKETS.DOCUMENTS).getPublicUrl(customPayload.receiptPath).data.publicUrl : null
+            });
+
+          if (paymentError) {
+            console.error('ERROR: Falha ao criar registro de pagamento:', paymentError);
+            // Não vamos travar o upload se falhar o registro de pagamento, mas logamos o erro
+          } else {
+            console.log('✅ Pagamento registrado como completed com sucesso');
+          }
+        }
+
       }
 
       // Preparar dados para o webhook

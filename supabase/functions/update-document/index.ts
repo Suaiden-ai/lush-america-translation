@@ -30,10 +30,10 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Obter dados da requisição
-    const { 
-      documentId, 
-      fileUrl, 
-      userId, 
+    const {
+      documentId,
+      fileUrl,
+      userId,
       filename,
       pages,
       totalCost,
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     if (!documentId) {
       throw new Error('Missing required parameter: documentId');
     }
-    
+
     // userId é obrigatório, mas se não fornecido, buscar do documento
     let finalUserId = userId;
     if (!finalUserId) {
@@ -61,22 +61,22 @@ Deno.serve(async (req) => {
         .select('user_id')
         .eq('id', documentId)
         .single();
-      
+
       if (docError || !doc) {
         throw new Error('Missing required parameter: userId (and could not fetch from document)');
       }
       finalUserId = doc.user_id;
     }
-    
+
     // fileUrl é obrigatório apenas se não for para marcar upload como falhado
     if (!markUploadFailed && !fileUrl) {
       throw new Error('Missing required parameter: fileUrl (unless markUploadFailed is true)');
     }
 
-    console.log('DEBUG: Atualizando documento:', { 
-      documentId, 
-      fileUrl, 
-      userId, 
+    console.log('DEBUG: Atualizando documento:', {
+      documentId,
+      fileUrl,
+      userId,
       filename,
       pages,
       totalCost,
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
         .select('upload_retry_count')
         .eq('id', documentId)
         .single();
-      
+
       updateData.upload_failed_at = new Date().toISOString();
       // Manter o retry_count atual ou 0 se não existir
       if (currentDoc?.upload_retry_count !== undefined) {
@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
         .select('upload_retry_count')
         .eq('id', documentId)
         .single();
-      
+
       updateData.upload_failed_at = null;
       updateData.upload_retry_count = (currentDoc?.upload_retry_count || 0) + 1;
     }
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
     if (clientName) updateData.client_name = clientName;
     if (sourceCurrency) updateData.source_currency = sourceCurrency;
     if (targetCurrency) updateData.target_currency = targetCurrency;
-    
+
     // ✅ SEMPRE definir status como pending se fileUrl fornecido
     if (fileUrl) {
       updateData.status = 'pending';
@@ -187,8 +187,8 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         document: updateResult
       }),
       {
@@ -199,10 +199,10 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('ERROR:', error);
-    
+
     return new Response(
-      JSON.stringify({ 
-        error: error.message || 'Erro interno do servidor' 
+      JSON.stringify({
+        error: error.message || 'Erro interno do servidor'
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

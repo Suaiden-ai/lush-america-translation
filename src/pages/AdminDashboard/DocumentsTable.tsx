@@ -61,13 +61,13 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       // Aplicar filtros de data se fornecidos
       let startDateParam = null;
       let endDateParam = null;
-      
+
       if (internalDateRange?.startDate) {
         const startDate = new Date(internalDateRange.startDate);
         startDate.setHours(0, 0, 0, 0);
         startDateParam = startDate.toISOString();
       }
-      
+
       if (internalDateRange?.endDate) {
         const endDate = new Date(internalDateRange.endDate);
         endDate.setHours(23, 59, 59, 999);
@@ -108,14 +108,14 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       const documentIds = documents?.map(doc => doc.id) || [];
       let documentsToBeVerified: any[] = [];
       let translatedDocuments: any[] = [];
-      
+
       if (documentIds.length > 0) {
         // Buscar dados de documents_to_be_verified
         const { data: dtbvData, error: dtbvError } = await supabase
           .from('documents_to_be_verified')
           .select('original_document_id, translation_status')
           .in('original_document_id', documentIds);
-          
+
         if (dtbvError) {
           console.error('Error loading documents_to_be_verified:', dtbvError);
         } else {
@@ -128,18 +128,18 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           .from('documents_to_be_verified')
           .select('id, original_document_id')
           .in('original_document_id', documentIds);
-          
+
         if (dtbvFullError) {
           console.error('Error loading full documents_to_be_verified:', dtbvFullError);
         } else if (dtbvFullData && dtbvFullData.length > 0) {
           // Agora buscar translated_documents usando os IDs de documents_to_be_verified
           const dtbvIds = dtbvFullData.map(d => d.id);
-          
+
           const { data: tdData, error: tdError } = await supabase
             .from('translated_documents')
             .select('original_document_id, authenticated_by_name, authenticated_by_email, authentication_date, is_authenticated, status')
             .in('original_document_id', dtbvIds);
-            
+
           if (tdError) {
             console.error('Error loading translated_documents:', tdError);
           } else {
@@ -183,24 +183,24 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         const paymentDate = doc.payments?.[0]?.payment_date || null;
         const paymentAmountTotal = Array.isArray((doc as any).payments)
           ? (doc as any).payments.reduce((sum: number, p: any) => {
-              const st = (p?.status || '').toLowerCase();
-              if (['cancelled','refunded','pending'].includes(st)) return sum;
-              return sum + (typeof p?.amount === 'number' ? p.amount : 0);
-            }, 0)
+            const st = (p?.status || '').toLowerCase();
+            if (['cancelled', 'refunded', 'pending'].includes(st)) return sum;
+            return sum + (typeof p?.amount === 'number' ? p.amount : 0);
+          }, 0)
           : null;
-        
+
         // ✅ CORREÇÃO: Usar translation_status da tabela documents_to_be_verified
         let translationStatus = translationStatusMap.get(doc.id) || doc.status || 'pending';
-        
+
         // ✅ BUSCAR DADOS DE AUTENTICAÇÃO DE translated_documents
         // Buscar diretamente usando o ID do documento (já mapeado corretamente)
         const authData = authenticationMap.get(doc.id);
-        
+
         // Se o documento foi autenticado, deve mostrar "completed" independentemente do translation_status
         if (authData && (authData.is_authenticated === true || authData.status === 'completed')) {
           translationStatus = 'completed';
         }
-        
+
         return {
           ...doc,
           user_name: doc.profiles?.name || null,
@@ -218,14 +218,31 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
           authenticated_by_email: authData?.authenticated_by_email || doc.authenticated_by_email || null,
           authentication_date: authData?.authentication_date || doc.authentication_date || null,
           is_authenticated: authData?.is_authenticated ?? doc.is_authenticated ?? false,
-          display_name: doc.profiles?.name || null,
+          display_name: (doc.client_name && doc.client_name !== 'Cliente Padrão' && doc.client_name !== doc.profiles?.name)
+            ? `${doc.client_name} (${doc.profiles?.name || 'N/A'})`
+            : (doc.profiles?.name || doc.client_name || 'N/A'),
           document_type: 'regular' as const,
           client_name: doc.client_name || null,
         };
       }) || [];
 
       console.log('🔍 DEBUG - Processed documents:', processedDocuments.length);
-      setExtendedDocuments(processedDocuments);
+
+      // ✅ FILTRAR DOCUMENTOS QUE NÃO DEVEM CONTAR NO TOTAL 
+      // Regra Unificada: Excluir rascunhos e uso interno.
+      // Refunded/Cancelled DEVEM aparecer conforme solicitado ("ficar ali como -1").
+      const finalDocs = processedDocuments.filter(doc => {
+        const docStatus = (doc.status || '').toLowerCase();
+        if (docStatus === 'draft') return false;
+
+        const transStatus = (doc.translation_status || '').toLowerCase();
+        if (transStatus === 'draft') return false;
+
+        return true;
+      });
+
+      console.log('🔍 DEBUG - Final documents for table:', finalDocs.length);
+      setExtendedDocuments(finalDocs);
     } catch (error) {
       console.error('Error loading extended documents:', error);
     } finally {
@@ -267,14 +284,14 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       let matchesRole = true;
       if (roleFilter !== 'all') {
         const userRole = doc.user_role || 'user'; // Default para 'user' se não tiver role
-        
+
         // Debug log detalhado para todos os documentos quando filtro user está ativo
         if (roleFilter === 'user') {
           console.log(`[Role Filter Debug - USER] Document: ${doc.filename}, user_role: ${userRole}, matchesRole: ${userRole === 'user'}`);
           console.log(`  - user_name: ${doc.user_name}`);
           console.log(`  - user_email: ${doc.user_email}`);
         }
-        
+
         if (roleFilter === 'authenticator') {
           matchesRole = userRole === 'authenticator';
         } else if (roleFilter === 'user') {
@@ -298,12 +315,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
       return matchesSearch && matchesStatus && matchesRole && matchesPaymentStatus && matchesPaymentMethod;
     });
-    
+
     // Debug log para mostrar quantos documentos foram filtrados
     if (roleFilter === 'user') {
       console.log(`[Role Filter Debug] Total documents: ${extendedDocuments.length}, Filtered for 'user': ${filtered.length}`);
     }
-    
+
     return filtered;
   }, [extendedDocuments, searchTerm, statusFilter, roleFilter, paymentStatusFilter, paymentMethodFilter]);
 
@@ -327,16 +344,15 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         if (isAuthenticator) {
           return sum;
         }
-        // Considerar apenas pagamentos com status 'completed'
-        const payment = (doc.payment_status || '').toLowerCase();
-        if (payment === 'completed') {
-          // IMPORTANTE: Usar SEMPRE payment_amount (valor LÍQUIDO - sem taxa Stripe)
-          // O site deve mostrar o valor líquido recebido, não o valor bruto pago pelo cliente
-          // payment_amount = valor líquido (ex: $50.00)
-          // total_cost = valor bruto (ex: $52.34, inclui taxa Stripe de $2.34)
-          const amount = typeof doc.payment_amount === 'number' && doc.payment_amount > 0
-            ? doc.payment_amount
-            : (doc.total_cost || 0); // Fallback apenas se payment_amount não existir
+        // Considerar apenas pagamentos vinculados que foram 'completed'
+        // IMPORTANTE: Usar payment_amount_total (soma de todos os pagamentos LÍQUIDOS da tabela payments)
+        // Isso resolve a diferença quando um documento tem múltiplos pagamentos
+        const paymentStatus = (doc.payment_status || '').toLowerCase();
+
+        if (paymentStatus === 'completed') {
+          const amount = (typeof (doc as any).payment_amount_total === 'number' && (doc as any).payment_amount_total > 0)
+            ? (doc as any).payment_amount_total
+            : (doc.total_cost || 0);
           userSum += amount;
           return sum + amount;
         }
@@ -349,14 +365,14 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         const paymentStatus = (d.payment_status || '').toLowerCase();
         return paymentStatus === 'completed' && (d.user_role || 'user') !== 'authenticator';
       });
-      
+
       console.log('💰 [Site Total] Análise do cálculo:');
       console.log(`  - Total documentos filtrados: ${filteredDocuments.length}`);
       console.log(`  - Documentos refunded (excluídos): ${refundedCount}`);
       console.log(`  - Documentos completed incluídos: ${completedDocs.length}`);
       console.log(`  - Total calculado (valor LÍQUIDO): $${total.toFixed(2)}`);
       console.log(`  - Soma dos usuários (valor LÍQUIDO): $${userSum.toFixed(2)}`);
-      
+
       // Mostrar amostra de valores para verificar se está usando payment_amount
       const samples = completedDocs.slice(0, 5).map(d => {
         const paymentAmount = d.payment_amount || 0;
@@ -370,7 +386,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         };
       });
       console.log('💰 [Site Total] Amostra de valores (primeiros 5):', samples);
-    } catch {}
+    } catch { }
     return total;
   }, [filteredDocuments]);
 
@@ -436,7 +452,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         if (paymentStatus === 'refunded') {
           return false; // Excluir documentos reembolsados
         }
-        
+
         // 2. Filtrar apenas documentos com pagamento completed (excluir failed, pending, etc)
         if (paymentStatus !== 'completed') {
           return false; // Excluir se não for 'completed'
@@ -447,7 +463,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         const userEmail = (doc.user_email || '').toLowerCase();
         const userName = (doc.user_name || '').toLowerCase();
 
-        const isLuizUser = 
+        const isLuizUser =
           userEmail.includes('luizeduardomcsantos') ||
           userEmail.includes('luizeduardogouveia7') ||
           userName.includes('luiz eduardo');
@@ -490,14 +506,14 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         const periodInfo = startDateStr && endDateStr
           ? `Período: ${startDateStr} até ${endDateStr}`
           : startDateStr
-          ? `A partir de: ${startDateStr}`
-          : `Até: ${endDateStr}`;
-        
+            ? `A partir de: ${startDateStr}`
+            : `Até: ${endDateStr}`;
+
         worksheet.insertRow(1, [periodInfo]);
         const infoRow = worksheet.getRow(1);
         infoRow.font = { bold: true, size: 12, color: { argb: 'FF4472C4' } };
         infoRow.height = 20;
-        
+
         // Adicionar linha em branco
         worksheet.insertRow(2, []);
       }
@@ -530,7 +546,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       // Estilizar cabeçalhos (ajustar número da linha se tiver informações de período)
       const headerRowNumber = hasDateFilter ? 3 : 1;
       const headerRow = worksheet.getRow(headerRowNumber);
-      
+
       // Garantir que os cabeçalhos estejam explicitamente definidos
       const headers = [
         'Document Name', 'User Name', 'User Email', 'Translation Status', 'Pages',
@@ -542,7 +558,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         const cell = headerRow.getCell(index + 1);
         cell.value = header;
       });
-      
+
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
       headerRow.fill = {
         type: 'pattern',
@@ -650,7 +666,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         // Configurar alinhamento e wrap text para todas as células
         row.eachCell((cell) => {
           const columnKey = cell.column?.key || '';
-          
+
           // Alinhamento específico por tipo de coluna
           if (columnKey === 'pages') {
             cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
@@ -675,7 +691,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       // Função para calcular largura automática das colunas baseada no conteúdo
       const calculateColumnWidth = (column: ExcelJS.Column, minWidth: number = 10, maxWidth: number = 60) => {
         let maxLength = 0;
-        
+
         // Verificar largura do cabeçalho (ajustar se tiver informações de período)
         const headerRowNumber = hasDateFilter ? 3 : 1;
         const headerCell = worksheet.getRow(headerRowNumber).getCell(column.number);
@@ -688,12 +704,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         worksheet.eachRow((row, rowNumber) => {
           const dataStartRow = hasDateFilter ? 4 : 2; // Ajustar para pular período, linha em branco e cabeçalho
           if (rowNumber < dataStartRow) return;
-          
+
           try {
             const cell = row.getCell(column.number);
             if (cell && cell.value !== null && cell.value !== undefined) {
               let cellLength = 0;
-              
+
               // Calcular comprimento baseado no tipo de dado
               if (typeof cell.value === 'number') {
                 // Para números, considerar o formato (ex: $1,234.56)
@@ -713,7 +729,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                 // Para strings, usar o comprimento direto
                 cellLength = String(cell.value).length;
               }
-              
+
               maxLength = Math.max(maxLength, cellLength);
             }
           } catch (error) {
@@ -861,17 +877,17 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         <div className="space-y-3">
           {/* Primeira linha: Search e Date Range */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
-          {/* Search */}
+            {/* Search */}
             <div className="sm:col-span-2 lg:col-span-1">
-            <input
-              type="text"
-              placeholder={t('admin.documents.table.searchPlaceholder')}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-              aria-label="Search documents"
-            />
-          </div>
+              <input
+                type="text"
+                placeholder={t('admin.documents.table.searchPlaceholder')}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                aria-label="Search documents"
+              />
+            </div>
 
             {/* Google Style Date Range Filter */}
             <GoogleStyleDatePicker
@@ -888,38 +904,38 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
           {/* Segunda linha: Filtros de Status, Role, Payment Status e Payment Method */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
-          {/* Status Filter */}
-          <div className="flex items-center space-x-2">
-            <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-              aria-label="Filter by document status"
-            >
-              <option value="all">{t('admin.documents.table.filters.allStatus')}</option>
-              <option value="completed">{t('admin.documents.table.status.completed')}</option>
-              <option value="pending">{t('admin.documents.table.status.pending')}</option>
-              <option value="processing">{t('admin.documents.table.status.processing')}</option>
-              <option value="failed">{t('admin.documents.table.status.failed')}</option>
-              <option value="draft">{t('admin.documents.table.status.draft')}</option>
-            </select>
-          </div>
+            {/* Status Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                aria-label="Filter by document status"
+              >
+                <option value="all">{t('admin.documents.table.filters.allStatus')}</option>
+                <option value="completed">{t('admin.documents.table.status.completed')}</option>
+                <option value="pending">{t('admin.documents.table.status.pending')}</option>
+                <option value="processing">{t('admin.documents.table.status.processing')}</option>
+                <option value="failed">{t('admin.documents.table.status.failed')}</option>
+                <option value="draft">{t('admin.documents.table.status.draft')}</option>
+              </select>
+            </div>
 
-          {/* Role Filter */}
-          <div className="flex items-center space-x-2">
-            <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-              aria-label="Filter by user role"
-            >
-              <option value="all">{t('admin.documents.table.filters.allUserRoles')}</option>
-              <option value="user">{t('admin.documents.table.filters.user')}</option>
-              <option value="authenticator">{t('admin.documents.table.filters.authenticator')}</option>
-            </select>
-          </div>
+            {/* Role Filter */}
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden="true" />
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                aria-label="Filter by user role"
+              >
+                <option value="all">{t('admin.documents.table.filters.allUserRoles')}</option>
+                <option value="user">{t('admin.documents.table.filters.user')}</option>
+                <option value="authenticator">{t('admin.documents.table.filters.authenticator')}</option>
+              </select>
+            </div>
 
             {/* Payment Status Filter */}
             <div className="flex items-center space-x-2">
@@ -997,11 +1013,11 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                       {doc.payment_method ? (
                         doc.payment_method === 'card' ? '💳 Card' :
                           doc.payment_method === 'stripe' ? '💳 Stripe' :
-                          doc.payment_method === 'bank_transfer' ? '🏦 Bank' :
-                            doc.payment_method === 'paypal' ? '📱 PayPal' :
-                              doc.payment_method === 'zelle' ? '💰 Zelle' :
-                                doc.payment_method === 'upload' ? '📋 Upload' :
-                                  doc.payment_method
+                            doc.payment_method === 'bank_transfer' ? '🏦 Bank' :
+                              doc.payment_method === 'paypal' ? '📱 PayPal' :
+                                doc.payment_method === 'zelle' ? '💰 Zelle' :
+                                  doc.payment_method === 'upload' ? '📋 Upload' :
+                                    doc.payment_method
                       ) : 'N/A'}
                     </p>
                   </div>
@@ -1076,7 +1092,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                         </div>
                       </div>
                     </td>
-                    
+
                     {/* Document */}
                     <td className="px-3 py-3 text-xs">
                       <div className="flex items-center">
@@ -1091,43 +1107,43 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                         </div>
                       </div>
                     </td>
-                    
+
                     {/* Amount */}
                     <td className="px-3 py-3 text-xs font-medium text-gray-900">
                       ${doc.total_cost?.toFixed(2) || '0.00'}
                     </td>
-                    
+
                     {/* Payment Method */}
                     <td className="px-3 py-3 text-xs">
                       {doc.payment_method ? (
                         <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
                           {doc.payment_method === 'card' ? '💳 Card' :
                             doc.payment_method === 'stripe' ? '💳 Stripe' :
-                            doc.payment_method === 'bank_transfer' ? '🏦 Bank' :
-                            doc.payment_method === 'paypal' ? '📱 PayPal' :
-                            doc.payment_method === 'zelle' ? '💰 Zelle' :
-                            doc.payment_method === 'upload' ? '📋 Upload' :
-                              doc.payment_method}
+                              doc.payment_method === 'bank_transfer' ? '🏦 Bank' :
+                                doc.payment_method === 'paypal' ? '📱 PayPal' :
+                                  doc.payment_method === 'zelle' ? '💰 Zelle' :
+                                    doc.payment_method === 'upload' ? '📋 Upload' :
+                                      doc.payment_method}
                         </span>
                       ) : (
                         <span className="text-gray-400">N/A</span>
                       )}
                     </td>
-                    
+
                     {/* Payment Status */}
                     <td className="px-3 py-3 text-xs">
                       <span className={`inline-flex px-2 py-1 font-medium rounded-full ${getPaymentStatusColor(doc.payment_status)}`}>
                         {getPaymentStatusText(doc.payment_status)}
                       </span>
                     </td>
-                    
+
                     {/* TRANSLATIONS */}
                     <td className="px-3 py-3 text-xs">
                       <span className={`inline-flex px-2 py-1 font-semibold rounded-full ${getStatusColor(doc.translation_status || 'pending')}`}>
                         {doc.translation_status || 'N/A'}
                       </span>
                     </td>
-                    
+
                     {/* AUTHENTICATOR */}
                     <td className="px-3 py-3 text-xs">
                       <div className="truncate">
@@ -1139,12 +1155,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                         </div>
                       </div>
                     </td>
-                    
+
                     {/* Date */}
                     <td className="px-3 py-3 text-xs text-gray-500">
                       {formatDate(doc.created_at || '')}
                     </td>
-                    
+
                     {/* Details */}
                     <td className="px-3 py-3 text-xs text-right">
                       <button
