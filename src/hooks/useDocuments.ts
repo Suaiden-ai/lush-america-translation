@@ -303,8 +303,12 @@ export function useTranslatedDocuments(userId?: string) {
 
       // Para cada documento da tabela base (documents)
       for (const baseDoc of baseDocs || []) {
-        // Verificar se existe na tabela documents_to_be_verified pelo filename
-        const verifiedDoc = verifiedDocs?.find(v => v.filename === baseDoc.filename);
+        // Verificar se existe na tabela documents_to_be_verified pelo ID original ou pelo filename
+        const verifiedDoc = verifiedDocs?.find(v =>
+          v.original_document_id === baseDoc.id ||
+          v.filename === baseDoc.filename ||
+          v.filename.endsWith('/' + baseDoc.filename)
+        );
 
         if (verifiedDoc) {
           // Se existe na documents_to_be_verified, buscar na translated_documents usando o ID da documents_to_be_verified
@@ -340,8 +344,12 @@ export function useTranslatedDocuments(userId?: string) {
 
       // Adicionar documentos que existem apenas na documents_to_be_verified (sem correspondência na tabela base)
       const baseFilenames = baseDocs?.map(doc => doc.filename) || [];
+      const baseIds = baseDocs?.map(doc => doc.id) || [];
+
       const orphanVerifiedDocs = verifiedDocs?.filter(verifiedDoc =>
-        !baseFilenames.includes(verifiedDoc.filename)
+        !baseIds.includes(verifiedDoc.original_document_id || '') &&
+        !baseFilenames.includes(verifiedDoc.filename) &&
+        !baseFilenames.some(fn => verifiedDoc.filename.endsWith('/' + fn))
       ) || [];
 
       for (const orphanDoc of orphanVerifiedDocs) {
