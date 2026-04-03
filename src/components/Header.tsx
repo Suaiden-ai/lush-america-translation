@@ -36,8 +36,13 @@ export function Header({ user, onLogout, currentPage, onMobileMenuOpen }: Header
                   <span className="text-tfe-blue-950">LUSH</span>
                   <span className="text-tfe-red-950"> AMERICA</span>
                 </h3>
-                {/* Desktop/Tablet: full brand name */}
-                <h3 className="hidden sm:block text-base lg:text-xl font-bold truncate max-w-[200px] lg:max-w-none">
+                {/* Tablet (sm→lg): abbreviated to avoid nav overlap */}
+                <h3 className="hidden sm:block lg:hidden text-base font-bold whitespace-nowrap">
+                  <span className="text-tfe-blue-950">LUSH</span>
+                  <span className="text-tfe-red-950"> AMERICA</span>
+                </h3>
+                {/* Desktop (xl+): full brand name */}
+                <h3 className="hidden xl:block text-xl font-bold whitespace-nowrap">
                   <span className="text-tfe-blue-950">LUSH</span>
                   <span className="text-tfe-red-950"> AMERICA TRANSLATIONS</span>
                 </h3>
