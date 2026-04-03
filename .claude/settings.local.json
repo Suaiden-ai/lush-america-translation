@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(node -e \"const icons = require\\('@phosphor-icons/react'\\); ['Medal', 'Certificate', 'ShieldCheck'].forEach\\(i => console.log\\(i, !!icons[i]\\)\\)\")",
+      "Bash(node -e \"const icons = require\\('@phosphor-icons/react'\\); ['Seal', 'SealCheck', 'Award', 'Trophy', 'Ribbon', 'Stamp', 'Handshake', 'Verified', 'Certificate', 'Certifiate', 'Badge', 'PoliceBadge', 'SmileyMeh', 'Graduation', 'GraduationCap'].forEach\\(i => console.log\\(i, !!icons[i]\\)\\)\")",
+      "Bash(node -e \"const icons = require\\('@phosphor-icons/react'\\); Object.keys\\(icons\\).filter\\(k => !k.startsWith\\('__'\\) && typeof icons[k] === 'function'\\).filter\\(k => /seal|award|medal|badge|stamp|ribbon|trophy|certif|verif|star|check|shield/i.test\\(k\\)\\).slice\\(0, 30\\).forEach\\(k => console.log\\(k\\)\\)\")",
+      "Bash(node -e \"const icons = require\\('@phosphor-icons/react'\\); const keys = Object.keys\\(icons\\).filter\\(k => typeof icons[k] === 'function'\\); console.log\\(keys.slice\\(0, 30\\).join\\('\\\\n'\\)\\); console.log\\('total:', keys.length\\)\")",
+      "Bash(node -e \"const icons = require\\('@phosphor-icons/react'\\); console.log\\(typeof icons, Object.keys\\(icons\\).slice\\(0,20\\)\\)\")",
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:www.atanet.org)"
+    ]
+  }
+}

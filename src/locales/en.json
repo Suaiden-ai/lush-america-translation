@@ -1139,5 +1139,28 @@
       "title": "Documents",
       "subtitle": "Manage document authentication workflow"
     }
+  },
+  "ata": {
+    "heroBadge": "Translated & Certified by ATA-Certified Professionals",
+    "title": "Translated & Certified by",
+    "titleHighlight": "ATA-Certified Professionals",
+    "description": "All our translations are handled by professionals certified by the American Translators Association (ATA) — the gold standard for translation quality in the United States.",
+    "subDescription": "The ATA Certification Examination is a rigorous 3-hour test with a pass rate below 20%. Our certified translators represent the highest level of linguistic and professional competence.",
+    "card1": {
+      "title": "Rigorous Certification",
+      "description": "ATA exam has a pass rate below 20% — only the most qualified translators earn this credential."
+    },
+    "card2": {
+      "title": "Recognized Nationwide",
+      "description": "ATA-certified translations are recognized and accepted by USCIS, courts, universities, and government agencies across the US."
+    },
+    "card3": {
+      "title": "Founded in 1959",
+      "description": "The ATA is the largest and most respected professional association for translators in the United States, with ~8,500 members in 100+ countries."
+    },
+    "trustedBadge": {
+      "title": "Trusted & Certified",
+      "accepted": "100% Accepted by USCIS"
+    }
   }
 }
