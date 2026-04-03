@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, CurrencyDollar, Clock, Shield, CheckCircle, ArrowRight, Star, Globe, CaretDown, CaretUp, Envelope, Download, Upload, Eye, Lock } from '@phosphor-icons/react';
+import { FileText, CurrencyDollar, Clock, Shield, CheckCircle, ArrowRight, Star, Globe, CaretDown, CaretUp, Envelope, Download, Upload, Eye, Lock, Medal, Certificate, SealCheck } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import { Footer } from '../components/Footer';
 import { Chatbot } from '../components/Chatbot';
@@ -142,6 +142,21 @@ export function Translations() {
               ))}
             </div>
 
+            {/* ATA Certification Badge */}
+            <div className="flex justify-center mb-8">
+              <div className="bg-white/15 backdrop-blur-sm border border-white/30 rounded-xl px-6 py-3 flex items-center gap-3">
+                <img
+                  src="/ata_logo.png"
+                  alt="American Translators Association"
+                  className="h-6 object-contain brightness-0 invert"
+                />
+                <span className="text-white/40">|</span>
+                <span className="text-white font-semibold text-sm md:text-base">
+                  {t('ata.heroBadge', 'Translated & Certified by ATA-Certified Professionals')}
+                </span>
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
                 onClick={() => navigate('/register')}
@@ -274,6 +289,85 @@ export function Translations() {
               <p className="text-slate-600">
                 {t('features.uscisCompliant.description', 'All translations meet USCIS requirements and are accepted by immigration offices, embassies, and consulates worldwide.')}
               </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ATA Certification Section */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            {/* Left: Main content */}
+            <div>
+              <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-full px-4 py-2 mb-6">
+                <Medal className="w-5 h-5 text-tfe-blue-950" weight="fill" />
+                <span className="text-tfe-blue-950 font-semibold text-sm">American Translators Association</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+                {t('ata.title', 'Translated & Certified by')}
+                <span className="text-tfe-blue-950"> {t('ata.titleHighlight', 'ATA-Certified Professionals')}</span>
+              </h2>
+              <p className="text-lg text-gray-600 mb-6">
+                {t('ata.description', 'All our translations are handled by professionals certified by the American Translators Association (ATA) — the gold standard for translation quality in the United States.')}
+              </p>
+              {/* Trusted & Certified Badge Card */}
+              <div className="bg-white border-2 border-gray-100 rounded-2xl shadow-lg p-6 max-w-xs">
+                <p className="text-center text-gray-700 font-semibold text-sm mb-5 tracking-wide uppercase">
+                  {t('ata.trustedBadge.title', 'Trusted & Certified')}
+                </p>
+                <div className="flex flex-col items-center gap-5">
+                  <img
+                    src="https://thefutureofenglish.com/USCIS_Signature_Preferred_FC.png"
+                    alt="U.S. Citizenship and Immigration Services"
+                    className="h-16 object-contain"
+                  />
+                  <img
+                    src="/ata_logo.png"
+                    alt="American Translators Association"
+                    className="h-10 object-contain brightness-0"
+                  />
+                </div>
+                <div className="flex items-center justify-center gap-2 mt-5 pt-4 border-t border-gray-100">
+                  <CheckCircle className="w-5 h-5 text-green-500" weight="fill" />
+                  <span className="text-gray-700 text-sm font-medium">
+                    {t('ata.trustedBadge.accepted', '100% Accepted by USCIS')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: 3 info cards */}
+            <div className="grid grid-cols-1 gap-4">
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 flex items-start gap-4">
+                <div className="w-12 h-12 bg-tfe-blue-950 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Certificate className="w-6 h-6 text-white" weight="fill" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-1">{t('ata.card1.title', 'Rigorous Certification')}</h4>
+                  <p className="text-gray-600 text-sm">{t('ata.card1.description', 'ATA exam has a pass rate below 20% — only the most qualified translators earn this credential.')}</p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 flex items-start gap-4">
+                <div className="w-12 h-12 bg-tfe-red-950 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <SealCheck className="w-6 h-6 text-white" weight="fill" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-1">{t('ata.card2.title', 'Recognized Nationwide')}</h4>
+                  <p className="text-gray-600 text-sm">{t('ata.card2.description', 'ATA-certified translations are recognized and accepted by USCIS, courts, universities, and government agencies across the US.')}</p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 flex items-start gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-slate-700 to-tfe-blue-950 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Star className="w-6 h-6 text-white" weight="fill" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-1">{t('ata.card3.title', 'Founded in 1959')}</h4>
+                  <p className="text-gray-600 text-sm">{t('ata.card3.description', 'The ATA is the largest and most respected professional association for translators in the United States, with ~8,500 members in 100+ countries.')}</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

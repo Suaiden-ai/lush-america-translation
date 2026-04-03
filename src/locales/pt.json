@@ -1139,5 +1139,28 @@
       "title": "Documents",
       "subtitle": "Manage document authentication workflow"
     }
+  },
+  "ata": {
+    "heroBadge": "Traduzido e Certificado por Profissionais com Certificação ATA",
+    "title": "Traduzido e Certificado por",
+    "titleHighlight": "Profissionais Certificados pela ATA",
+    "description": "Todas as nossas traduções são realizadas por profissionais certificados pela American Translators Association (ATA) — o padrão ouro de qualidade em tradução nos Estados Unidos.",
+    "subDescription": "O exame de certificação da ATA é um teste rigoroso de 3 horas com taxa de aprovação abaixo de 20%. Nossos tradutores certificados representam o mais alto nível de competência linguística e profissional.",
+    "card1": {
+      "title": "Certificação Rigorosa",
+      "description": "O exame da ATA tem taxa de aprovação abaixo de 20% — apenas os tradutores mais qualificados obtêm essa credencial."
+    },
+    "card2": {
+      "title": "Reconhecido em Todo o País",
+      "description": "Traduções com certificação ATA são reconhecidas e aceitas pelo USCIS, tribunais, universidades e agências governamentais nos EUA."
+    },
+    "card3": {
+      "title": "Fundada em 1959",
+      "description": "A ATA é a maior e mais respeitada associação profissional de tradutores dos Estados Unidos, com ~8.500 membros em mais de 100 países."
+    },
+    "trustedBadge": {
+      "title": "Confiável e Certificado",
+      "accepted": "100% Aceito pelo USCIS"
+    }
   }
 }
