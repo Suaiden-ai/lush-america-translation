@@ -8,7 +8,9 @@
       "Bash(node -e \"const icons = require\\('@phosphor-icons/react'\\); const keys = Object.keys\\(icons\\).filter\\(k => typeof icons[k] === 'function'\\); console.log\\(keys.slice\\(0, 30\\).join\\('\\\\n'\\)\\); console.log\\('total:', keys.length\\)\")",
       "Bash(node -e \"const icons = require\\('@phosphor-icons/react'\\); console.log\\(typeof icons, Object.keys\\(icons\\).slice\\(0,20\\)\\)\")",
       "Bash(npx tsc:*)",
-      "WebFetch(domain:www.atanet.org)"
+      "WebFetch(domain:www.atanet.org)",
+      "Bash(xargs grep:*)",
+      "Bash(npx supabase:*)"
     ]
   }
 }

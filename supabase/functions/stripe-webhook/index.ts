@@ -305,16 +305,22 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       fileId,
       userId,
       filename,
+      originalFilename,
       pages,
       isCertified,
       isNotarized,
       isBankStatement,
+      isMobile,
       totalPrice,
       base_amount,
       gross_amount,
       fee_amount,
       markup_enabled,
-      documentId
+      documentId,
+      originalLanguage,
+      targetLanguage,
+      sourceCurrency,
+      targetCurrency
     } = session.metadata;
 
     console.log('🔍 [WEBHOOK DEBUG] Metadados da sessão:', {
@@ -419,6 +425,77 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       }
     } catch (logError) {
       console.error('Error logging document status change:', logError);
+    }
+
+    // Se o arquivo já está no Storage (fluxo pre-upload desktop/mobile), atualizar
+    // file_url e disparar n8n aqui no servidor — independente do frontend estar aberto.
+    console.log('🔍 [PRE-UPLOAD CHECK] fileId recebido:', fileId, '| isMobile:', isMobile);
+    const isPreUploaded = fileId && fileId.includes('/') && !fileId.startsWith('file_');
+    console.log('🔍 [PRE-UPLOAD CHECK] isPreUploaded:', isPreUploaded);
+    if (isPreUploaded) {
+      try {
+        const supabaseProjectUrl = Deno.env.get('PROJECT_URL');
+        const serviceKey = Deno.env.get('SERVICE_ROLE_KEY');
+        const publicUrl = `${supabaseProjectUrl}/storage/v1/object/public/documents/${fileId}`;
+
+        // Atualizar documento com file_url
+        const { error: fileUrlError } = await supabase
+          .from('documents')
+          .update({
+            file_url: publicUrl,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', documentId);
+
+        if (fileUrlError) {
+          console.error('ERROR: Falha ao atualizar file_url no documento:', fileUrlError);
+        } else {
+          console.log('✅ file_url atualizado no documento via webhook:', publicUrl);
+
+          // Disparar send-translation-webhook para n8n
+          const n8nPayload = {
+            filename: filename,
+            url: publicUrl,
+            mimetype: 'application/pdf',
+            size: 0,
+            user_id: userId,
+            pages: parseInt(pages),
+            document_type: isCertified === 'true' ? 'Certificado' : 'Certified',
+            total_cost: totalPrice || gross_amount,
+            source_language: originalLanguage || 'Portuguese',
+            target_language: targetLanguage || 'English',
+            is_bank_statement: isBankStatement === 'true',
+            source_currency: sourceCurrency || null,
+            target_currency: targetCurrency || null,
+            document_id: documentId,
+            original_document_id: documentId,
+            original_filename: originalFilename || filename,
+            isPdf: true,
+            fileExtension: 'pdf',
+            tableName: 'profiles',
+            schema: 'public'
+          };
+
+          const n8nResponse = await fetch(`${supabaseProjectUrl}/functions/v1/send-translation-webhook`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${serviceKey}`
+            },
+            body: JSON.stringify(n8nPayload)
+          });
+
+          if (n8nResponse.ok) {
+            console.log('✅ send-translation-webhook disparado com sucesso via stripe webhook');
+          } else {
+            const errText = await n8nResponse.text();
+            console.error('ERROR: Falha ao chamar send-translation-webhook:', n8nResponse.status, errText);
+          }
+        }
+      } catch (preUploadError) {
+        console.error('ERROR: Erro ao processar arquivo pre-uploaded:', preUploadError);
+        // Não falhar o webhook — pagamento já foi confirmado
+      }
     }
 
     // Atualizar o status da sessão na tabela stripe_sessions
@@ -771,4 +848,4 @@ async function handlePaymentFailed(paymentIntent: any, supabase: any) {
   } catch (error) {
     console.error('ERROR: Erro ao processar payment failed:', error);
   }
-} 
+}

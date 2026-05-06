@@ -395,19 +395,37 @@ export function DocumentUploadModal({ isOpen, onClose, userId, userEmail, curren
           await handleDirectPayment('', payload);
         }
       } else {
-        // Desktop: Usar IndexedDB
-        const fileId = await fileStorage.storeFile(selectedFile, {
-          documentType: tipoTrad,
-          certification: true,
-          notarization: tipoTrad === 'Certified',
-          pageCount: pages,
-          isBankStatement: isExtrato,
-          originalLanguage: idiomaRaiz,
-          userId,
-          currentFolderId
-        });
+        // Desktop: Upload direto para Supabase Storage antes do checkout
+        // Garante que o arquivo existe no servidor antes de redirecionar para o Stripe.
+        // Assim, fechar a aba após o pagamento não perde o arquivo.
+        console.log('🔵 [PRE-UPLOAD] Iniciando upload desktop para Storage antes do Stripe...');
+        const fileName = generateUniqueFileName(selectedFile.name);
+        const filePath = `${userId}/${fileName}`;
+        console.log('🔵 [PRE-UPLOAD] filePath:', filePath);
 
-        await handleDirectPayment(fileId);
+        const { error: uploadError } = await supabase.storage
+          .from(STORAGE_BUCKETS.DOCUMENTS)
+          .upload(filePath, selectedFile);
+
+        if (uploadError) throw uploadError;
+
+        const payload = {
+          pages,
+          isCertified: true,
+          isNotarized: tipoTrad === 'Certified',
+          isBankStatement: isExtrato,
+          filePath,
+          userId,
+          userEmail,
+          filename: fileName,
+          originalFilename: selectedFile.name,
+          originalLanguage: idiomaRaiz,
+          targetLanguage: 'English',
+          documentType: tipoTrad === 'Certified' ? 'Certified' : 'Certificado',
+          isMobile: true, // arquivo já está no Storage — mesmo fluxo do mobile
+        };
+
+        await handleDirectPayment('', payload);
       }
 
     } catch (err: any) {

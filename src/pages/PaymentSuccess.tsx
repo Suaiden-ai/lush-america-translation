@@ -447,9 +447,10 @@ export function PaymentSuccess() {
 
       console.log('DEBUG: Documento confirmado no banco:', existingDoc);
 
-      // Verificar se o documento já foi processado (tem file_url e status não é 'pending')
-      if (existingDoc.file_url && existingDoc.status !== 'pending') {
-        console.log('DEBUG: Documento já foi processado, evitando reprocessamento');
+      // Se file_url já existe, o webhook server-side já processou tudo (pre-upload flow).
+      // Não re-processar — apenas mostrar sucesso.
+      if (existingDoc.file_url) {
+        console.log('DEBUG: file_url já existe — processado pelo webhook, evitando reprocessamento');
         setSuccess(true);
         setUploadProgress(100);
         return;

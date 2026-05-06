@@ -239,7 +239,9 @@ export default function UploadDocument() {
         isCertified: true, // Always certified now
         isNotarized: tipoTrad === 'Certified',
         isBankStatement: isExtrato,
-        fileId: fileId || '', // Usar o ID do arquivo no IndexedDB
+        fileId: fileId || '', // Usar o ID do arquivo no IndexedDB (vazio se pre-upload)
+        filePath: customPayload?.filePath || undefined, // Storage path se pre-upload
+        isMobile: customPayload?.isMobile || false, // true se arquivo já está no Storage
         userId: user?.id,
         userEmail: user?.email, // Adicionar email do usuário
         filename: uniqueFileName, // Usar nome único com código aleatório
@@ -623,24 +625,29 @@ export default function UploadDocument() {
           await handleDirectPayment('', payload);
         }
       } else {
-        // Desktop: Salvar arquivo no IndexedDB primeiro
+        // Desktop: Upload direto para Supabase Storage antes do checkout.
+        // Garante que o arquivo existe no servidor antes de redirecionar para o Stripe.
+        // Assim, fechar a aba após o pagamento não perde o arquivo.
         if (!selectedFile || !user) {
           throw new Error('Arquivo ou usuário não encontrado');
         }
-        const fileId = await fileStorage.storeFile(selectedFile, {
-          documentType: 'Certificado',
-          certification: true,
-          notarization: tipoTrad === 'Certified',
-          pageCount: pages,
-          isBankStatement: isExtrato,
-          originalLanguage: idiomaRaiz,
-          targetLanguage: idiomaDestino,
-          userId: user.id,
-          sourceCurrency: isExtrato ? sourceCurrency : null,
-          targetCurrency: isExtrato ? targetCurrency : null
-        });
+        console.log('🔵 [PRE-UPLOAD] Iniciando upload desktop para Storage antes do Stripe...');
+        const fileName = currentFilename || generateUniqueFileName(selectedFile.name);
+        const filePath = `${user.id}/${fileName}`;
+        console.log('🔵 [PRE-UPLOAD] filePath:', filePath);
 
-        await handleDirectPayment(fileId, { documentId: currentDocumentId }, currentFilename || undefined);
+        const { error: uploadError } = await supabase.storage
+          .from(STORAGE_BUCKETS.DOCUMENTS)
+          .upload(filePath, selectedFile);
+
+        if (uploadError) throw uploadError;
+        console.log('🔵 [PRE-UPLOAD] Upload concluído com sucesso:', filePath);
+
+        await handleDirectPayment('', {
+          documentId: currentDocumentId,
+          filePath,
+          isMobile: true // arquivo já está no Storage — mesmo fluxo do mobile
+        }, fileName);
       }
 
     } catch (err: any) {
