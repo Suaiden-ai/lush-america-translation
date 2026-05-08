@@ -216,5 +216,44 @@ export const db = {
       console.error('Error generating view URL:', e);
       return null;
     }
-  }
+  },
+
+  getFolders: async (userId: string) => {
+    const { data, error } = await supabase
+      .from('folders')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  createFolder: async (folderData: { name: string; user_id: string; parent_id?: string; color?: string }) => {
+    const { data, error } = await supabase
+      .from('folders')
+      .insert(folderData)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  updateFolder: async (folderId: string, updates: { name?: string; color?: string; parent_id?: string | null }) => {
+    const { data, error } = await supabase
+      .from('folders')
+      .update(updates)
+      .eq('id', folderId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  deleteFolder: async (folderId: string) => {
+    const { error } = await supabase
+      .from('folders')
+      .delete()
+      .eq('id', folderId);
+    if (error) throw error;
+  },
 };
