@@ -29,6 +29,7 @@ interface ExtendedDocument extends Omit<Document, 'client_name' | 'payment_metho
   client_name?: string | null;
   display_name?: string | null; // Nome formatado para exibição na coluna USER/CLIENT
   user_role?: string | null; // Role do usuário para filtros
+  payment_fee_amount?: number | null;
 }
 
 // Propriedades do componente
@@ -854,15 +855,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
     <div className="bg-white rounded-lg shadow w-full">
       {/* Cabeçalho */}
       <div className="px-6 py-4 border-b border-gray-200">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
-            <h3 className="text-lg font-medium text-gray-900">{t('admin.documents.title')}</h3>
-            <p className="text-sm text-gray-500">
+            <h3 className="text-xl font-semibold text-gray-900">{t('admin.documents.title')}</h3>
+            <p className="text-sm text-gray-500 mt-0.5">
               {t('admin.documents.table.showing', { filtered: filteredDocuments.length, total: extendedDocuments.length })}
-              <span className="mx-2">•</span>
-              <span className="font-medium text-green-600">{t('admin.documents.table.total')}: ${totalAmountFiltered.toFixed(2)}</span>
-              <span className="mx-2">•</span>
-              <span className="text-xs text-gray-500">Total excludes drafts</span>
+              <span className="ml-2 font-semibold text-green-600">Total Value: ${totalAmountFiltered.toFixed(2)}</span>
             </p>
           </div>
           <button
@@ -1052,22 +1050,31 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     User/Client
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Document
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
-                    Payment
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Amount
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
-                    Translation / Authenticator
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Payment Method
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Payment Status
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Translations
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Authenticator
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Details
                   </th>
                 </tr>
@@ -1076,23 +1083,23 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                 {filteredDocuments.map((doc) => (
                   <tr key={doc.id} className="hover:bg-gray-50">
                     {/* USER/CLIENT */}
-                    <td className="px-3 py-3 text-xs">
+                    <td className="px-3 py-3 text-xs align-top">
                       <div>
-                        <div className="font-medium text-gray-900 truncate">
+                        <div className="font-medium text-gray-900 truncate max-w-[180px]" title={doc.display_name || doc.user_name || 'N/A'}>
                           {doc.display_name || doc.user_name || 'N/A'}
                         </div>
-                        <div className="text-gray-500 truncate">
+                        <div className="text-gray-500 truncate max-w-[180px]" title={doc.user_email || 'No email'}>
                           {doc.user_email || 'No email'}
                         </div>
                       </div>
                     </td>
 
                     {/* Document */}
-                    <td className="px-3 py-3 text-xs">
+                    <td className="px-3 py-3 text-xs align-top">
                       <div className="flex items-center">
                         <FileText className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" />
                         <div className="min-w-0">
-                          <div className="font-medium text-gray-900 truncate">
+                          <div className="font-medium text-gray-900 truncate max-w-[220px]" title={doc.filename}>
                             {doc.filename}
                           </div>
                           <div className="text-gray-500">
@@ -1102,44 +1109,53 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                       </div>
                     </td>
 
-                    {/* Payment (amount + method + status) */}
-                    <td className="px-3 py-3 text-xs">
-                      <div className="font-semibold text-gray-900 mb-1">
-                        ${doc.total_cost?.toFixed(2) || '0.00'}
-                      </div>
-                      {doc.payment_method && (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800 mb-1">
-                          {doc.payment_method === 'card' ? '💳 Card' :
-                            doc.payment_method === 'stripe' ? '💳 Stripe' :
-                              doc.payment_method === 'bank_transfer' ? '🏦 Bank' :
-                                doc.payment_method === 'paypal' ? '📱 PayPal' :
-                                  doc.payment_method === 'zelle' ? '💰 Zelle' :
-                                    doc.payment_method === 'upload' ? '📋 Upload' :
-                                      doc.payment_method}
-                        </span>
-                      )}
+                    {/* Amount */}
+                    <td className="px-3 py-3 text-xs font-medium text-gray-900">
                       <div>
-                        <span className={`inline-flex px-2 py-0.5 font-medium rounded-full ${getPaymentStatusColor(doc.payment_status)}`}>
-                          {getPaymentStatusText(doc.payment_status)}
-                        </span>
+                        ${doc.total_cost?.toFixed(2) || '0.00'}
+                        {doc.payment_fee_amount && doc.payment_fee_amount > 0 && (
+                          <span className="block text-xs text-gray-500">Fee: ${doc.payment_fee_amount.toFixed(2)}</span>
+                        )}
                       </div>
                     </td>
 
-                    {/* Translation + Authenticator */}
+                    {/* Payment Method */}
+                    <td className="px-3 py-3 text-xs text-gray-700">
+                      {doc.payment_method ? (
+                        doc.payment_method === 'card' ? 'Card' :
+                        doc.payment_method === 'stripe' ? 'Stripe' :
+                        doc.payment_method === 'bank_transfer' ? 'Bank' :
+                        doc.payment_method === 'paypal' ? 'PayPal' :
+                        doc.payment_method === 'zelle' ? 'Zelle' :
+                        doc.payment_method === 'upload' ? 'Upload' :
+                        doc.payment_method
+                      ) : (
+                        <span className="text-gray-400">N/A</span>
+                      )}
+                    </td>
+
+                    {/* Payment Status */}
+                    <td className="px-3 py-3 text-xs text-gray-700">
+                      {getPaymentStatusText(doc.payment_status)}
+                    </td>
+
+                    {/* Translations */}
+                    <td className="px-3 py-3 text-xs text-gray-700">
+                      {doc.translation_status || 'N/A'}
+                    </td>
+
+                    {/* Authenticator */}
                     <td className="px-3 py-3 text-xs">
-                      <span className={`inline-flex px-2 py-0.5 font-semibold rounded-full ${getStatusColor(doc.translation_status || 'pending')}`}>
-                        {doc.translation_status || 'N/A'}
-                      </span>
-                      <div className="mt-1 truncate">
-                        <div className="font-medium text-gray-900 truncate">
-                          {doc.authenticated_by_name || 'No authenticator'}
-                        </div>
-                        {doc.authenticated_by_email && (
-                          <div className="text-gray-500 truncate">
-                            {doc.authenticated_by_email}
-                          </div>
-                        )}
+                      <div className="font-medium text-gray-900 truncate">
+                        {doc.authenticated_by_name || 'N/A'}
                       </div>
+                      {doc.authenticated_by_email ? (
+                        <div className="text-gray-500 truncate">
+                          {doc.authenticated_by_email}
+                        </div>
+                      ) : (
+                        <div className="text-gray-400">No authenticator</div>
+                      )}
                     </td>
 
                     {/* Date */}
