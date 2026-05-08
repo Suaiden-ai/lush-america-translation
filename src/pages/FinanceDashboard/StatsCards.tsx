@@ -29,7 +29,8 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
             id,
             role
           )
-        `);
+        `)
+        .or('is_internal_use.is.null,is_internal_use.eq.false');
 
       // Aplicar filtros de data se fornecidos
       if (dateRange?.startDate) {
@@ -115,9 +116,13 @@ export function StatsCards({ dateRange }: StatsCardsProps) {
       // IMPORTANTE: Filtrar pagamentos que não tenham um documento válido (não-draft)
       // Para simplificar e garantir precisão, somamos apenas pagamentos vinculados a documentos que restaram no 'allDocs'
       const validDocIds = new Set(allDocs.map(d => d.id));
+      // Apenas docs de usuários regulares (exclui autenticadores, igual ao Admin)
+      const regularDocIds = new Set(
+        allDocs.filter(d => d.profiles?.role !== 'authenticator').map(d => d.id)
+      );
 
       const filteredRegularRevenue = paymentsData?.reduce((sum, payment) => {
-        if (payment.status === 'completed' && payment.document_id && validDocIds.has(payment.document_id)) {
+        if (payment.status === 'completed' && payment.document_id && regularDocIds.has(payment.document_id)) {
           return sum + (payment.amount || 0);
         }
         return sum;

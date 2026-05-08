@@ -10,7 +10,9 @@
       "Bash(npx tsc:*)",
       "WebFetch(domain:www.atanet.org)",
       "Bash(xargs grep:*)",
-      "Bash(npx supabase:*)"
+      "Bash(npx supabase:*)",
+      "Bash(grep -E \"\\\\.sql$\")",
+      "Bash(grep -l \"ALTER TABLE profiles\\\\|ADD COLUMN\" /c/Users/victurib/lush/lush-america-translation/supabase/migrations/*.sql)"
     ]
   }
 }

@@ -103,33 +103,26 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
 
   const fetchTranslatedDocument = async () => {
     if (!document) return;
-    console.log('🔍 Buscando documento traduzido para user_id:', document.user_id);
+    console.log('🔍 Buscando documento traduzido para document.id:', document.id);
     try {
-      // Usar .maybeSingle() em vez de .single() para evitar erro 406 quando há múltiplos ou nenhum resultado
       const { data, error } = await supabase
         .from('translated_documents')
         .select('*')
-        .eq('user_id', document.user_id)
+        .eq('original_document_id', document.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      
-      console.log('✅ Resultado da busca - data:', data);
-      console.log('❌ Resultado da busca - error:', error);
-      
+
       if (!error && data) {
         console.log('🎯 Documento traduzido encontrado:', data);
-        console.log('🔗 URL do arquivo traduzido:', data.translated_file_url);
         setTranslatedDoc(data);
       } else {
-        console.log('❌ Nenhum documento traduzido encontrado para este user_id');
+        console.log('❌ Nenhum documento traduzido encontrado para este document.id');
         setTranslatedDoc(null);
       }
     } catch (err) {
       console.log('💥 Erro na busca:', err);
       setTranslatedDoc(null);
-    } finally {
-      // Loading state removed
     }
   };
 

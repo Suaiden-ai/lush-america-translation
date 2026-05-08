@@ -258,6 +258,25 @@ async function handleCheckoutSessionCompleted(session: any, supabase: any) {
       return;
     }
 
+    console.log('✅ [WEBHOOK DEBUG] Pagamento confirmado. Verificando idempotência...');
+
+    // ✅ IDEMPOTENCY CHECK: Se essa session já foi processada, ignorar silenciosamente.
+    // O Stripe pode retentar o mesmo webhook várias vezes (falha de rede, timeout, etc).
+    // A tabela stripe_sessions é a fonte de verdade: se já está 'completed', já processamos.
+    const { data: existingSession, error: idempotencyError } = await supabase
+      .from('stripe_sessions')
+      .select('payment_status')
+      .eq('session_id', session.id)
+      .single();
+
+    if (idempotencyError) {
+      console.warn('⚠️ [IDEMPOTENCY] Erro ao verificar stripe_sessions:', idempotencyError.message);
+      // Não bloquear — continuar processamento se não conseguiu verificar
+    } else if (existingSession?.payment_status === 'completed') {
+      console.log('⚠️ [IDEMPOTENCY] Session já processada, ignorando retry:', session.id);
+      return;
+    }
+
     console.log('✅ [WEBHOOK DEBUG] Pagamento confirmado. Processando documento...');
 
     // Log de pagamento bem-sucedido

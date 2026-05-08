@@ -81,7 +81,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
         .select(`
           *,
           profiles!documents_user_id_fkey(name, email, phone, role),
-          payments!payments_document_id_fkey(payment_method, status, amount, currency)
+          payments!payments_document_id_fkey(payment_method, status, amount, currency, gross_amount, base_amount, fee_amount)
         `)
         .or('is_internal_use.is.null,is_internal_use.eq.false')
         .order('created_at', { ascending: false });
@@ -598,9 +598,12 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
       documentsToExport.forEach((doc) => {
         // Calcular valores: Amount (bruto), Tax (taxa Stripe), Net Value (líquido)
-        const amount = doc.total_cost || 0; // Valor bruto que o cliente pagou
-        const netValue = doc.payment_amount || 0; // Valor líquido recebido
-        const tax = amount - netValue; // Taxa do Stripe
+        const payment = (doc as any).payments?.[0];
+        const grossAmount = typeof payment?.gross_amount === 'number' ? payment.gross_amount : null;
+        const feeAmount = typeof payment?.fee_amount === 'number' ? payment.fee_amount : 0;
+        const netValue = typeof payment?.amount === 'number' ? payment.amount : (doc.payment_amount || 0);
+        const amount = grossAmount ?? ((netValue + feeAmount) || doc.total_cost || 0);
+        const tax = amount - netValue;
 
         worksheet.addRow({
           documentName: String(doc.filename || ''),
@@ -1050,25 +1053,16 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
-                    USER/CLIENT
+                    User/Client
                   </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
                     Document
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
-                    Amount
-                  </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
-                    Payment Method
+                    Payment
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
-                    Payment Status
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                    TRANSLATIONS
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
-                    AUTHENTICATOR
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/5">
+                    Translation / Authenticator
                   </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                     Date
@@ -1108,15 +1102,13 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                       </div>
                     </td>
 
-                    {/* Amount */}
-                    <td className="px-3 py-3 text-xs font-medium text-gray-900">
-                      ${doc.total_cost?.toFixed(2) || '0.00'}
-                    </td>
-
-                    {/* Payment Method */}
+                    {/* Payment (amount + method + status) */}
                     <td className="px-3 py-3 text-xs">
-                      {doc.payment_method ? (
-                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                      <div className="font-semibold text-gray-900 mb-1">
+                        ${doc.total_cost?.toFixed(2) || '0.00'}
+                      </div>
+                      {doc.payment_method && (
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800 mb-1">
                           {doc.payment_method === 'card' ? '💳 Card' :
                             doc.payment_method === 'stripe' ? '💳 Stripe' :
                               doc.payment_method === 'bank_transfer' ? '🏦 Bank' :
@@ -1125,34 +1117,28 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                                     doc.payment_method === 'upload' ? '📋 Upload' :
                                       doc.payment_method}
                         </span>
-                      ) : (
-                        <span className="text-gray-400">N/A</span>
                       )}
+                      <div>
+                        <span className={`inline-flex px-2 py-0.5 font-medium rounded-full ${getPaymentStatusColor(doc.payment_status)}`}>
+                          {getPaymentStatusText(doc.payment_status)}
+                        </span>
+                      </div>
                     </td>
 
-                    {/* Payment Status */}
+                    {/* Translation + Authenticator */}
                     <td className="px-3 py-3 text-xs">
-                      <span className={`inline-flex px-2 py-1 font-medium rounded-full ${getPaymentStatusColor(doc.payment_status)}`}>
-                        {getPaymentStatusText(doc.payment_status)}
-                      </span>
-                    </td>
-
-                    {/* TRANSLATIONS */}
-                    <td className="px-3 py-3 text-xs">
-                      <span className={`inline-flex px-2 py-1 font-semibold rounded-full ${getStatusColor(doc.translation_status || 'pending')}`}>
+                      <span className={`inline-flex px-2 py-0.5 font-semibold rounded-full ${getStatusColor(doc.translation_status || 'pending')}`}>
                         {doc.translation_status || 'N/A'}
                       </span>
-                    </td>
-
-                    {/* AUTHENTICATOR */}
-                    <td className="px-3 py-3 text-xs">
-                      <div className="truncate">
-                        <div className="font-medium text-gray-900">
-                          {doc.authenticated_by_name || 'N/A'}
+                      <div className="mt-1 truncate">
+                        <div className="font-medium text-gray-900 truncate">
+                          {doc.authenticated_by_name || 'No authenticator'}
                         </div>
-                        <div className="text-gray-500 truncate">
-                          {doc.authenticated_by_email || 'No authenticator'}
-                        </div>
+                        {doc.authenticated_by_email && (
+                          <div className="text-gray-500 truncate">
+                            {doc.authenticated_by_email}
+                          </div>
+                        )}
                       </div>
                     </td>
 
