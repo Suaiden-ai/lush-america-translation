@@ -116,10 +116,10 @@ export const db = {
       // Se não encontrou em translated_documents, retornar os dados do dtbv (que podem ter vindo do n8n)
       return {
         verification_code: dtbv.verification_code || '',
-        translated_file_url: dtbv.translated_file_url || '',
-        is_authenticated: dtbv.status === 'completed',
-        authentication_date: dtbv.authentication_date || null,
-        authenticated_by_name: dtbv.authenticated_by_name || null
+        translated_file_url: '', // Do not expose translated file URL before authentication
+        is_authenticated: false, // Never assume authenticated just from dtbv
+        authentication_date: null, // Ignore dtbv authentication date as it should be in translated_documents
+        authenticated_by_name: null
       };
     }
 

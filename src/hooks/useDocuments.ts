@@ -292,12 +292,18 @@ export function useTranslatedDocuments(userId?: string) {
       // Implementar a lógica de prioridade
       const processedDocuments: any[] = [];
 
-      // Função para ajustar status baseado no pagamento
-      const adjustStatusBasedOnPayment = (doc: any, documentId: string) => {
+      // Função para ajustar status baseado no pagamento e na fonte
+      const adjustStatusBasedOnPayment = (doc: any, documentId: string, source: string) => {
         const paymentStatus = paymentStatusMap.get(documentId);
         if (paymentStatus === 'refunded' || paymentStatus === 'cancelled') {
           return paymentStatus;
         }
+        
+        // Se a fonte não for a tabela final de traduções, nunca deve aparecer como completado para o cliente
+        if (source !== 'translated_documents' && (doc.status === 'completed' || doc.status === 'finished')) {
+          return 'processing';
+        }
+        
         return doc.status;
       };
 
@@ -321,7 +327,7 @@ export function useTranslatedDocuments(userId?: string) {
               source: 'translated_documents',
               original_document_id: verifiedDoc.original_document_id,
               original_filename: verifiedDoc.original_filename || verifiedDoc.filename,
-              status: adjustStatusBasedOnPayment(translatedDoc, baseDoc.id)
+              status: adjustStatusBasedOnPayment(translatedDoc, baseDoc.id, 'translated_documents')
             });
           } else {
             // Prioridade 2: Mostrar da tabela documents_to_be_verified
@@ -329,7 +335,7 @@ export function useTranslatedDocuments(userId?: string) {
               ...verifiedDoc,
               source: 'documents_to_be_verified',
               original_document_id: verifiedDoc.original_document_id,
-              status: adjustStatusBasedOnPayment(verifiedDoc, baseDoc.id)
+              status: adjustStatusBasedOnPayment(verifiedDoc, baseDoc.id, 'documents_to_be_verified')
             });
           }
         } else {
@@ -337,7 +343,7 @@ export function useTranslatedDocuments(userId?: string) {
           processedDocuments.push({
             ...baseDoc,
             source: 'documents',
-            status: adjustStatusBasedOnPayment(baseDoc, baseDoc.id)
+            status: adjustStatusBasedOnPayment(baseDoc, baseDoc.id, 'documents')
           });
         }
       }
@@ -362,7 +368,7 @@ export function useTranslatedDocuments(userId?: string) {
             source: 'translated_documents',
             original_document_id: orphanDoc.original_document_id,
             original_filename: orphanDoc.original_filename || orphanDoc.filename,
-            status: adjustStatusBasedOnPayment(translatedDoc, orphanDoc.original_document_id || orphanDoc.id)
+            status: adjustStatusBasedOnPayment(translatedDoc, orphanDoc.original_document_id || orphanDoc.id, 'translated_documents')
           });
         } else {
           processedDocuments.push({
@@ -370,7 +376,7 @@ export function useTranslatedDocuments(userId?: string) {
             source: 'documents_to_be_verified',
             original_document_id: orphanDoc.original_document_id,
             original_filename: orphanDoc.original_filename || orphanDoc.filename,
-            status: adjustStatusBasedOnPayment(orphanDoc, orphanDoc.original_document_id || orphanDoc.id)
+            status: adjustStatusBasedOnPayment(orphanDoc, orphanDoc.original_document_id || orphanDoc.id, 'documents_to_be_verified')
           });
         }
       }
