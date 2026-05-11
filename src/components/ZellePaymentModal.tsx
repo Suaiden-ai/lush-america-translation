@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Copy, CheckCircle, DollarSign, Mail, Phone, AlertCircle, Clock } from 'lucide-react';
+import { X, Copy, CheckCircle, DollarSign, Hash, Phone, AlertCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface ZellePaymentModalProps {
@@ -31,7 +31,7 @@ export function ZellePaymentModal({
 
   // Dados Zelle da empresa (você deve configurar estes dados)
   const ZELLE_INFO = {
-    email: 'admin@suaiden.com',
+    code: 'MUSA',
     businessName: 'Lush America Translations'
   };
 
@@ -148,19 +148,19 @@ export function ZellePaymentModal({
                   </p>
 
                   <div className="space-y-3">
-                    {/* Email Option */}
+                    {/* Code Option */}
                     <div className="bg-white rounded-lg p-3 border border-blue-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
-                          <Mail className="w-4 h-4 text-blue-600" />
-                          <span className="font-mono text-sm">{ZELLE_INFO.email}</span>
+                          <Hash className="w-4 h-4 text-blue-600" />
+                          <span className="font-mono text-sm">{ZELLE_INFO.code}</span>
                         </div>
                         <button
-                          onClick={() => copyToClipboard(ZELLE_INFO.email, 'email')}
+                          onClick={() => copyToClipboard(ZELLE_INFO.code, 'code')}
                           className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm"
                         >
-                          {copied === 'email' ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                          <span>{copied === 'email' ? 'Copied!' : 'Copy'}</span>
+                          {copied === 'code' ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                          <span>{copied === 'code' ? 'Copied!' : 'Copy'}</span>
                         </button>
                       </div>
                     </div>

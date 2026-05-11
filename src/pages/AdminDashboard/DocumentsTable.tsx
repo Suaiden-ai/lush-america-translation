@@ -427,6 +427,37 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
     }
   };
 
+  // Define a cor de fundo e texto com base no método de pagamento
+  const getPaymentMethodColor = (method: string | null | undefined) => {
+    const m = method?.toLowerCase();
+    switch (m) {
+      case 'zelle': return 'bg-purple-100 text-purple-800';
+      case 'card':
+      case 'stripe': return 'bg-blue-100 text-blue-800';
+      case 'paypal': return 'bg-indigo-100 text-indigo-800';
+      case 'bank_transfer':
+      case 'bank': return 'bg-gray-100 text-gray-800';
+      case 'upload': return 'bg-amber-100 text-amber-800';
+      default: return 'bg-gray-100 text-gray-600';
+    }
+  };
+
+  // Retorna o label formatado com emoji para o método de pagamento
+  const getPaymentMethodLabel = (method: string | null | undefined) => {
+    if (!method) return 'N/A';
+    const m = method.toLowerCase();
+    switch (m) {
+      case 'card': return '💳 Card';
+      case 'stripe': return '💳 Stripe';
+      case 'zelle': return '💰 Zelle';
+      case 'bank_transfer':
+      case 'bank': return '🏦 Bank';
+      case 'paypal': return '📱 PayPal';
+      case 'upload': return '📋 Upload';
+      default: return method.charAt(0).toUpperCase() + method.slice(1);
+    }
+  };
+
   // Gera e inicia o download de um relatório Excel dos documentos filtrados
   const downloadDocumentsReport = useCallback(async () => {
     console.log('📊 [Export] Iniciando exportação...');
@@ -1012,20 +1043,26 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                     <span className="text-gray-500">Payment Method:</span>
                     <p className="font-medium text-gray-900 truncate">
                       {doc.payment_method ? (
-                        doc.payment_method === 'card' ? '💳 Card' :
-                          doc.payment_method === 'stripe' ? '💳 Stripe' :
-                            doc.payment_method === 'bank_transfer' ? '🏦 Bank' :
-                              doc.payment_method === 'paypal' ? '📱 PayPal' :
-                                doc.payment_method === 'zelle' ? '💰 Zelle' :
-                                  doc.payment_method === 'upload' ? '📋 Upload' :
-                                    doc.payment_method
+                        <span className={`inline-flex px-2 py-0.5 rounded-full font-medium ${getPaymentMethodColor(doc.payment_method)}`}>
+                          {getPaymentMethodLabel(doc.payment_method)}
+                        </span>
                       ) : 'N/A'}
                     </p>
                   </div>
                   <div>
                     <span className="text-gray-500">Translation:</span>
-                    <p className="font-medium text-gray-900">
-                      {doc.translation_status || 'N/A'}
+                    <p className="font-medium text-gray-900 mt-1">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full font-medium ${getStatusColor(doc.translation_status || 'pending')}`}>
+                        {doc.translation_status || 'pending'}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Payment Status:</span>
+                    <p className="font-medium text-gray-900 mt-1">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full font-medium ${getPaymentStatusColor(doc.payment_status)}`}>
+                        {getPaymentStatusText(doc.payment_status)}
+                      </span>
                     </p>
                   </div>
                   <div>
@@ -1120,28 +1157,28 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                     </td>
 
                     {/* Payment Method */}
-                    <td className="px-3 py-3 text-xs text-gray-700">
+                    <td className="px-3 py-3 text-xs">
                       {doc.payment_method ? (
-                        doc.payment_method === 'card' ? 'Card' :
-                        doc.payment_method === 'stripe' ? 'Stripe' :
-                        doc.payment_method === 'bank_transfer' ? 'Bank' :
-                        doc.payment_method === 'paypal' ? 'PayPal' :
-                        doc.payment_method === 'zelle' ? 'Zelle' :
-                        doc.payment_method === 'upload' ? 'Upload' :
-                        doc.payment_method
+                        <span className={`inline-flex px-2 py-1 rounded-full font-medium whitespace-nowrap ${getPaymentMethodColor(doc.payment_method)}`}>
+                          {getPaymentMethodLabel(doc.payment_method)}
+                        </span>
                       ) : (
                         <span className="text-gray-400">N/A</span>
                       )}
                     </td>
 
                     {/* Payment Status */}
-                    <td className="px-3 py-3 text-xs text-gray-700">
-                      {getPaymentStatusText(doc.payment_status)}
+                    <td className="px-3 py-3 text-xs">
+                      <span className={`inline-flex px-2 py-1 rounded-full font-medium whitespace-nowrap ${getPaymentStatusColor(doc.payment_status)}`}>
+                        {getPaymentStatusText(doc.payment_status)}
+                      </span>
                     </td>
 
                     {/* Translations */}
-                    <td className="px-3 py-3 text-xs text-gray-700">
-                      {doc.translation_status || 'N/A'}
+                    <td className="px-3 py-3 text-xs">
+                      <span className={`inline-flex px-2 py-1 rounded-full font-medium whitespace-nowrap ${getStatusColor(doc.translation_status || 'pending')}`}>
+                        {doc.translation_status || 'pending'}
+                      </span>
                     </td>
 
                     {/* Authenticator */}

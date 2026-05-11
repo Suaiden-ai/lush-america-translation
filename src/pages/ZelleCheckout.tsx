@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Copy, CheckCircle, DollarSign, Mail, Phone, AlertCircle, Clock, ArrowLeft, Upload, X } from 'lucide-react';
+import { Copy, CheckCircle, DollarSign, Hash, Phone, AlertCircle, Clock, ArrowLeft, Upload, X } from 'lucide-react';
 import { supabase, STORAGE_BUCKETS } from '../lib/supabase';
 import { Logger } from '../lib/loggingHelpers';
 import { ActionTypes } from '../types/actionTypes';
@@ -24,7 +24,7 @@ export function ZelleCheckout() {
 
   // Zelle company data
   const ZELLE_INFO = {
-    email: 'admin@suaiden.com',
+    code: 'MUSA',
     businessName: 'Lush America Translations'
   };
 
@@ -788,15 +788,15 @@ export function ZelleCheckout() {
                   </div>
                   <div className="text-center"><h3 className="text-xl font-bold text-gray-900 mb-2">Step 1: Send Payment via Zelle</h3><p className="text-gray-600">Use your banking app to send the payment</p></div>
                   <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6">
-                    <div className="flex items-center space-x-3 mb-4"><Phone className="w-5 h-5 text-slate-700" /><p className="font-semibold text-slate-800">Send money via Zelle to:</p></div>
+                    <div className="flex items-center space-x-3 mb-4"><Hash className="w-5 h-5 text-slate-700" /><p className="font-semibold text-slate-800">Send money via Zelle to:</p></div>
                     <div className="mb-6">
                       <div className="bg-white rounded-2xl p-4 border border-gray-200 max-w-md">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 bg-slate-800 rounded-2xl flex items-center justify-center"><Mail className="w-5 h-5 text-white" /></div>
-                            <div><p className="font-medium text-gray-600">Email Address</p><p className="font-mono text-sm font-bold text-gray-900">{ZELLE_INFO.email}</p></div>
+                            <div className="w-10 h-10 bg-slate-800 rounded-2xl flex items-center justify-center"><Hash className="w-5 h-5 text-white" /></div>
+                            <div><p className="font-medium text-gray-600">Zelle Code</p><p className="font-mono text-sm font-bold text-gray-900">{ZELLE_INFO.code}</p></div>
                           </div>
-                          <button onClick={() => copyToClipboard(ZELLE_INFO.email, 'email')} className={`flex items-center space-x-2 px-3 py-2 rounded-2xl font-medium transition-colors text-sm ${copied === 'email' ? 'bg-green-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}>{copied === 'email' ? <><CheckCircle className="w-4 h-4" /><span>Copied!</span></> : <><Copy className="w-4 h-4" /><span>Copy</span></>}</button>
+                          <button onClick={() => copyToClipboard(ZELLE_INFO.code, 'code')} className={`flex items-center space-x-2 px-3 py-2 rounded-2xl font-medium transition-colors text-sm ${copied === 'code' ? 'bg-green-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}>{copied === 'code' ? <><CheckCircle className="w-4 h-4" /><span>Copied!</span></> : <><Copy className="w-4 h-4" /><span>Copy</span></>}</button>
                         </div>
                       </div>
                     </div>
