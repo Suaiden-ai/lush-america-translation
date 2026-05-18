@@ -62,30 +62,50 @@ export const useClientsCache = (): UseClientsCacheReturn => {
 
       if (profilesError) throw profilesError;
 
-      // Buscar contagem de documentos e última atividade para cada usuário
-      const clientsWithStats = await Promise.all(
-        (profiles || []).map(async (profile) => {
-          // Contar documentos
-          const { count } = await supabase
-            .from('documents')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', profile.id);
+      // 1. Buscar a lista de todos os documentos (apenas user_id para performance)
+      const { data: docList, error: docListError } = await supabase
+        .from('documents')
+        .select('user_id');
 
-          // Buscar última atividade (logs onde o usuário é performer OU afetado)
-          const { data: lastLogs } = await supabase
-            .from('action_logs')
-            .select('created_at')
-            .or(`performed_by.eq.${profile.id},affected_user_id.eq.${profile.id}`)
-            .order('created_at', { ascending: false })
-            .limit(1);
+      if (docListError) throw docListError;
 
-          return {
-            ...profile,
-            documents_count: count || 0,
-            last_activity: lastLogs && lastLogs.length > 0 ? lastLogs[0].created_at : null,
-          };
-        })
-      );
+      // Mapear contagem de documentos por usuário
+      const docCountsMap: Record<string, number> = {};
+      if (docList) {
+        docList.forEach((doc) => {
+          if (doc.user_id) {
+            docCountsMap[doc.user_id] = (docCountsMap[doc.user_id] || 0) + 1;
+          }
+        });
+      }
+
+      // 2. Buscar a lista de logs de atividades (ordenados por mais recente)
+      const { data: recentLogs, error: logsError } = await supabase
+        .from('action_logs')
+        .select('created_at, performed_by, affected_user_id')
+        .order('created_at', { ascending: false });
+
+      if (logsError) throw logsError;
+
+      // Mapear última atividade por usuário (performed_by ou affected_user_id)
+      const lastActivityMap: Record<string, string> = {};
+      if (recentLogs) {
+        recentLogs.forEach((log) => {
+          if (log.performed_by && !lastActivityMap[log.performed_by]) {
+            lastActivityMap[log.performed_by] = log.created_at;
+          }
+          if (log.affected_user_id && !lastActivityMap[log.affected_user_id]) {
+            lastActivityMap[log.affected_user_id] = log.created_at;
+          }
+        });
+      }
+
+      // 3. Montar a resposta combinada em memória
+      const clientsWithStats = (profiles || []).map((profile) => ({
+        ...profile,
+        documents_count: docCountsMap[profile.id] || 0,
+        last_activity: lastActivityMap[profile.id] || null,
+      }));
 
       // Ordenar clientes pela última atividade (mais recente primeiro)
       const sortedClients = clientsWithStats.sort((a, b) => {

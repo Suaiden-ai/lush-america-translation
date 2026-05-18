@@ -89,7 +89,7 @@ export function useDocuments(userId?: string) {
     }
   };
 
-  const updateDocumentStatus = async (documentId: string, status: 'pending' | 'processing' | 'completed') => {
+  const updateDocumentStatus = async (documentId: string, status: 'pending' | 'pending_review' | 'processing' | 'completed') => {
     try {
       const { data: updatedDocument, error } = await supabase
         .from('documents')
@@ -182,7 +182,7 @@ export function useAllDocuments() {
     fetchAllDocuments();
   }, []);
 
-  const updateDocumentStatus = async (documentId: string, status: 'pending' | 'processing' | 'completed') => {
+  const updateDocumentStatus = async (documentId: string, status: 'pending' | 'pending_review' | 'processing' | 'completed') => {
     try {
       const { data: updatedDocument, error } = await supabase
         .from('documents')

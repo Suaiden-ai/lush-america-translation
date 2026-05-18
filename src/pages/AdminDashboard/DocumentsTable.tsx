@@ -421,7 +421,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
       case 'completed': return 'bg-green-100 text-green-800';
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'processing': return 'bg-blue-100 text-blue-800';
-      case 'pending_manual_review': return 'bg-orange-100 text-orange-800';
+      case 'pending_review': return 'bg-orange-100 text-orange-800';
       case 'failed': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
@@ -950,6 +950,7 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                 <option value="pending">{t('admin.documents.table.status.pending')}</option>
                 <option value="processing">{t('admin.documents.table.status.processing')}</option>
                 <option value="failed">{t('admin.documents.table.status.failed')}</option>
+                <option value="pending_review">{t('admin.documents.table.status.pendingReview')}</option>
                 <option value="draft">{t('admin.documents.table.status.draft')}</option>
               </select>
             </div>
@@ -1052,9 +1053,13 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
                   <div>
                     <span className="text-gray-500">Translation:</span>
                     <p className="font-medium text-gray-900 mt-1">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full font-medium ${getStatusColor(doc.translation_status || 'pending')}`}>
-                        {doc.translation_status || 'pending'}
-                      </span>
+                      {doc.status === 'pending_review' ? (
+                        <span className="text-gray-400">—</span>
+                      ) : (
+                        <span className={`inline-flex px-2 py-0.5 rounded-full font-medium ${getStatusColor(doc.translation_status || 'pending')}`}>
+                          {doc.translation_status || 'pending'}
+                        </span>
+                      )}
                     </p>
                   </div>
                   <div>
@@ -1176,9 +1181,13 @@ export function DocumentsTable({ onViewDocument, dateRange, onDateRangeChange }:
 
                     {/* Translations */}
                     <td className="px-3 py-3 text-xs">
-                      <span className={`inline-flex px-2 py-1 rounded-full font-medium whitespace-nowrap ${getStatusColor(doc.translation_status || 'pending')}`}>
-                        {doc.translation_status || 'pending'}
-                      </span>
+                      {doc.status === 'pending_review' ? (
+                        <span className="text-gray-400">—</span>
+                      ) : (
+                        <span className={`inline-flex px-2 py-1 rounded-full font-medium whitespace-nowrap ${getStatusColor(doc.translation_status || 'pending')}`}>
+                          {doc.translation_status || 'pending'}
+                        </span>
+                      )}
                     </td>
 
                     {/* Authenticator */}

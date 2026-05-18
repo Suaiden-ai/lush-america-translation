@@ -30,11 +30,22 @@ export async function getSecureUrl(bucket: string, path: string): Promise<string
             return signedData.signedUrl;
         }
 
-        // 3. Fallback final: Document Proxy via Edge Function
-        return getDocumentProxyUrl(bucket, path);
+        // 3. Fallback final: Document Proxy via Edge Function (fetch autenticado → Blob URL)
+        const proxyUrl = getDocumentProxyUrl(bucket, path);
+        const { data: { session } } = await supabase.auth.getSession();
+        const proxyResponse = await fetch(proxyUrl, {
+            headers: session?.access_token
+                ? { Authorization: `Bearer ${session.access_token}` }
+                : {},
+        });
+        if (!proxyResponse.ok) {
+            throw new Error(`Proxy returned ${proxyResponse.status} for ${bucket}/${path}`);
+        }
+        const proxyBlob = await proxyResponse.blob();
+        return URL.createObjectURL(proxyBlob);
     } catch (err) {
         console.error('Erro ao obter URL segura:', err);
-        return getDocumentProxyUrl(bucket, path);
+        throw err;
     }
 }
 

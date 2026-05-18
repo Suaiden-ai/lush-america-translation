@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { XCircle, FileText, User, Calendar, Hash, Eye, Download, Phone, CreditCard, AlertTriangle, Edit, Save, X } from 'lucide-react';
+import { XCircle, FileText, User, Calendar, Hash, Eye, Download, Phone, CreditCard, AlertTriangle, Edit, Save, X, ZoomIn, ZoomOut, RotateCw, Loader2, FileCheck } from 'lucide-react';
 import { getStatusColor, getStatusIcon } from '../../utils/documentUtils';
 import { Document } from '../../App';
 import { supabase } from '../../lib/supabase';
@@ -54,6 +54,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
   const [userProfile, setUserProfile] = useState<{ name: string; email: string; phone: string | null } | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [translatedDoc, setTranslatedDoc] = useState<TranslatedDocument | null>(null);
+  const [loadingTranslated, setLoadingTranslated] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -65,6 +66,9 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
   const [previewType, setPreviewType] = useState<'pdf' | 'image' | 'unknown'>('unknown');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [viewingFileType, setViewingFileType] = useState<'original' | 'translated'>('original');
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imageRotation, setImageRotation] = useState(0);
   const [customReason, setCustomReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,17 +98,16 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
     if (document) {
       fetchUserProfile();
       fetchPaymentInfo();
-      // Se o documento não tem translated_file_url, busca o documento traduzido pelo user_id
-      if (!(document as any).translated_file_url) {
-        fetchTranslatedDocument();
-      }
+      fetchTranslatedDocument();
     }
   }, [document]);
 
   const fetchTranslatedDocument = async () => {
     if (!document) return;
     console.log('🔍 Buscando documento traduzido para document.id:', document.id);
+    setLoadingTranslated(true);
     try {
+      // 1. Buscar em translated_documents por original_document_id
       const { data, error } = await supabase
         .from('translated_documents')
         .select('*')
@@ -116,13 +119,31 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
       if (!error && data) {
         console.log('🎯 Documento traduzido encontrado:', data);
         setTranslatedDoc(data);
-      } else {
-        console.log('❌ Nenhum documento traduzido encontrado para este document.id');
-        setTranslatedDoc(null);
+        return;
       }
+
+      // 2. Fallback: buscar em documents_to_be_verified por original_document_id
+      const { data: verifyData } = await supabase
+        .from('documents_to_be_verified')
+        .select('*')
+        .eq('original_document_id', document.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (verifyData) {
+        console.log('🎯 Encontrado em documents_to_be_verified:', verifyData);
+        setTranslatedDoc(verifyData);
+        return;
+      }
+
+      console.log('❌ Nenhum documento traduzido encontrado para este document.id');
+      setTranslatedDoc(null);
     } catch (err) {
       console.log('💥 Erro na busca:', err);
       setTranslatedDoc(null);
+    } finally {
+      setLoadingTranslated(false);
     }
   };
 
@@ -172,27 +193,14 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
     }
   };
   
-  const handleDownload = async () => {
-    // Verifica se o documento foi aprovado pelo autenticador
-    const isApproved = (document as any)?.is_authenticated === true || 
-                      (document as any)?.status === 'approved' || 
-                      (document as any)?.status === 'completed';
-    
+  const handleDownload = async (type: 'original' | 'translated' = 'original') => {
     let url: string | null = null;
     let filename: string = '';
-    
-    if (isApproved) {
-      // Se aprovado, prioriza o arquivo traduzido
-      url = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
-      filename = translatedDoc?.filename || (document as any)?.filename || 'document.pdf';
-      
-      // Se não encontrou arquivo traduzido, usa o arquivo original como fallback
-      if (!url) {
-        url = (document as any)?.file_url;
-        filename = (document as any)?.filename || 'document.pdf';
-      }
+
+    if (type === 'translated') {
+      url = translatedDoc?.translated_file_url || null;
+      filename = translatedDoc?.filename || 'document.pdf';
     } else {
-      // Se não aprovado, faz download apenas do arquivo original
       url = (document as any)?.file_url;
       filename = (document as any)?.filename || 'document.pdf';
     }
@@ -250,34 +258,25 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
     return 'unknown';
   }
 
-  const handleViewFile = async () => {
-    console.log('👁️ handleViewFile chamado');
-    console.log('📄 document:', document);
-    console.log('📑 translatedDoc:', translatedDoc);
-    
+  const handleZoomIn = () => setImageZoom(prev => Math.min(prev + 0.25, 3));
+  const handleZoomOut = () => setImageZoom(prev => Math.max(prev - 0.25, 0.25));
+  const handleRotate = () => setImageRotation(prev => (prev + 90) % 360);
+
+  const handleViewFile = async (type: 'original' | 'translated' = 'original') => {
+    console.log('👁️ handleViewFile chamado - tipo:', type);
+
     try {
       setPreviewLoading(true);
       setPreviewError(null);
-      
-      // Verifica se o documento foi aprovado pelo autenticador
-      const isApproved = (document as any)?.is_authenticated === true || 
-                        (document as any)?.status === 'approved' || 
-                        (document as any)?.status === 'completed';
-      
-      console.log('✅ Documento aprovado:', isApproved);
-      
+      setViewingFileType(type);
+      setImageZoom(1);
+      setImageRotation(0);
+
       let url: string | null = null;
-      
-      if (isApproved) {
-        // Se aprovado, prioriza o arquivo traduzido
-        url = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
-        
-        // Se não encontrou arquivo traduzido, usa o arquivo original como fallback
-        if (!url) {
-          url = (document as any)?.file_url;
-        }
+
+      if (type === 'translated') {
+        url = translatedDoc?.translated_file_url || null;
       } else {
-        // Se não aprovado, mostra apenas o arquivo original
         url = (document as any)?.file_url;
       }
       
@@ -323,7 +322,17 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
       }
       
       setPreviewUrl(viewUrl);
-      setPreviewType(detectPreviewType(viewUrl, (document as any)?.filename));
+      let resolvedPreviewType: 'pdf' | 'image' | 'unknown';
+      if (type === 'translated') {
+        // Extract real extension from storage URL — n8n always generates PDF but stores original filename
+        const storageFilename = translatedDoc?.translated_file_url?.split('/').pop()?.split('?')[0];
+        resolvedPreviewType = detectPreviewType(viewUrl, storageFilename ?? null);
+        // n8n always outputs PDF — if extension is undetectable, treat as PDF
+        if (resolvedPreviewType === 'unknown') resolvedPreviewType = 'pdf';
+      } else {
+        resolvedPreviewType = detectPreviewType(viewUrl, (document as any)?.filename ?? null);
+      }
+      setPreviewType(resolvedPreviewType);
       setPreviewOpen(true);
     } catch (err) {
       console.error('❌ Erro ao abrir preview:', err);
@@ -364,18 +373,11 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
 
   async function downloadPreview(filename?: string | null) {
     if (!previewUrl) return;
-    
+
     // Usar URL original do documento para download, não o previewUrl (signed URL)
-    const isApproved = (document as any)?.is_authenticated === true || 
-                      (document as any)?.status === 'approved' || 
-                      (document as any)?.status === 'completed';
-    
     let originalUrl: string | null = null;
-    if (isApproved) {
-      originalUrl = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
-      if (!originalUrl) {
-        originalUrl = (document as any)?.file_url;
-      }
+    if (viewingFileType === 'translated') {
+      originalUrl = translatedDoc?.translated_file_url || null;
     } else {
       originalUrl = (document as any)?.file_url;
     }
@@ -1207,50 +1209,120 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
             </div>
           )}
 
-          {/* Actions */}
-          {((document as any).translated_file_url || (document as any).file_url) && (
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h4 className="text-lg font-semibold text-blue-900 mb-3">{t('admin.documents.table.modal.fileActions')}</h4>
+          {/* File Actions — Original Document */}
+          {(document as any)?.file_url && (
+            <div className="bg-gray-100 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <FileText className="w-5 h-5 text-gray-600" />
+                <h4 className="text-md font-semibold text-gray-800">{t('admin.documents.table.modal.originalDocument')}</h4>
+                <span className="bg-gray-200 text-gray-700 text-xs font-medium px-2 py-1 rounded">
+                  Uploaded by User
+                </span>
+              </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
-                  onClick={handleViewFile}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={() => handleViewFile('original')}
+                  disabled={previewLoading && viewingFileType === 'original'}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
                 >
-                  <Eye className="w-4 h-4" />
-                  {(() => {
-                    const isApproved = (document as any)?.is_authenticated === true || 
-                                      (document as any)?.status === 'approved' || 
-                                      (document as any)?.status === 'completed';
-                    const hasTranslated = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
-                    
-                    if (isApproved && hasTranslated) {
-                      return t('admin.documents.table.modal.viewTranslated');
-                    } else {
-                      return t('admin.documents.table.modal.viewOriginal');
-                    }
-                  })()}
+                  {previewLoading && viewingFileType === 'original' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                  {t('admin.documents.table.modal.viewOriginal')}
                 </button>
                 <button
-                  onClick={handleDownload}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  onClick={() => handleDownload('original')}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  {(() => {
-                    const isApproved = (document as any)?.is_authenticated === true || 
-                                      (document as any)?.status === 'approved' || 
-                                      (document as any)?.status === 'completed';
-                    const hasTranslated = translatedDoc?.translated_file_url || (document as any)?.translated_file_url;
-                    
-                    if (isApproved && hasTranslated) {
-                      return t('admin.documents.table.modal.downloadTranslated');
-                    } else {
-                      return t('admin.documents.table.modal.downloadOriginal');
-                    }
-                  })()}
+                  {t('admin.documents.table.modal.downloadOriginal')}
                 </button>
               </div>
             </div>
           )}
+
+          {/* File Actions — Translated Document */}
+          {loadingTranslated ? (
+            <div className="bg-blue-50 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                <span className="text-blue-700">Searching for translated document...</span>
+              </div>
+            </div>
+          ) : translatedDoc?.translated_file_url ? (
+            (() => {
+              const isAuthenticated = translatedDoc?.is_authenticated === true;
+              return (
+                <div className={`rounded-lg p-4 border ${isAuthenticated ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <FileCheck className={`w-5 h-5 ${isAuthenticated ? 'text-green-600' : 'text-yellow-600'}`} />
+                    <h4 className={`text-md font-semibold ${isAuthenticated ? 'text-green-800' : 'text-yellow-800'}`}>
+                      {t('admin.documents.table.modal.translatedDocument')}
+                    </h4>
+                    {isAuthenticated ? (
+                      <span className="bg-green-100 text-green-700 text-xs font-medium px-2 py-0.5 rounded border border-green-200">
+                        Authenticated
+                      </span>
+                    ) : (
+                      <span className="bg-yellow-100 text-yellow-700 text-xs font-medium px-2 py-0.5 rounded border border-yellow-300">
+                        Pending authenticator
+                      </span>
+                    )}
+                  </div>
+
+                  {translatedDoc && (
+                    <p className={`text-sm mb-3 font-mono ${isAuthenticated ? 'text-green-700' : 'text-yellow-700'}`}>
+                      {translatedDoc.filename}
+                    </p>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={() => handleViewFile('translated')}
+                      disabled={previewLoading && viewingFileType === 'translated'}
+                      className={`flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${isAuthenticated ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-500 hover:bg-yellow-600'}`}
+                    >
+                      {previewLoading && viewingFileType === 'translated' ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                      {t('admin.documents.table.modal.viewTranslated')}
+                    </button>
+                    <button
+                      onClick={() => handleDownload('translated')}
+                      className={`flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg transition-colors ${isAuthenticated ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-yellow-500 hover:bg-yellow-600'}`}
+                    >
+                      <Download className="w-4 h-4" />
+                      {t('admin.documents.table.modal.downloadTranslated')}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()
+          ) : (document as any)?.file_url ? (
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center gap-3">
+                {(document as any)?.status === 'processing' ? (
+                  <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                ) : (
+                  <FileText className="w-5 h-5 text-gray-400" />
+                )}
+                <span className="text-gray-700 font-medium">
+                  {(document as any)?.status === 'processing'
+                    ? 'Translation in progress'
+                    : 'Document not yet translated'}
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                {(document as any)?.status === 'processing'
+                  ? 'The document is being translated. This section will be available once the translation is complete.'
+                  : 'No translated file has been generated for this document yet.'}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-6 flex justify-end">
@@ -1366,66 +1438,106 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
 
       {/* Modal de Preview do Documento */}
       {previewOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[10000]">
-          <div className="absolute inset-0 bg-white flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-tfe-blue-600" />
-                <span className="font-semibold text-gray-900">
-                  {(document as any)?.filename || 'Document Preview'}
+        <div className="fixed inset-0 bg-black bg-opacity-80 z-[10000] flex items-center justify-center">
+          <div className="bg-white rounded-xl w-[95vw] h-[95vh] max-w-6xl flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-100 border-b">
+              <div className="flex items-center gap-3">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <span className="font-semibold text-gray-900 truncate max-w-[300px]">
+                  {viewingFileType === 'translated'
+                    ? (translatedDoc?.filename || (document as any)?.filename || 'Document Preview')
+                    : ((document as any)?.filename || 'Document Preview')}
                 </span>
+                {viewingFileType === 'translated' ? (
+                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-medium">Translated</span>
+                ) : (
+                  <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs font-medium">Original</span>
+                )}
+                {previewType === 'pdf' && (
+                  <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium">PDF</span>
+                )}
+                {previewType === 'image' && (
+                  <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">Image</span>
+                )}
               </div>
               <div className="flex items-center gap-2">
+                {previewType === 'image' && previewUrl && (
+                  <>
+                    <button onClick={handleZoomOut} className="p-2 hover:bg-gray-200 rounded-lg transition-colors" title="Zoom Out">
+                      <ZoomOut className="w-5 h-5 text-gray-600" />
+                    </button>
+                    <span className="text-sm text-gray-600 min-w-[50px] text-center">{Math.round(imageZoom * 100)}%</span>
+                    <button onClick={handleZoomIn} className="p-2 hover:bg-gray-200 rounded-lg transition-colors" title="Zoom In">
+                      <ZoomIn className="w-5 h-5 text-gray-600" />
+                    </button>
+                    <button onClick={handleRotate} className="p-2 hover:bg-gray-200 rounded-lg transition-colors" title="Rotate">
+                      <RotateCw className="w-5 h-5 text-gray-600" />
+                    </button>
+                    <div className="w-px h-6 bg-gray-300 mx-1" />
+                  </>
+                )}
                 <button
                   className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
                   disabled={previewLoading || !previewUrl}
-                  onClick={() => downloadPreview((document as any)?.filename)}
+                  onClick={() => downloadPreview(viewingFileType === 'translated' ? translatedDoc?.filename : (document as any)?.filename)}
                 >
                   <Download className="w-4 h-4" />
                   Download
                 </button>
                 <button
-                  className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+                  className="p-2 hover:bg-red-100 rounded-lg transition-colors"
                   onClick={() => {
                     setPreviewOpen(false);
                     setPreviewUrl(null);
                     setPreviewError(null);
                   }}
+                  title="Close"
                 >
-                  Close
+                  <X className="w-5 h-5 text-gray-600 hover:text-red-600" />
                 </button>
               </div>
             </div>
-            <div className="flex-1 bg-gray-50 overflow-auto">
+            <div className="flex-1 overflow-auto bg-gray-800 flex items-center justify-center">
               {previewLoading && (
-                <div className="flex items-center justify-center h-full text-gray-600">
-                  <div className="text-center">
-                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                    <p>Loading document...</p>
-                  </div>
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-12 h-12 text-white animate-spin" />
+                  <p className="text-white text-lg">Loading document...</p>
                 </div>
               )}
               {!previewLoading && previewError && (
-                <div className="p-6 text-center text-red-600">
-                  <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
-                  <p>{previewError}</p>
+                <div className="flex flex-col items-center gap-4 text-center p-8">
+                  <XCircle className="w-16 h-16 text-red-400" />
+                  <p className="text-white text-lg">{previewError}</p>
+                  <button
+                    onClick={() => { setPreviewOpen(false); setPreviewUrl(null); setPreviewError(null); }}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Close
+                  </button>
                 </div>
               )}
-              {!previewLoading && !previewError && previewUrl && (
-                <>
-                  {previewType === 'image' ? (
-                    <div className="flex items-center justify-center h-full p-4">
-                      <img 
-                        src={previewUrl} 
-                        alt={(document as any)?.filename || 'Document'} 
-                        className="max-w-full max-h-full object-contain"
-                        style={{ maxHeight: 'calc(100vh - 80px)' }}
-                      />
-                    </div>
-                  ) : (
-                    <iframe src={previewUrl} className="w-full h-full border-0" title="Document Preview" />
-                  )}
-                </>
+              {!previewLoading && !previewError && previewUrl && previewType === 'pdf' && (
+                <iframe src={previewUrl} className="w-full h-full border-0" title="Document Preview" />
+              )}
+              {!previewLoading && !previewError && previewUrl && previewType === 'image' && (
+                <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
+                  <img
+                    src={previewUrl}
+                    alt={(document as any)?.filename || 'Document'}
+                    className="max-w-none transition-transform duration-200"
+                    style={{
+                      transform: `scale(${imageZoom}) rotate(${imageRotation}deg)`,
+                      transformOrigin: 'center center'
+                    }}
+                  />
+                </div>
+              )}
+              {!previewLoading && !previewError && previewUrl && previewType === 'unknown' && (
+                <div className="flex flex-col items-center gap-4 text-center p-8">
+                  <FileText className="w-16 h-16 text-gray-400" />
+                  <p className="text-white text-lg">Unsupported format for inline preview.</p>
+                  <p className="text-gray-400">Use the download button to save the file.</p>
+                </div>
               )}
             </div>
           </div>

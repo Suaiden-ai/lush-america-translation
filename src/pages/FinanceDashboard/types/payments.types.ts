@@ -4,7 +4,7 @@ import { DateRange } from '../../../components/DateRangeFilter';
 export interface Document {
   id: string;
   filename: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'deleted' | 'draft';
+  status: 'pending' | 'pending_review' | 'processing' | 'completed' | 'failed' | 'deleted' | 'draft';
   file_path?: string;
   user_id?: string;
   created_at?: string;

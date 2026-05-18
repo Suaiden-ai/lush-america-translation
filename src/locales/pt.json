@@ -196,6 +196,7 @@
     "targetLanguage": "Idioma de Destino",
     "translationProgress": "Progresso da Tradução",
     "pending": "Pendente",
+    "pendingReview": "Revisão Pendente",
     "processing": "Processando",
     "completed": "Concluído",
     "cancelled": "Cancelado",
@@ -891,7 +892,8 @@
           "failed": "Failed",
           "refunded": "Refunded",
           "unknown": "Unknown",
-          "draft": "Draft"
+          "draft": "Draft",
+          "pendingReview": "Revisão Pendente"
         },
         "actions": {
           "view": "View",
@@ -958,6 +960,8 @@
           "cancelPayment": "Cancel Payment",
           "noPaymentInfo": "No payment information found for this document.",
           "fileActions": "File Actions",
+          "originalDocument": "Documento Original",
+          "translatedDocument": "Documento Traduzido",
           "viewTranslated": "View Translated",
           "viewOriginal": "View Original",
           "downloadTranslated": "Download Translated",

@@ -134,7 +134,21 @@ export const useActionLogs = (userId?: string): UseActionLogsReturn => {
 
       const { data, error, count } = await query;
 
-      if (error) throw error;
+      if (error) {
+        // 416 = range not satisfiable (page beyond results) — treat as empty
+        if (error.code === 'PGRST103' || error.message?.includes('range')) {
+          setLogs([]);
+          setPagination((prev) => ({
+            ...prev,
+            page: 1,
+            total: 0,
+            totalPages: 0,
+            hasMore: false,
+          }));
+          return;
+        }
+        throw error;
+      }
 
       const newLogs = (data || []) as ActionLog[];
       const total = count || 0;

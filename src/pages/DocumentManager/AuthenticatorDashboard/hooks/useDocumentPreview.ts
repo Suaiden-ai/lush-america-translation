@@ -44,14 +44,36 @@ export function useDocumentPreview() {
       // 3. Criar blob URL (URL local, não expõe URL original)
       const blobUrl = window.URL.createObjectURL(blob);
       
-      // 4. Detectar tipo do arquivo
-      const urlFileName = urlToView.split('/').pop()?.split('?')[0] || doc.filename;
-      const detectedType = detectPreviewType(blobUrl, urlFileName);
+      // 4. Detectar tipo do arquivo de forma robusta usando o MIME type do Blob
+      let detectedType = detectPreviewType(blobUrl, doc.filename);
+      let correctedFilename = doc.filename;
+
+      if (blob.type === 'application/pdf') {
+        detectedType = 'pdf';
+        if (doc.filename && !doc.filename.toLowerCase().endsWith('.pdf')) {
+          const lastDot = doc.filename.lastIndexOf('.');
+          const base = lastDot !== -1 ? doc.filename.substring(0, lastDot) : doc.filename;
+          correctedFilename = `${base}.pdf`;
+        }
+      } else if (blob.type.startsWith('image/')) {
+        detectedType = 'image';
+        const ext = blob.type.split('/')[1];
+        const expectedExt = ext === 'jpeg' ? 'jpg' : ext;
+        if (doc.filename && !doc.filename.toLowerCase().endsWith(`.${expectedExt}`)) {
+          const lastDot = doc.filename.lastIndexOf('.');
+          const base = lastDot !== -1 ? doc.filename.substring(0, lastDot) : doc.filename;
+          correctedFilename = `${base}.${expectedExt}`;
+        }
+      } else {
+        const urlFileName = urlToView.split('/').pop()?.split('?')[0] || doc.filename;
+        detectedType = detectPreviewType(blobUrl, urlFileName);
+      }
       
       // 5. Armazenar blob URL (será revogado quando modal fechar)
       setPreviewBlobUrl(blobUrl);
       setPreviewUrl(blobUrl);
       setPreviewType(detectedType);
+      setPreviewDocument({ ...doc, filename: correctedFilename });
       setPreviewOpen(true);
     } catch (err) {
       console.error('❌ Erro ao abrir preview:', err);

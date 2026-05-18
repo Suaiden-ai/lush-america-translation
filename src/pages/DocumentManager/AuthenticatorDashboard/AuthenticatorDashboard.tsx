@@ -96,7 +96,12 @@ export default function AuthenticatorDashboard() {
       
       const { extractFilePathFromUrl } = await import('../../../utils/fileUtils');
       const pathInfo = extractFilePathFromUrl(urlToDownload);
-      
+
+      // Derive filename from the actual storage URL — n8n saves translated files as PDF
+      // but doc.filename still holds the original filename (e.g. .jpg). Use URL-based name.
+      const urlFilename = urlToDownload.split('/').pop()?.split('?')[0];
+      const filename = urlFilename || (doc.filename ? String(doc.filename) : 'document.pdf');
+
       if (!pathInfo) {
         try {
           const response = await fetch(urlToDownload);
@@ -105,7 +110,7 @@ export default function AuthenticatorDashboard() {
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = doc.filename ? String(doc.filename) : 'document.pdf';
+            link.download = filename;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -117,9 +122,8 @@ export default function AuthenticatorDashboard() {
           return;
         }
       }
-      
+
       const { db } = await import('../../../lib/supabase');
-      const filename = doc.filename ? String(doc.filename) : 'document.pdf';
       const success = await db.downloadFileAndTrigger(pathInfo.filePath, filename, pathInfo.bucket);
       
       if (!success) {

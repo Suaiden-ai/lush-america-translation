@@ -110,7 +110,7 @@ export function OverviewProvider({ children }: { children: React.ReactNode }) {
       if (currentUser.role === 'admin') {
         // Admin: pendências a partir de documents_to_be_verified; aprovados/autenticados a partir de translated_documents
         totalDocs = allDocuments?.length || 0;
-        pendingDocs = allDocuments?.filter(doc => doc.status === 'pending').length || 0;
+        pendingDocs = allDocuments?.filter(doc => doc.status === 'pending' || doc.status === 'pending_review').length || 0;
         const approvedTranslated = (translatedDocs || []).filter((doc: any) => (doc.is_authenticated === true) || ((doc.status || '').toLowerCase() === 'completed'));
         approvedDocs = approvedTranslated.length;
         rejectedDocs = allDocuments?.filter(doc => doc.status === 'rejected').length || 0;

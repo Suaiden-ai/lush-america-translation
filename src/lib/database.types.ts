@@ -1343,7 +1343,7 @@ export type Database = {
       }
     }
     Enums: {
-      document_status: "pending" | "processing" | "completed" | "draft" | "refunded" | "cancelled"
+      document_status: "pending" | "pending_review" | "processing" | "completed" | "draft"
       user_role:
       | "user"
       | "admin"
@@ -1478,7 +1478,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      document_status: ["pending", "processing", "completed", "draft", "refunded", "cancelled"],
+      document_status: ["pending", "pending_review", "processing", "completed", "draft"],
       user_role: [
         "user",
         "admin",

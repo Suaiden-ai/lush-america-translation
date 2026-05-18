@@ -136,7 +136,7 @@ export function DocumentsList({ documents, onViewDocument }: DocumentsListProps)
               <div className="flex items-center space-x-4">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(doc)}`}>
                   {getStatusIcon(doc)}
-                  <span className="ml-1 capitalize">{doc.file_url ? 'Completed' : doc.status}</span>
+                  <span className="ml-1 capitalize">{doc.file_url ? 'Completed' : doc.status === 'pending_review' ? 'Payment Under Review' : doc.status}</span>
                 </span>
                 
                 <div className="flex items-center space-x-2">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Copy, CheckCircle, DollarSign, Hash, Phone, AlertCircle, Clock, ArrowLeft, Upload, X } from 'lucide-react';
+import { Copy, CheckCircle, DollarSign, Hash, Phone, AlertCircle, Clock, ArrowLeft, Upload, X, Mail } from 'lucide-react';
 import { supabase, STORAGE_BUCKETS } from '../lib/supabase';
 import { Logger } from '../lib/loggingHelpers';
 import { ActionTypes } from '../types/actionTypes';
@@ -663,22 +663,16 @@ export function ZelleCheckout() {
         console.log('✅ Comprovante validado automaticamente');
       } else {
         // Comprovante inválido - precisa revisão manual
-        // Garantir que status é permitido no schema atual: usar 'pending' se 'pending_manual_review' não for aceito
-        try {
-          const { error: docErr } = await supabase.from('documents').update({
-            status: 'pending_manual_review',
-            payment_method: 'zelle'
-          }).eq('id', documentId);
-          if (docErr) {
-            console.warn('⚠️ Falling back to status "pending" due to constraint:', docErr?.message);
-            await supabase.from('documents').update({
-              status: 'pending',
-              payment_method: 'zelle'
-            }).eq('id', documentId);
-          }
-        } catch (statusErr) {
-          console.error('❌ Error updating document status:', statusErr);
-        }
+        await supabase.from('documents').update({
+          status: 'pending_review',
+          payment_method: 'zelle'
+        }).eq('id', documentId);
+
+        // Atualizar payments.status (campo string, sem enum constraint)
+        await supabase.from('payments')
+          .update({ status: 'pending_manual_review' })
+          .eq('document_id', documentId)
+          .eq('payment_method', 'zelle');
 
         // Enviar notificação para revisão manual
         await sendNotificationToAdmin(userProfile, true);

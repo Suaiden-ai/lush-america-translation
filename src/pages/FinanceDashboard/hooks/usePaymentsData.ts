@@ -332,7 +332,7 @@ export function usePaymentsData({ dateFilter, filterStatus, filterRole }: UsePay
             translationStatus = 'completed';
           }
 
-          if (translationStatus === 'draft') {
+          if (translationStatus === 'draft' || translationStatus === 'pending_review') {
             continue;
           }
 
