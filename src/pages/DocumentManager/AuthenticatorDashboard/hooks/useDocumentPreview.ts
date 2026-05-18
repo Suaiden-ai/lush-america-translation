@@ -48,7 +48,13 @@ export function useDocumentPreview() {
       let detectedType = detectPreviewType(blobUrl, doc.filename);
       let correctedFilename = doc.filename;
 
-      if (blob.type === 'application/pdf') {
+      if (doc.translated_file_url) {
+        // n8n always outputs PDF — overrides blob.type which may be wrong (e.g. image/jpeg)
+        // because n8n stores the file using the original filename as the storage key
+        detectedType = 'pdf';
+        const base = doc.filename.replace(/\.[^.]+$/, '');
+        correctedFilename = `${base}.pdf`;
+      } else if (blob.type === 'application/pdf') {
         detectedType = 'pdf';
         if (doc.filename && !doc.filename.toLowerCase().endsWith('.pdf')) {
           const lastDot = doc.filename.lastIndexOf('.');

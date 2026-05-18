@@ -122,7 +122,7 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
         return;
       }
 
-      // 2. Fallback: buscar em documents_to_be_verified por original_document_id
+      // 2. Buscar em documents_to_be_verified por original_document_id
       const { data: verifyData } = await supabase
         .from('documents_to_be_verified')
         .select('*')
@@ -132,6 +132,22 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
         .maybeSingle();
 
       if (verifyData) {
+        // 2b. Approval service inserts translated_documents using the verification row ID,
+        // not documents.id — search again with that ID to get is_authenticated = true
+        const { data: translatedFromVerification } = await supabase
+          .from('translated_documents')
+          .select('*')
+          .eq('original_document_id', verifyData.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (translatedFromVerification) {
+          console.log('🎯 Encontrado em translated_documents via verification ID:', translatedFromVerification);
+          setTranslatedDoc(translatedFromVerification);
+          return;
+        }
+
         console.log('🎯 Encontrado em documents_to_be_verified:', verifyData);
         setTranslatedDoc(verifyData);
         return;
@@ -199,7 +215,9 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
 
     if (type === 'translated') {
       url = translatedDoc?.translated_file_url || null;
-      filename = translatedDoc?.filename || 'document.pdf';
+      // n8n always outputs PDF but stores the file using the original filename (e.g. .jpg)
+      const base = (translatedDoc?.filename || 'document').replace(/\.[^.]+$/, '');
+      filename = `${base}.pdf`;
     } else {
       url = (document as any)?.file_url;
       filename = (document as any)?.filename || 'document.pdf';
@@ -1270,6 +1288,13 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                         Pending authenticator
                       </span>
                     )}
+                    <button
+                      onClick={fetchTranslatedDocument}
+                      className="ml-auto p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Refresh"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   {translatedDoc && (
@@ -1479,7 +1504,11 @@ export const DocumentDetailsModal: React.FC<DocumentDetailsModalProps> = ({ docu
                 <button
                   className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
                   disabled={previewLoading || !previewUrl}
-                  onClick={() => downloadPreview(viewingFileType === 'translated' ? translatedDoc?.filename : (document as any)?.filename)}
+                  onClick={() => downloadPreview(
+                    viewingFileType === 'translated'
+                      ? (translatedDoc?.filename || 'document').replace(/\.[^.]+$/, '') + '.pdf'
+                      : (document as any)?.filename
+                  )}
                 >
                   <Download className="w-4 h-4" />
                   Download

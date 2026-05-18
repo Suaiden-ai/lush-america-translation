@@ -97,10 +97,15 @@ export default function AuthenticatorDashboard() {
       const { extractFilePathFromUrl } = await import('../../../utils/fileUtils');
       const pathInfo = extractFilePathFromUrl(urlToDownload);
 
-      // Derive filename from the actual storage URL — n8n saves translated files as PDF
-      // but doc.filename still holds the original filename (e.g. .jpg). Use URL-based name.
-      const urlFilename = urlToDownload.split('/').pop()?.split('?')[0];
-      const filename = urlFilename || (doc.filename ? String(doc.filename) : 'document.pdf');
+      // n8n always outputs PDF for translated files but stores them with the original filename
+      // (e.g. original.jpg → content is PDF). Force .pdf extension when downloading translated.
+      let filename: string;
+      if (doc.translated_file_url) {
+        const basename = (doc.filename || 'document').replace(/\.[^.]+$/, '');
+        filename = `${basename}.pdf`;
+      } else {
+        filename = doc.filename ? String(doc.filename) : 'document';
+      }
 
       if (!pathInfo) {
         try {
